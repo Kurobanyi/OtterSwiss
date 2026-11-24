@@ -14,6 +14,7 @@ pub mod elevation;
 pub mod engine;
 pub mod error;
 pub mod power;
+pub mod process;
 pub mod registry;
 pub mod safe_fs;
 pub mod sensors;

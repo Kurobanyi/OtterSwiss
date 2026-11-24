@@ -15,8 +15,10 @@ use windows::Win32::Networking::WinInet::{
     INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT,
     INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
 };
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 use windows::Win32::Security::Authorization::{
-    SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, GRANT_ACCESS, SE_FILE_OBJECT,
+    ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW, SetEntriesInAclW,
+    SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, GRANT_ACCESS, SDDL_REVISION_1, SE_FILE_OBJECT,
     TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
 };
 use windows::Win32::Security::Cryptography::{
@@ -26,16 +28,20 @@ use windows::Win32::Security::Cryptography::{
 use windows::Win32::Security::WinTrust::{
     WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData,
     WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
-    WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE,
+    WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
+    WTD_REVOKE_WHOLECHAIN, WTD_STATEACTION_CLOSE,
     WTD_STATEACTION_VERIFY, WTD_UI_NONE,
 };
 use windows::Win32::Security::{
-    CreateWellKnownSid, WinBuiltinAdministratorsSid, WinLocalSystemSid, ACL,
+    CreateWellKnownSid, IsWellKnownSid, WinBuiltinAdministratorsSid, WinLocalSystemSid, ACL,
     DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-    PSID, SECURITY_MAX_SID_SIZE, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+    UNPROTECTED_DACL_SECURITY_INFORMATION,
+    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_MAX_SID_SIZE,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
 };
 use windows::Win32::Storage::FileSystem::{
-    FILE_ALL_ACCESS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_NONE,
+    CreateDirectoryW, FILE_ALL_ACCESS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_NONE,
+    FILE_SHARE_READ,
 };
 use windows::Win32::UI::Shell::{FOLDERID_ProgramData, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
 
@@ -90,27 +96,191 @@ pub fn get_program_data_dir() -> CoreResult<PathBuf> {
     Ok(PathBuf::from(path_str))
 }
 
+/// Único punto de acceso a `C:\ProgramData\OtterSwiss`.
+///
+/// `C:\ProgramData` deja a cualquier usuario crear carpetas y archivos (de los que queda como dueño), así que
+/// la carpeta se crea ya con un descriptor solo-admin, se reinician dueño y DACL si existía, y se rechaza
+/// cualquier reparse point o hijo cuyo dueño no sea Administradores o SYSTEM: esos archivos pudo plantarlos
+/// un usuario sin privilegios para que OtterSwiss los lea o ejecute como administrador.
 pub fn ensure_admin_only_data_dir() -> CoreResult<PathBuf> {
     let base = get_program_data_dir()?;
     let target = base.join("OtterSwiss");
 
-    if target.exists() {
-        let meta = std::fs::symlink_metadata(&target)?;
-        if meta.file_type().is_symlink() || !meta.is_dir() {
-            return Err(CoreError::Trust {
-                message: format!(
-                    "Ruta crítica '{}' es un symlink o archivo no válido (posible squatting)",
-                    target.display()
-                ),
-                source: None,
-            });
+    match std::fs::symlink_metadata(&target) {
+        Ok(meta) => {
+            if meta.file_type().is_symlink() || !meta.is_dir() {
+                return Err(CoreError::Trust {
+                    message: format!(
+                        "Ruta crítica '{}' es un symlink o archivo no válido (posible squatting)",
+                        target.display()
+                    ),
+                    source: None,
+                });
+            }
         }
-    } else {
-        std::fs::create_dir_all(&target)?;
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => create_admin_only_dir(&target)?,
+        Err(e) => return Err(CoreError::Io(e)),
     }
 
     apply_admin_only_acl(&target)?;
+    verify_tree_owned_by_admins(&target, 8)?;
     Ok(target)
+}
+
+/// Crea `path` con un descriptor de seguridad solo-admin desde el primer instante.
+pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
+    let sddl = to_wide_null("O:BAG:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)");
+    let mut psd = PSECURITY_DESCRIPTOR::default();
+    unsafe {
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            PCWSTR(sddl.as_ptr()),
+            SDDL_REVISION_1,
+            &mut psd,
+            None,
+        )
+    }
+    .map_err(|e| CoreError::Trust {
+        message: format!("No se pudo construir el descriptor de seguridad: {}", e),
+        source: None,
+    })?;
+
+    let attrs = SECURITY_ATTRIBUTES {
+        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+        lpSecurityDescriptor: psd.0,
+        bInheritHandle: false.into(),
+    };
+    let wide = to_wide_null(path);
+    let res = unsafe { CreateDirectoryW(PCWSTR(wide.as_ptr()), Some(&attrs)) };
+    unsafe {
+        let _ = windows::Win32::Foundation::LocalFree(HLOCAL(psd.0));
+    }
+
+    match res {
+        Ok(()) => Ok(()),
+        // Otro proceso la creó entre la comprobación y aquí: la validación posterior decide.
+        Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => Ok(()),
+        Err(e) => Err(CoreError::Trust {
+            message: format!("No se pudo crear '{}': {}", path.display(), e),
+            source: None,
+        }),
+    }
+}
+
+/// Quita la DACL protegida de `path` y deja que herede los permisos de su carpeta padre (y los propague a
+/// todo el árbol). Se usa al terminar una extracción hecha en un staging solo-admin.
+pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
+    let mut empty_acl = ACL::default();
+    unsafe {
+        windows::Win32::Security::InitializeAcl(
+            &mut empty_acl,
+            std::mem::size_of::<ACL>() as u32,
+            windows::Win32::Security::ACL_REVISION,
+        )
+    }
+    .map_err(|e| CoreError::Trust {
+        message: format!("InitializeAcl falló: {}", e),
+        source: None,
+    })?;
+    let wide = to_wide_null(path);
+    let status = unsafe {
+        SetNamedSecurityInfoW(
+            PCWSTR(wide.as_ptr()),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION,
+            PSID::default(),
+            PSID::default(),
+            Some(&empty_acl),
+            None,
+        )
+    };
+    if status.0 != 0 {
+        return Err(CoreError::Trust {
+            message: format!(
+                "No se pudieron restablecer los permisos de '{}' (código {})",
+                path.display(),
+                status.0
+            ),
+            source: None,
+        });
+    }
+    Ok(())
+}
+
+/// `true` si el dueño de `path` es Administradores o SYSTEM.
+fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
+    let wide = to_wide_null(path);
+    let mut owner = PSID::default();
+    let mut psd = PSECURITY_DESCRIPTOR::default();
+    let status = unsafe {
+        GetNamedSecurityInfoW(
+            PCWSTR(wide.as_ptr()),
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            Some(&mut owner),
+            None,
+            None,
+            None,
+            &mut psd,
+        )
+    };
+    if status.0 != 0 {
+        return Err(CoreError::Trust {
+            message: format!(
+                "No se pudo leer el dueño de '{}' (código {})",
+                path.display(),
+                status.0
+            ),
+            source: None,
+        });
+    }
+    let ok = unsafe {
+        IsWellKnownSid(owner, WinBuiltinAdministratorsSid).as_bool()
+            || IsWellKnownSid(owner, WinLocalSystemSid).as_bool()
+    };
+    unsafe {
+        let _ = windows::Win32::Foundation::LocalFree(HLOCAL(psd.0));
+    }
+    Ok(ok)
+}
+
+/// Recorre `root` y falla si encuentra un reparse point o un objeto que no sea de Administradores o SYSTEM.
+fn verify_tree_owned_by_admins(root: &Path, max_depth: usize) -> CoreResult<()> {
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let ft = entry.file_type()?;
+            if ft.is_symlink() {
+                return Err(CoreError::Trust {
+                    message: format!(
+                        "Se encontró un enlace o junction en la carpeta de datos: '{}'. Bórralo y vuelve a intentar.",
+                        path.display()
+                    ),
+                    source: None,
+                });
+            }
+            if !is_owned_by_admins(&path)? {
+                return Err(CoreError::Trust {
+                    message: format!(
+                        "'{}' no pertenece a Administradores ni a SYSTEM (posible manipulación). Bórralo y vuelve a intentar.",
+                        path.display()
+                    ),
+                    source: None,
+                });
+            }
+            if ft.is_dir() {
+                if depth + 1 > max_depth {
+                    return Err(CoreError::Trust {
+                        message: format!("Carpeta de datos demasiado profunda en '{}'", path.display()),
+                        source: None,
+                    });
+                }
+                stack.push((path, depth + 1));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
@@ -220,6 +390,18 @@ pub fn secure_download_and_verify(
     dest_path: &Path,
     policy: &DownloadPolicy<'_>,
 ) -> CoreResult<File> {
+    secure_download_and_verify_with_progress(dest_path, policy, None, None)
+}
+
+/// Igual que `secure_download_and_verify`, informando el porcentaje en `progress` y abortando si `cancel`
+/// se activa.
+pub fn secure_download_and_verify_with_progress(
+    dest_path: &Path,
+    policy: &DownloadPolicy<'_>,
+    progress: Option<&std::sync::atomic::AtomicU8>,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> CoreResult<File> {
+    use std::sync::atomic::Ordering;
     if !policy.url.starts_with("https://") {
         return Err(CoreError::Trust {
             message: "Solo se permiten descargas HTTPS".into(),
@@ -389,7 +571,16 @@ pub fn secure_download_and_verify(
     let mut total_read: u64 = 0;
     let mut chunk = [0u8; 32 * 1024];
 
+    let expected_total = if has_content_length && content_len > 0 {
+        content_len as u64
+    } else {
+        policy.max_bytes
+    };
+
     loop {
+        if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
+            return Err(CoreError::Cancelled);
+        }
         let mut bytes_read: u32 = 0;
         unsafe {
             InternetReadFile(
@@ -419,6 +610,9 @@ pub fn secure_download_and_verify(
         let slice = &chunk[..bytes_read as usize];
         hasher.update(slice);
         file.write_all(slice)?;
+        if let Some(p) = progress {
+            p.store(((total_read * 100) / expected_total.max(1)).min(99) as u8, Ordering::Release);
+        }
     }
 
     if has_content_length && total_read != content_len as u64 {
@@ -452,6 +646,64 @@ pub fn secure_download_and_verify(
         verify_authenticode_on_handle(
             dest_path,
             raw_handle,
+            expected_cn,
+            policy.expected_cert_thumbprint_sha1,
+        )?;
+    }
+
+    Ok(file)
+}
+
+/// Reabre un instalador ya descargado para ejecutarlo. El handle comparte solo lectura, así que mientras
+/// viva nadie puede escribir, renombrar ni borrar el archivo; SHA-256 y Authenticode se repiten sobre este
+/// mismo handle. El llamador mantiene el `File` vivo hasta que el proceso haya terminado.
+pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> CoreResult<File> {
+    use std::io::{Seek, SeekFrom};
+
+    if policy.expected_sha256_hex.is_none() && policy.expected_signer_cn.is_none() {
+        return Err(CoreError::Trust {
+            message: "Política inválida: requiere SHA-256 o firmante Authenticode".into(),
+            source: None,
+        });
+    }
+
+    let mut file = OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ.0)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
+        .open(path)?;
+    let handle = HANDLE(file.as_raw_handle() as _);
+    let info = inspect_handle(handle)?;
+    if info.is_reparse_point || info.is_directory || info.number_of_links > 1 {
+        return Err(CoreError::Trust {
+            message: format!(
+                "El instalador '{}' fue reemplazado por un enlace o hardlink",
+                path.display()
+            ),
+            source: None,
+        });
+    }
+
+    if let Some(expected_sha) = policy.expected_sha256_hex {
+        let mut hasher = Sha256::new();
+        std::io::copy(&mut file, &mut hasher)?;
+        let actual = format!("{:x}", hasher.finalize());
+        if !actual.eq_ignore_ascii_case(expected_sha.trim()) {
+            return Err(CoreError::Trust {
+                message: format!(
+                    "El instalador cambió después de verificarse (SHA-256 {})",
+                    actual
+                ),
+                source: None,
+            });
+        }
+        file.seek(SeekFrom::Start(0))?;
+    }
+
+    if let Some(expected_cn) = policy.expected_signer_cn {
+        verify_authenticode_on_handle(
+            path,
+            handle,
             expected_cn,
             policy.expected_cert_thumbprint_sha1,
         )?;
@@ -524,7 +776,10 @@ pub fn verify_authenticode_on_handle(
     let trust_data = WINTRUST_DATA {
         cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
         dwUIChoice: WTD_UI_NONE,
-        fdwRevocationChecks: WTD_REVOKE_NONE,
+        // Comprobar revocación de toda la cadena (excepto la raíz): un certificado revocado por robo de la
+        // clave privada no debe seguir siendo aceptado (SEC-12).
+        fdwRevocationChecks: WTD_REVOKE_WHOLECHAIN,
+        dwProvFlags: WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
         dwUnionChoice: WTD_CHOICE_FILE,
         Anonymous: WINTRUST_DATA_0 {
             pFile: &mut file_info,

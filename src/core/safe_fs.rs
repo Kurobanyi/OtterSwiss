@@ -7,10 +7,11 @@ use std::path::{Component, Path, PathBuf};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, GetFileInformationByHandle, GetFinalPathNameByHandleW, BY_HANDLE_FILE_INFORMATION,
-    DELETE, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
-    FILE_FLAG_DELETE_ON_CLOSE, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_NONE,
-    FILE_SHARE_READ, OPEN_EXISTING, VOLUME_NAME_DOS,
+    CreateFileW, FileDispositionInfo, GetFileInformationByHandle, GetFinalPathNameByHandleW,
+    SetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_DIRECTORY,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
+    FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_NONE, FILE_SHARE_READ,
+    OPEN_EXISTING, VOLUME_NAME_DOS,
 };
 
 use crate::core::error::{CoreError, CoreResult};
@@ -197,10 +198,14 @@ pub fn atomic_write_new(target: &Path, data: &[u8]) -> CoreResult<()> {
     write_res
 }
 
-/// Elimina un archivo (o symlink sin seguirlo) abriendo con `FILE_FLAG_OPEN_REPARSE_POINT`
-/// y `FILE_FLAG_DELETE_ON_CLOSE` tras verificar que su ruta final permanece dentro de `allowed_root`.
-pub fn delete_verified_file_under(path: &Path, allowed_root: Option<&Path>) -> CoreResult<()> {
+/// Abre `path` sin seguir reparse points, con acceso `DELETE` pero **sin** `FILE_FLAG_DELETE_ON_CLOSE`:
+/// el borrado solo se marca después de validar (ver `mark_handle_for_delete`).
+fn open_for_delete(path: &Path, directory: bool) -> CoreResult<SafeHandle> {
     let wide = to_wide_null(path);
+    let mut flags = FILE_FLAG_OPEN_REPARSE_POINT;
+    if directory {
+        flags |= FILE_FLAG_BACKUP_SEMANTICS;
+    }
     let raw = unsafe {
         CreateFileW(
             PCWSTR(wide.as_ptr()),
@@ -208,13 +213,67 @@ pub fn delete_verified_file_under(path: &Path, allowed_root: Option<&Path>) -> C
             FILE_SHARE_NONE,
             None,
             OPEN_EXISTING,
-            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_DELETE_ON_CLOSE,
+            flags,
             None,
         )
     }
     .map_err(|e| CoreError::Io(io::Error::other(e.to_string())))?;
+    SafeHandle::new(raw).ok_or_else(|| CoreError::Io(io::Error::last_os_error()))
+}
 
-    let handle = SafeHandle::new(raw).ok_or_else(|| CoreError::Io(io::Error::last_os_error()))?;
+/// Marca para borrado el objeto abierto en `handle`. Se borra al cerrarse el handle.
+fn mark_handle_for_delete(handle: &SafeHandle, path: &Path) -> CoreResult<()> {
+    let disposition = FILE_DISPOSITION_INFO {
+        DeleteFile: true.into(),
+    };
+    unsafe {
+        SetFileInformationByHandle(
+            handle.raw(),
+            FileDispositionInfo,
+            &disposition as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<FILE_DISPOSITION_INFO>() as u32,
+        )
+    }
+    .map_err(|e| {
+        CoreError::Io(io::Error::other(format!(
+            "No se pudo marcar '{}' para borrado: {}",
+            path.display(),
+            e
+        )))
+    })
+}
+
+/// Comprueba que la ruta final del handle quede estrictamente dentro de `allowed_root`.
+fn ensure_under_root(final_path: &Path, allowed_root: Option<&Path>) -> CoreResult<()> {
+    if let Some(root) = allowed_root {
+        let root_canon = canonical_dos_path(root)?;
+        if !path_is_strictly_under(final_path, &root_canon) {
+            return Err(CoreError::Validation(format!(
+                "Ruta resuelta '{}' escapa de raíz permitida '{}'",
+                final_path.display(),
+                root_canon.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// `true` si `child` está dentro de `root` (por componentes, sin distinguir mayúsculas) y no es la propia raíz.
+pub fn path_is_strictly_under(child: &Path, root: &Path) -> bool {
+    let mut c = child.components();
+    for r in root.components() {
+        match c.next() {
+            Some(cc) if cc.as_os_str().eq_ignore_ascii_case(r.as_os_str()) => {}
+            _ => return false,
+        }
+    }
+    c.next().is_some()
+}
+
+/// Elimina un archivo (o symlink sin seguirlo). Valida tipo y raíz sobre el handle y solo
+/// después marca el borrado: si la validación falla, el archivo queda intacto.
+pub fn delete_verified_file_under(path: &Path, allowed_root: Option<&Path>) -> CoreResult<()> {
+    let handle = open_for_delete(path, false)?;
     let info = inspect_handle(handle.raw())?;
 
     if info.is_directory && !info.is_reparse_point {
@@ -223,43 +282,24 @@ pub fn delete_verified_file_under(path: &Path, allowed_root: Option<&Path>) -> C
             path.display()
         )));
     }
+    ensure_under_root(&info.final_path, allowed_root)?;
 
-    if let Some(root) = allowed_root {
-        let root_canon = canonical_dos_path(root)?;
-        if !info.final_path.starts_with(&root_canon) || info.final_path == root_canon {
-            return Err(CoreError::Validation(format!(
-                "Ruta resuelta '{}' escapa de raíz permitida '{}'",
-                info.final_path.display(),
-                root_canon.display()
-            )));
-        }
-    }
-
+    mark_handle_for_delete(&handle, path)?;
     drop(handle);
     Ok(())
 }
 
+/// Elimina un archivo propio cuya raíz es su carpeta padre (archivos temporales o de datos de la app).
 pub fn delete_verified_file(path: &Path) -> CoreResult<()> {
-    delete_verified_file_under(path, None)
+    let parent = path.parent().ok_or_else(|| {
+        CoreError::Validation(format!("Ruta sin directorio padre: '{}'", path.display()))
+    })?;
+    delete_verified_file_under(path, Some(parent))
 }
 
 /// Elimina un directorio vacío (o junction sin entrar) verificando que esté bajo `allowed_root`.
 pub fn delete_verified_empty_dir_under(path: &Path, allowed_root: Option<&Path>) -> CoreResult<()> {
-    let wide = to_wide_null(path);
-    let raw = unsafe {
-        CreateFileW(
-            PCWSTR(wide.as_ptr()),
-            (DELETE | FILE_READ_ATTRIBUTES).0,
-            FILE_SHARE_NONE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_DELETE_ON_CLOSE,
-            None,
-        )
-    }
-    .map_err(|e| CoreError::Io(io::Error::other(e.to_string())))?;
-
-    let handle = SafeHandle::new(raw).ok_or_else(|| CoreError::Io(io::Error::last_os_error()))?;
+    let handle = open_for_delete(path, true)?;
     let info = inspect_handle(handle.raw())?;
 
     if !info.is_directory {
@@ -268,18 +308,9 @@ pub fn delete_verified_empty_dir_under(path: &Path, allowed_root: Option<&Path>)
             path.display()
         )));
     }
+    ensure_under_root(&info.final_path, allowed_root)?;
 
-    if let Some(root) = allowed_root {
-        let root_canon = canonical_dos_path(root)?;
-        if !info.final_path.starts_with(&root_canon) || info.final_path == root_canon {
-            return Err(CoreError::Validation(format!(
-                "Directorio resuelto '{}' escapa de raíz permitida '{}'",
-                info.final_path.display(),
-                root_canon.display()
-            )));
-        }
-    }
-
+    mark_handle_for_delete(&handle, path)?;
     drop(handle);
     Ok(())
 }
@@ -293,7 +324,7 @@ pub fn delete_tree_verified(
     let root_canon = canonical_dos_path(allowed_root)?;
     let target_canon = canonical_dos_path(target)?;
 
-    if !target_canon.starts_with(&root_canon) || target_canon == root_canon {
+    if !path_is_strictly_under(&target_canon, &root_canon) {
         return Err(CoreError::Validation(format!(
             "Objetivo '{}' no es subdirectorio válido de '{}'",
             target_canon.display(),
@@ -399,8 +430,89 @@ pub fn write_zone_identifier(target_file: &Path, source_url: &str) -> CoreResult
     Ok(())
 }
 
+/// Escribe `file_name` dentro de `root/relative_dir` sin seguir junctions ni symlinks: la carpeta final debe
+/// resolverse a sí misma (ningún componente redirigido) y quedar dentro de `root`. Para archivos que el
+/// proceso elevado escribe en carpetas del usuario (preferencias, exportaciones), donde un proceso sin elevar
+/// podría poner una junction hacia una carpeta del sistema (SEC-19, SEC-20).
+pub fn write_file_inside(
+    root: &Path,
+    relative_dir: &str,
+    file_name: &str,
+    data: &[u8],
+) -> CoreResult<PathBuf> {
+    let dir = if relative_dir.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(relative_dir)
+    };
+    std::fs::create_dir_all(&dir)?;
+    let root_canon = canonical_dos_path(root)?;
+    let dir_canon = canonical_dos_path(&dir)?;
+    let lexical = dir.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
+    let canon = dir_canon.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
+    let inside = relative_dir.is_empty() || path_is_strictly_under(&dir_canon, &root_canon);
+    if lexical != canon || !inside {
+        return Err(CoreError::Validation(format!(
+            "La carpeta '{}' está redirigida por un enlace o junction; no se escribe",
+            dir.display()
+        )));
+    }
+    let target = dir.join(file_name);
+    atomic_write_new(&target, data)?;
+    Ok(target)
+}
+
+/// Escribe en `:Zone.Identifier` un contenido ya armado (el del archivo comprimido de origen).
+pub fn write_zone_identifier_raw(target_file: &Path, content: &[u8]) -> CoreResult<()> {
+    let mut ads_os = target_file.as_os_str().to_os_string();
+    ads_os.push(":Zone.Identifier");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(PathBuf::from(ads_os))?;
+    file.write_all(content)?;
+    Ok(())
+}
+
 /// Abre un `File` existente desde `FILE_GENERIC_READ | FILE_GENERIC_WRITE` si es necesario.
 #[allow(dead_code)]
 pub fn duplicate_file_handle(raw: HANDLE) -> File {
     unsafe { File::from_raw_handle(raw.0 as _) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dentro_de_raiz_por_componentes() {
+        assert!(path_is_strictly_under(Path::new(r"C:\Datos\App\x.txt"), Path::new(r"c:\datos")));
+        assert!(!path_is_strictly_under(Path::new(r"C:\DatosMal\x.txt"), Path::new(r"C:\Datos")));
+        assert!(!path_is_strictly_under(Path::new(r"C:\Datos"), Path::new(r"C:\Datos")));
+        assert!(!path_is_strictly_under(Path::new(r"D:\Datos\x"), Path::new(r"C:\Datos")));
+    }
+
+    /// SEC-01: si la validación de raíz falla, el archivo queda intacto.
+    #[test]
+    fn borrado_fuera_de_raiz_no_borra_nada() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let base = std::env::temp_dir().join(format!("otter_sec01_{}_{}", std::process::id(), nonce));
+        let root = base.join("raiz");
+        std::fs::create_dir_all(&root).unwrap();
+        let inside = root.join("dentro.txt");
+        let outside = base.join("fuera.txt");
+        std::fs::write(&inside, b"x").unwrap();
+        std::fs::write(&outside, b"x").unwrap();
+
+        assert!(delete_verified_file_under(&outside, Some(&root)).is_err());
+        assert!(outside.is_file(), "SEC-01: borró un archivo fuera de la raíz");
+
+        delete_verified_file_under(&inside, Some(&root)).unwrap();
+        assert!(!inside.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

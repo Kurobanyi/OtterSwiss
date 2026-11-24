@@ -69,13 +69,9 @@ impl Theme {
     }
 
     pub fn save_persisted(&self) {
-        if let Some(path) = Self::config_file_path() {
-            if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Ok(json) = serde_json::to_vec_pretty(self) {
-                let _ = std::fs::write(path, json);
-            }
+        // El proceso corre elevado: se escribe sin seguir junctions (SEC-19).
+        if let (Some(root), Ok(json)) = (dirs::config_dir(), serde_json::to_vec_pretty(self)) {
+            let _ = crate::core::safe_fs::write_file_inside(&root, "OtterSwiss", "theme.json", &json);
         }
     }
 }

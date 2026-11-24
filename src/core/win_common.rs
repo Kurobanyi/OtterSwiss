@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, FreeLibrary, GetLastError, ERROR_ALREADY_EXISTS, HANDLE, HMODULE,
-    INVALID_HANDLE_VALUE, LUID, WAIT_OBJECT_0,
+    CloseHandle, FreeLibrary, HANDLE, HMODULE,
+    INVALID_HANDLE_VALUE, LUID, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
@@ -29,7 +29,7 @@ use windows::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows::Win32::System::LibraryLoader::{
-    GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
 };
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::Services::{CloseServiceHandle, SC_HANDLE};
@@ -38,7 +38,7 @@ use windows::Win32::System::Shutdown::{
     SHTDN_REASON_MAJOR_APPLICATION,
 };
 use windows::Win32::System::Threading::{
-    CreateMutexW, GetCurrentProcess, OpenProcessToken, ReleaseMutex, WaitForSingleObject, INFINITE,
+    CreateMutexW, GetCurrentProcess, OpenProcessToken, ReleaseMutex, WaitForSingleObject,
 };
 use windows::Win32::System::IO::DeviceIoControl;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
@@ -66,6 +66,64 @@ pub fn wide_ptr_to_string_and_free(ptr: PWSTR) -> String {
         windows::Win32::System::Com::CoTaskMemFree(Some(ptr.0 as *const _));
     }
     result
+}
+
+/// Carpeta conocida de Windows por `SHGetKnownFolderPath`. Se usa en lugar de variables de entorno
+/// (`%ProgramFiles%`, `%SystemRoot%`…), que un proceso sin elevar puede redefinir en `HKCU\Environment`.
+pub fn known_folder(id: &windows::core::GUID) -> Option<std::path::PathBuf> {
+    use windows::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
+    let raw = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None) }.ok()?;
+    let s = wide_ptr_to_string_and_free(raw);
+    if s.is_empty() {
+        None
+    } else {
+        Some(std::path::PathBuf::from(s))
+    }
+}
+
+pub fn program_files_dir() -> Option<std::path::PathBuf> {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_ProgramFiles)
+}
+
+pub fn program_files_x86_dir() -> Option<std::path::PathBuf> {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_ProgramFilesX86)
+}
+
+pub fn windows_dir() -> Option<std::path::PathBuf> {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_Windows)
+}
+
+pub fn local_app_data_dir() -> Option<std::path::PathBuf> {
+    known_folder(&windows::Win32::UI::Shell::FOLDERID_LocalAppData)
+}
+
+/// Buffer de bytes alineado a 8. Las APIs de Windows devuelven estructuras dentro de un buffer de bytes;
+/// reinterpretar un `Vec<u8>` (alineado a 1) como esa estructura es comportamiento indefinido (SEC-28).
+pub struct AlignedBuf {
+    words: Vec<u64>,
+    len: usize,
+}
+
+impl AlignedBuf {
+    pub fn zeroed(len: usize) -> Self {
+        Self {
+            words: vec![0u64; len.div_ceil(8).max(1)],
+            len,
+        }
+    }
+}
+
+impl std::ops::Deref for AlignedBuf {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.words.as_ptr() as *const u8, self.len) }
+    }
+}
+
+impl std::ops::DerefMut for AlignedBuf {
+    fn deref_mut(&mut self) -> &mut [u8] {
+        unsafe { std::slice::from_raw_parts_mut(self.words.as_mut_ptr() as *mut u8, self.len) }
+    }
 }
 
 pub struct SafeHandle(HANDLE);
@@ -111,7 +169,14 @@ impl SafeLibrary {
 
     pub fn load_from_verified_path(path: &Path) -> CoreResult<Self> {
         let wide = to_wide_null(path);
-        let module = unsafe { LoadLibraryExW(PCWSTR(wide.as_ptr()), None, Default::default()) }
+        // Las dependencias de la DLL se buscan solo junto a ella y en System32, nunca en el directorio actual.
+        let module = unsafe {
+            LoadLibraryExW(
+                PCWSTR(wide.as_ptr()),
+                None,
+                LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+            )
+        }
             .map_err(|e| CoreError::SystemTool {
                 message: format!("No se pudo cargar DLL '{}': {}", path.display(), e),
                 source: None,
@@ -119,6 +184,9 @@ impl SafeLibrary {
         Ok(Self(module))
     }
 
+    /// # Safety
+    /// `symbol` debe terminar en NUL y el llamador debe convertir el puntero devuelto a la firma real
+    /// de la función exportada antes de llamarla.
     pub unsafe fn get_proc(&self, symbol: &[u8]) -> Option<unsafe extern "system" fn() -> isize> {
         debug_assert!(symbol.ends_with(&[0]));
         GetProcAddress(self.0, windows::core::PCSTR(symbol.as_ptr()))
@@ -202,6 +270,10 @@ impl JobObject {
         })
     }
 
+    pub fn raw(&self) -> HANDLE {
+        self.0.raw()
+    }
+
     pub fn terminate_all(&self, exit_code: u32) {
         unsafe {
             let _ = TerminateJobObject(self.0.raw(), exit_code);
@@ -215,49 +287,76 @@ pub struct NamedMutex {
 }
 
 impl NamedMutex {
-    pub fn acquire(name: &str) -> CoreResult<Self> {
-        let wide = to_wide_null(name);
-        let raw = unsafe { CreateMutexW(None, false, PCWSTR(wide.as_ptr())) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("Error creando mutex '{}': {}", name, e),
-                source: None,
-            }
-        })?;
-        let handle = SafeHandle::new(raw)
-            .ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))?;
+    /// Crea (o abre) el mutex con una DACL solo para Administradores y SYSTEM: así un usuario sin privilegios
+    /// no puede crearlo antes y retenerlo para bloquear respaldos y rollbacks (SEC-23).
+    fn open(name: &str) -> CoreResult<SafeHandle> {
+        use windows::Win32::Security::Authorization::{
+            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+        };
+        use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
 
-        let wait = unsafe { WaitForSingleObject(handle.raw(), 0) };
-        if wait != WAIT_OBJECT_0 {
-            let _ = unsafe { GetLastError() };
-            return Err(CoreError::AlreadyRunning);
+        let sddl = to_wide_null("D:P(A;;GA;;;BA)(A;;GA;;;SY)");
+        let mut psd = PSECURITY_DESCRIPTOR::default();
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                PCWSTR(sddl.as_ptr()),
+                SDDL_REVISION_1,
+                &mut psd,
+                None,
+            )
         }
-
-        Ok(Self {
-            handle,
-            locked: true,
-        })
+        .map_err(|e| CoreError::SystemTool {
+            message: format!("No se pudo construir el descriptor del mutex: {}", e),
+            source: None,
+        })?;
+        let sa = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: psd.0,
+            bInheritHandle: false.into(),
+        };
+        let wide = to_wide_null(name);
+        let res = unsafe { CreateMutexW(Some(&sa), false, PCWSTR(wide.as_ptr())) };
+        unsafe {
+            let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(psd.0));
+        }
+        let raw = res.map_err(|e| CoreError::SystemTool {
+            message: format!("Error creando mutex '{}': {}", name, e),
+            source: None,
+        })?;
+        SafeHandle::new(raw).ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))
     }
 
-    pub fn acquire_blocking(name: &str) -> CoreResult<Self> {
-        let wide = to_wide_null(name);
-        let raw = unsafe { CreateMutexW(None, false, PCWSTR(wide.as_ptr())) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("Error creando mutex '{}': {}", name, e),
-                source: None,
-            }
-        })?;
-        let handle = SafeHandle::new(raw)
-            .ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))?;
+    /// `WAIT_ABANDONED` significa que el dueño anterior murió sin soltarlo: el mutex ya es nuestro (CON-01).
+    fn wait(handle: &SafeHandle, timeout_ms: u32) -> windows::Win32::Foundation::WAIT_EVENT {
+        unsafe { WaitForSingleObject(handle.raw(), timeout_ms) }
+    }
 
-        let wait = unsafe { WaitForSingleObject(handle.raw(), INFINITE) };
-        if wait != WAIT_OBJECT_0 {
-            return Err(CoreError::from_win32("WaitForSingleObject falló en mutex"));
+    pub fn acquire(name: &str) -> CoreResult<Self> {
+        let handle = Self::open(name)?;
+        let w = Self::wait(&handle, 0);
+        if w == WAIT_OBJECT_0 || w == WAIT_ABANDONED {
+            return Ok(Self {
+                handle,
+                locked: true,
+            });
         }
-        let _ = ERROR_ALREADY_EXISTS;
-        Ok(Self {
-            handle,
-            locked: true,
-        })
+        Err(CoreError::AlreadyRunning)
+    }
+
+    /// Espera el mutex hasta 60 s; nunca indefinidamente.
+    pub fn acquire_blocking(name: &str) -> CoreResult<Self> {
+        let handle = Self::open(name)?;
+        let w = Self::wait(&handle, 60_000);
+        if w == WAIT_OBJECT_0 || w == WAIT_ABANDONED {
+            return Ok(Self {
+                handle,
+                locked: true,
+            });
+        }
+        if w == WAIT_TIMEOUT {
+            return Err(CoreError::AlreadyRunning);
+        }
+        Err(CoreError::from_win32("WaitForSingleObject falló en mutex"))
     }
 }
 
@@ -474,7 +573,7 @@ fn detect_storage_drives() -> Vec<String> {
             AdditionalParameters: [0; 1],
         };
 
-        let mut buf = [0u8; 1024];
+        let mut buf = AlignedBuf::zeroed(1024);
         let mut returned = 0u32;
         let ok = unsafe {
             DeviceIoControl(
