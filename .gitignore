@@ -1,0 +1,20 @@
+# Compilacion de Rust y dependencias 3rd-party compiladas
+/target/
+
+# Instaladores generados por Inno Setup
+/dist/
+
+# Respaldos y carpetas de tiempo de ejecucion generadas en pruebas
+backup.json
+debloat_backup.json
+DriverBackup/
+staging/
+*.log
+*.tmp
+*.pdb
+
+# Configuracion local de editores
+.vscode/
+.idea/
+*.user
+*.suo

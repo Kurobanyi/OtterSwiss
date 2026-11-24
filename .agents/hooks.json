@@ -1,0 +1,11 @@
+{
+  "rust-quality-gate": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "powershell -NoProfile -File ./.agents/scripts/check-rust.ps1",
+        "timeout": 180
+      }
+    ]
+  }
+}

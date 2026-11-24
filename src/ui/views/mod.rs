@@ -1,0 +1,9 @@
+pub mod archiver;
+pub mod cleaner;
+pub mod dashboard;
+pub mod debloater;
+pub mod dns;
+pub mod hardware_tab;
+pub mod sensors;
+pub mod tools;
+pub mod uninstaller;

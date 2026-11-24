@@ -1,0 +1,151 @@
+use std::path::Path;
+
+use windows::core::PWSTR;
+use windows::Win32::System::ProcessStatus::{EnumProcesses, K32EmptyWorkingSet};
+use windows::Win32::System::Threading::{
+    GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+};
+
+#[link(name = "kernel32")]
+extern "system" {
+    fn ProcessIdToSessionId(
+        dwprocessid: u32,
+        psessionid: *mut u32,
+    ) -> windows::Win32::Foundation::BOOL;
+}
+
+use crate::core::elevation::ElevationManager;
+use crate::core::error::{CoreError, CoreResult};
+use crate::core::win_common::SafeHandle;
+
+#[derive(Debug, Clone, Default)]
+pub struct TrimWorkingSetsReport {
+    pub processes_trimmed: usize,
+    pub processes_skipped: usize,
+    pub errors_encountered: usize,
+    pub trimmed_processes: Vec<String>,
+    pub explanatory_note: &'static str,
+}
+
+pub struct SysTools;
+
+impl SysTools {
+    pub fn get_process_ids() -> CoreResult<Vec<u32>> {
+        let mut capacity = 1024usize;
+        loop {
+            let mut pids = vec![0u32; capacity];
+            let mut bytes_returned = 0u32;
+
+            let ok = unsafe {
+                EnumProcesses(
+                    pids.as_mut_ptr(),
+                    (pids.len() * std::mem::size_of::<u32>()) as u32,
+                    &mut bytes_returned,
+                )
+            };
+
+            if ok.is_err() {
+                return Err(CoreError::SystemTool {
+                    message: "EnumProcesses falló".into(),
+                    source: None,
+                });
+            }
+
+            let num_returned = (bytes_returned as usize) / std::mem::size_of::<u32>();
+            if bytes_returned == (pids.len() * std::mem::size_of::<u32>()) as u32 {
+                capacity *= 2;
+                continue;
+            }
+
+            pids.truncate(num_returned);
+            return Ok(pids);
+        }
+    }
+
+    pub fn trim_working_sets() -> CoreResult<TrimWorkingSetsReport> {
+        ElevationManager::require_elevated("Optimizar conjuntos de trabajo de memoria (RAM)")?;
+
+        let own_pid = unsafe { GetCurrentProcessId() };
+        let mut current_session = 0u32;
+        let _ = unsafe { ProcessIdToSessionId(own_pid, &mut current_session) };
+
+        let pids = Self::get_process_ids()?;
+
+        let mut report = TrimWorkingSetsReport {
+            processes_trimmed: 0,
+            processes_skipped: 0,
+            errors_encountered: 0,
+            trimmed_processes: Vec::new(),
+            explanatory_note: "Las páginas de memoria fueron transferidas a la lista Standby del Administrador de Memoria de Windows.",
+        };
+
+        for pid in pids {
+            if pid <= 4 || pid == own_pid {
+                report.processes_skipped += 1;
+                continue;
+            }
+
+            let mut proc_session = 0u32;
+            if !unsafe { ProcessIdToSessionId(pid, &mut proc_session) }.as_bool()
+                || proc_session != current_session
+            {
+                report.processes_skipped += 1;
+                continue;
+            }
+
+            let raw_handle =
+                unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA, false, pid) };
+
+            let handle = match raw_handle {
+                Ok(h) => match SafeHandle::new(h) {
+                    Some(sh) => sh,
+                    None => {
+                        report.errors_encountered += 1;
+                        continue;
+                    }
+                },
+                Err(_) => {
+                    report.processes_skipped += 1;
+                    continue;
+                }
+            };
+
+            let ok = unsafe { K32EmptyWorkingSet(handle.raw()) };
+            if ok.as_bool() {
+                report.processes_trimmed += 1;
+
+                let mut buf = [0u16; 1024];
+                let mut size = buf.len() as u32;
+                let name = if unsafe {
+                    QueryFullProcessImageNameW(
+                        handle.raw(),
+                        PROCESS_NAME_WIN32,
+                        PWSTR(buf.as_mut_ptr()),
+                        &mut size,
+                    )
+                }
+                .is_ok()
+                {
+                    let full = String::from_utf16_lossy(&buf[..size as usize]);
+                    Path::new(&full)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| format!("PID {}", pid))
+                } else {
+                    format!("PID {}", pid)
+                };
+
+                report.trimmed_processes.push(format!("{} (PID {})", name, pid));
+            } else {
+                report.errors_encountered += 1;
+            }
+        }
+
+        report
+            .trimmed_processes
+            .sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+
+        Ok(report)
+    }
+}

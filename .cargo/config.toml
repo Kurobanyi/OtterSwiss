@@ -1,0 +1,5 @@
+[build]
+rustflags = [
+    "--remap-path-prefix=C:\\Users\\Bran\\Downloads\\Otterswiss=OtterSwiss",
+    "--remap-path-prefix=C:\\Users\\Bran=User",
+]

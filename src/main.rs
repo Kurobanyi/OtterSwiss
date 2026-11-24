@@ -1,0 +1,350 @@
+// src/main.rs
+
+#![windows_subsystem = "windows"]
+#![cfg(windows)]
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+
+use dioxus::desktop::{icon_from_memory, use_window, Config, WindowBuilder};
+use dioxus::prelude::*;
+use otter_swiss::core::archiver::{ArchiveFormat, ArchiveManager, ArchiveProgress};
+use otter_swiss::core::context_menu::ContextMenuManager;
+use otter_swiss::ui::i18n::Lang;
+use otter_swiss::ui::theme::Theme;
+use otter_swiss::ui::App;
+use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
+
+#[derive(Clone)]
+struct MiniArchiveJob {
+    is_extract: bool,
+    src: PathBuf,
+    dest: PathBuf,
+}
+
+static MINI_JOB: OnceLock<MiniArchiveJob> = OnceLock::new();
+
+fn clean_archive_extract_dir(src: &Path) -> PathBuf {
+    let parent = src.parent().unwrap_or(src);
+    let name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "extracted".into());
+    let low = name.to_ascii_lowercase();
+    let folder = if low.ends_with(".tar.gz") {
+        &name[..name.len() - 7]
+    } else if let Some(stem) = src.file_stem().and_then(|s| s.to_str()) {
+        stem
+    } else {
+        "extracted"
+    };
+    let clean = if folder.is_empty() { "extracted" } else { folder };
+    parent.join(clean)
+}
+
+fn open_folder_in_explorer(target: &Path) {
+    let folder = if target.is_dir() {
+        target
+    } else {
+        target.parent().unwrap_or(target)
+    };
+    let mut buf = [0u16; 260];
+    let len = unsafe { GetWindowsDirectoryW(Some(&mut buf)) } as usize;
+    let explorer = if len > 0 && len < buf.len() {
+        PathBuf::from(String::from_utf16_lossy(&buf[..len])).join("explorer.exe")
+    } else {
+        PathBuf::from(r"C:\Windows\explorer.exe")
+    };
+    let _ = Command::new(explorer).arg(folder).spawn();
+}
+
+#[component]
+fn MiniArchiveProgressApp() -> Element {
+    let window = use_window();
+    let theme = use_hook(Theme::load_persisted);
+    let lang = use_hook(Lang::load_persisted);
+    let en = lang.is_en();
+
+    let mut progress = use_signal(ArchiveProgress::default);
+    let mut is_running = use_signal(|| true);
+    let mut error_msg = use_signal(|| Option::<String>::None);
+    let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
+    let cancel_for_hook = Arc::clone(&cancel_flag);
+
+    let job_opt = MINI_JOB.get().cloned();
+
+    use_hook(move || {
+        let Some(job) = job_opt else {
+            is_running.set(false);
+            error_msg.set(Some("Trabajo inválido".into()));
+            return;
+        };
+
+        let prog_arc = Arc::new(Mutex::new(ArchiveProgress::default()));
+        let prog_worker = Arc::clone(&prog_arc);
+        let cancel_worker = Arc::clone(&cancel_for_hook);
+
+        spawn(async move {
+            let handle = tokio::task::spawn_blocking(move || {
+                if job.is_extract {
+                    ArchiveManager::extract_archive_with_progress(
+                        &job.src,
+                        &job.dest,
+                        50 * 1024 * 1024 * 1024,
+                        &cancel_worker,
+                        Some(&prog_worker),
+                    )
+                } else {
+                    ArchiveManager::compress_path_with_progress(
+                        &job.src,
+                        &job.dest,
+                        ArchiveFormat::Zip,
+                        &cancel_worker,
+                        Some(&prog_worker),
+                    )
+                }
+                .map_err(|e| e.to_string())
+            });
+
+            while !handle.is_finished() {
+                if let Ok(snap) = prog_arc.lock() {
+                    progress.set(snap.clone());
+                }
+                tokio::time::sleep(Duration::from_millis(120)).await;
+            }
+
+            let res = handle
+                .await
+                .unwrap_or_else(|e| Err(format!("Thread error: {}", e)));
+
+            if let Ok(snap) = prog_arc.lock() {
+                progress.set(snap.clone());
+            }
+            if let Err(err) = res {
+                error_msg.set(Some(err));
+            }
+            is_running.set(false);
+        });
+    });
+
+    let prog = progress.read();
+    let running = *is_running.read();
+    let err_opt = error_msg.read().clone();
+    let win_drag = window.clone();
+    let win_close = window.clone();
+    let win_done = window.clone();
+    let cancel_btn = Arc::clone(&cancel_flag);
+    let cancel_close = Arc::clone(&cancel_flag);
+
+    let dest_for_open = MINI_JOB.get().map(|j| j.dest.clone());
+    let title_txt = match (MINI_JOB.get().map(|j| j.is_extract).unwrap_or(true), en) {
+        (true, false) => "Extrayendo archivo...",
+        (true, true) => "Extracting archive...",
+        (false, false) => "Comprimiendo a ZIP...",
+        (false, true) => "Compressing to ZIP...",
+    };
+
+    let top_status_txt = if running {
+        title_txt
+    } else if err_opt.is_some() {
+        "Error"
+    } else if en {
+        "Completed"
+    } else {
+        "Completado"
+    };
+
+    let current_file_lbl = if prog.current_file.is_empty() {
+        if en {
+            "Preparing files...".to_string()
+        } else {
+            "Preparando archivos...".to_string()
+        }
+    } else {
+        prog.current_file.clone()
+    };
+
+    let cancel_lbl = if en { "Cancel" } else { "Cancelar" };
+    let open_folder_lbl = if en { "Open folder" } else { "Abrir carpeta" };
+    let close_lbl = if en { "Close" } else { "Cerrar" };
+
+    let mb_done = prog.bytes_processed as f64 / (1024.0 * 1024.0);
+    let mb_total = prog.total_bytes as f64 / (1024.0 * 1024.0);
+    let eta_txt = prog
+        .eta_seconds
+        .map(|s| format!("~{}s", s))
+        .unwrap_or_else(|| "—".into());
+
+    rsx! {
+        style { {include_str!("../assets/main.css")} }
+
+        div {
+            class: "app-root-frameless",
+            "data-theme": "{theme.as_str()}",
+            style: "border: 1px solid var(--border);",
+
+            header {
+                class: "top-titlebar",
+                style: "height: 40px;",
+                div {
+                    class: "top-brand",
+                    onmousedown: move |_| { win_drag.drag(); },
+                    span { class: "top-title", "OtterSwiss" }
+                    span { class: "top-version", "{top_status_txt}" }
+                }
+                button {
+                    class: "win-btn win-close-btn",
+                    onclick: move |_| {
+                        cancel_close.store(true, Ordering::Release);
+                        win_close.close();
+                    },
+                    "✕"
+                }
+            }
+
+            div {
+                style: "flex: 1; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;",
+                if let Some(err) = err_opt {
+                    div { class: "badge badge-danger", style: "padding: 8px; white-space: normal;", "{err}" }
+                } else {
+                    div { style: "display: flex; flex-direction: column; gap: 6px;",
+                        div {
+                            style: "font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                            "{current_file_lbl}"
+                        }
+                        div {
+                            style: "width: 100%; height: 10px; background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                            div {
+                                style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.15s ease;",
+                            }
+                        }
+                        div { style: "display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);",
+                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
+                            span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
+                        }
+                    }
+                }
+
+                div { style: "display: flex; justify-content: flex-end; gap: 8px;",
+                    if running {
+                        button {
+                            class: "btn btn-danger",
+                            style: "padding: 6px 14px; font-size: 12px;",
+                            onclick: move |_| cancel_btn.store(true, Ordering::Release),
+                            "{cancel_lbl}"
+                        }
+                    } else {
+                        if let Some(dest) = dest_for_open {
+                            button {
+                                class: "btn btn-secondary",
+                                style: "padding: 6px 12px; font-size: 12px;",
+                                onclick: move |_| open_folder_in_explorer(&dest),
+                                "{open_folder_lbl}"
+                            }
+                        }
+                        button {
+                            class: "btn btn-primary",
+                            style: "padding: 6px 14px; font-size: 12px;",
+                            onclick: move |_| win_done.close(),
+                            "{close_lbl}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
+    if let Some(pos) = args.iter().position(|a| a == "--extract") {
+        if let Some(target) = args.get(pos + 1) {
+            let src = PathBuf::from(target.trim().trim_matches('"'));
+            let dest = clean_archive_extract_dir(&src);
+            return Some(MiniArchiveJob {
+                is_extract: true,
+                src,
+                dest,
+            });
+        }
+    }
+    if let Some(pos) = args.iter().position(|a| a == "--compress-zip") {
+        if let Some(target) = args.get(pos + 1) {
+            let src = PathBuf::from(target.trim().trim_matches('"'));
+            let dest = if src.is_dir() {
+                src.with_extension("zip")
+            } else {
+                let name = src.file_name().unwrap_or_default().to_string_lossy();
+                src.parent().unwrap_or(&src).join(format!("{}.zip", name))
+            };
+            return Some(MiniArchiveJob {
+                is_extract: false,
+                src,
+                dest,
+            });
+        }
+    }
+    None
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
+    if args.iter().any(|a| a == "--rollback") {
+        if let Ok(prog_data) = otter_swiss::core::trust::get_program_data_dir() {
+            let data_dir = prog_data.join("OtterSwiss");
+            let engine = otter_swiss::core::engine::OptimizationEngine::new(&data_dir);
+            let _ = engine.rollback(false);
+        }
+        return;
+    }
+
+    if args.iter().any(|a| a == "--install-context-menu") {
+        let _ = ContextMenuManager::install();
+        return;
+    }
+
+    if args.iter().any(|a| a == "--uninstall-context-menu") {
+        let _ = ContextMenuManager::uninstall();
+        return;
+    }
+
+    let window_icon = icon_from_memory(include_bytes!("../assets/logo.png")).ok();
+
+    if let Some(job) = prepare_mini_archive_job(&args) {
+        let _ = MINI_JOB.set(job);
+        let mini_win = WindowBuilder::new()
+            .with_title("OtterSwiss — Archivador")
+            .with_inner_size(dioxus::desktop::LogicalSize::new(460.0, 235.0))
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_window_icon(window_icon);
+        let cfg = Config::new()
+            .with_menu(None)
+            .with_disable_context_menu(true)
+            .with_window(mini_win);
+        dioxus::LaunchBuilder::desktop()
+            .with_cfg(cfg)
+            .launch(MiniArchiveProgressApp);
+        return;
+    }
+
+    let window = WindowBuilder::new()
+        .with_title("OtterSwiss — Suite Nativa Win32")
+        .with_inner_size(dioxus::desktop::LogicalSize::new(1180.0, 760.0))
+        .with_min_inner_size(dioxus::desktop::LogicalSize::new(960.0, 600.0))
+        .with_decorations(false)
+        .with_resizable(true)
+        .with_window_icon(window_icon);
+
+    let config = Config::new()
+        .with_menu(None)
+        .with_disable_context_menu(true)
+        .with_window(window);
+
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(config)
+        .launch(App);
+}
