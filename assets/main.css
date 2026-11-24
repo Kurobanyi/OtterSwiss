@@ -28,6 +28,13 @@
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #ef4444;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #0f111a;
+    --on-danger: #0f111a;
+    --success-text: #70ceb3;
+    --warning-text: #eebf72;
+    --danger-text: #eb8e91;
+    --accent-text: #88b0f3;
 }
 
 [data-theme="cyberpunk"] {
@@ -43,6 +50,13 @@
     --success: #00ffaa;
     --warning: #ffb800;
     --danger: #ff2a6d;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #0d091a;
+    --on-danger: #0d091a;
+    --success-text: #6df8cf;
+    --warning-text: #fad171;
+    --danger-text: #fa83ad;
+    --accent-text: #6de1fe;
 }
 
 [data-theme="light"] {
@@ -58,6 +72,13 @@
     --success: #059669;
     --warning: #d97706;
     --danger: #dc2626;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #ffffff;
+    --on-danger: #ffffff;
+    --success-text: #0a5d4d;
+    --warning-text: #7e4c16;
+    --danger-text: #801f28;
+    --accent-text: #1b4194;
 }
 
 [data-theme="nord"] {
@@ -73,6 +94,13 @@
     --success: #a3be8c;
     --warning: #ebcb8b;
     --danger: #bf616a;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #2e3440;
+    --on-danger: #0b0d12;
+    --success-text: #c4d4bb;
+    --warning-text: #ebdbba;
+    --danger-text: #dab6bd;
+    --accent-text: #b5d5e0;
 }
 
 [data-theme="emerald"] {
@@ -88,6 +116,13 @@
     --success: #34d399;
     --warning: #fbbf24;
     --danger: #f87171;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #07130e;
+    --on-danger: #07130e;
+    --success-text: #85e2bf;
+    --warning-text: #f2d77f;
+    --danger-text: #f1aca9;
+    --accent-text: #71d4b2;
 }
 
 [data-theme="crimson"] {
@@ -103,6 +138,13 @@
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #fb7185;
+    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --on-accent: #12090c;
+    --on-danger: #12090c;
+    --success-text: #78d0b2;
+    --warning-text: #f6c172;
+    --danger-text: #f9a8b5;
+    --accent-text: #f58d9f;
 }
 
 html, body {
@@ -110,7 +152,8 @@ html, body {
     padding: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    background: #0f111a !important;
+    /* UI-10: el color de fondo previo al primer render lo pone la ventana según el tema guardado. */
+    background: transparent;
     color: var(--text);
     overflow: hidden !important;
     user-select: none;
@@ -317,7 +360,7 @@ html, body {
 
 .btn-primary {
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -337,7 +380,7 @@ html, body {
 
 .btn-danger {
     background: var(--danger);
-    color: #fff;
+    color: var(--on-danger);
 }
 
 .btn-danger:hover:not(:disabled) {
@@ -358,10 +401,72 @@ html, body {
     font-weight: 600;
 }
 
-.badge-success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
-.badge-warning { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-.badge-danger { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
-.badge-info { background: rgba(var(--accent-rgb, 59, 130, 246), 0.15); color: var(--accent); }
+.badge-success { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success-text); }
+.badge-warning { background: color-mix(in srgb, var(--warning) 15%, transparent); color: var(--warning-text); }
+.badge-danger { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger-text); }
+.badge-info { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-text); }
+
+/* Aviso de estado de una acción (resultado, error, advertencia). */
+.status-banner {
+    padding: var(--space-3);
+    border-radius: var(--radius);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: pre-line;
+}
+
+/* UI-09: foco visible con teclado en todo control. */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* UI-09: diálogos modales (role="dialog"). */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgb(0 0 0 / 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: var(--space-5);
+}
+
+.modal-card {
+    max-width: 520px;
+    width: 100%;
+    max-height: calc(100vh - 2 * var(--space-5));
+    overflow-y: auto;
+}
+
+.modal-card.modal-wide { max-width: 720px; }
+.modal-card.modal-danger { border-color: var(--danger); }
+.modal-card.modal-warning { border-color: var(--warning); }
+
+.modal-list {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-2);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--font-size-xs);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.text-muted { color: var(--text-muted); }
+.text-xs { font-size: var(--font-size-xs); }
 
 .state-container {
     text-align: center;
