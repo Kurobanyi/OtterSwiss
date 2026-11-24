@@ -46,6 +46,16 @@ pub enum ActiveTab {
     Sensors,
 }
 
+const KEEP_ALIVE_TABS: [ActiveTab; 7] = [
+    ActiveTab::Dashboard,
+    ActiveTab::Cleaner,
+    ActiveTab::Debloater,
+    ActiveTab::Dns,
+    ActiveTab::Archiver,
+    ActiveTab::Tools,
+    ActiveTab::Uninstaller,
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallStatus {
     Queued,
@@ -72,21 +82,17 @@ pub struct ToolsSharedState {
     pub app_statuses: HashMap<&'static str, InstallStatus>,
 }
 
+/// UI-05: arranca vacío; el inventario real lo carga `refresh_tools_inventory` fuera del hilo de UI.
 impl Default for ToolsSharedState {
     fn default() -> Self {
-        let dep_states = DependencyManager::get_catalog()
-            .iter()
-            .map(|d| (d.id, DependencyManager::is_installed(d.id)))
-            .collect();
-        let installed_app_ids = AppStoreManager::detect_installed_ids();
         Self {
             is_working: false,
             progress_percent: 0,
             progress_label: None,
             tool_log: None,
             summary_msg: None,
-            dep_states,
-            installed_app_ids,
+            dep_states: HashMap::new(),
+            installed_app_ids: HashSet::new(),
             app_statuses: HashMap::new(),
         }
     }
@@ -275,16 +281,27 @@ pub fn App() -> Element {
     let mut current_theme = use_signal(Theme::load_persisted);
     let mut current_lang = use_signal(Lang::load_persisted);
     let mut active_tab = use_signal(|| ActiveTab::Dashboard);
+    // CON-02: una pestaña visitada sigue montada (oculta) para no perder una tarea en curso.
+    let mut visited_tabs = use_signal(|| HashSet::from([ActiveTab::Dashboard]));
+    use_effect(move || {
+        let tab = *active_tab.read();
+        if !visited_tabs.peek().contains(&tab) {
+            visited_tabs.write().insert(tab);
+        }
+    });
     let tools_state = use_signal(ToolsSharedState::default);
+    use_hook(move || refresh_tools_inventory(tools_state));
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
     let window = use_window();
 
     let mut system_specs = use_signal(|| None::<crate::core::specs::SystemSpecs>);
+    let mut specs_error = use_signal(|| None::<String>);
     use_future(move || async move {
-        if let Ok(Ok(data)) =
-            tokio::task::spawn_blocking(crate::core::specs::collect_system_specs).await
-        {
-            system_specs.set(Some(data));
+        // UI-06: un fallo se muestra en la pestaña en vez de dejarla «Analizando...» para siempre.
+        match tokio::task::spawn_blocking(crate::core::specs::collect_system_specs).await {
+            Ok(Ok(data)) => system_specs.set(Some(data)),
+            Ok(Err(e)) => specs_error.set(Some(e.to_string())),
+            Err(e) => specs_error.set(Some(e.to_string())),
         }
     });
 
@@ -569,22 +586,31 @@ pub fn App() -> Element {
             }
 
             main { class: "main-content-full",
-                {
-                    match *active_tab.read() {
-                        ActiveTab::Dashboard => rsx! { DashboardView {} },
-                        ActiveTab::Cleaner => rsx! { CleanerView {} },
-                        ActiveTab::Debloater => rsx! { DebloaterView {} },
-                        ActiveTab::Dns => rsx! { DnsView {} },
-                        ActiveTab::Archiver => rsx! { ArchiverView {} },
-                        ActiveTab::Tools => rsx! { ToolsView {} },
-                        ActiveTab::Uninstaller => rsx! { UninstallerView {} },
-                        ActiveTab::Hardware => rsx! {
-                            HardwareTab {
-                                specs: system_specs(),
+                // CON-02: las pestañas con tareas largas se montan al visitarlas y quedan vivas, ocultas.
+                // Sensores y Hardware no tienen tareas: Sensores se desmonta para dejar de sondear.
+                for tab in KEEP_ALIVE_TABS {
+                    if visited_tabs.read().contains(&tab) {
+                        div {
+                            key: "{tab:?}",
+                            hidden: *active_tab.read() != tab,
+                            match tab {
+                                ActiveTab::Dashboard => rsx! { DashboardView {} },
+                                ActiveTab::Cleaner => rsx! { CleanerView {} },
+                                ActiveTab::Debloater => rsx! { DebloaterView {} },
+                                ActiveTab::Dns => rsx! { DnsView {} },
+                                ActiveTab::Archiver => rsx! { ArchiverView {} },
+                                ActiveTab::Tools => rsx! { ToolsView {} },
+                                ActiveTab::Uninstaller => rsx! { UninstallerView {} },
+                                ActiveTab::Hardware | ActiveTab::Sensors => rsx! {},
                             }
-                        },
-                        ActiveTab::Sensors => rsx! { SensorsView {} },
+                        }
                     }
+                }
+                if *active_tab.read() == ActiveTab::Hardware {
+                    HardwareTab { specs: system_specs(), error: specs_error() }
+                }
+                if *active_tab.read() == ActiveTab::Sensors {
+                    SensorsView {}
                 }
             }
         }

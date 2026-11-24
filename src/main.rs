@@ -29,6 +29,24 @@ struct MiniArchiveJob {
 
 static MINI_JOB: OnceLock<MiniArchiveJob> = OnceLock::new();
 
+/// UI-09: con un `[role=dialog]` abierto, Tab y Mayús+Tab recorren solo sus controles.
+const FOCUS_TRAP_SCRIPT: &str = r#"<script>
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Tab') return;
+  var dialogs = document.querySelectorAll('[role=dialog]');
+  if (!dialogs.length) return;
+  var dialog = dialogs[dialogs.length - 1];
+  var items = Array.prototype.filter.call(
+    dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'),
+    function (el) { return !el.disabled && el.offsetParent !== null; });
+  if (!items.length) { e.preventDefault(); dialog.focus(); return; }
+  var first = items[0], last = items[items.length - 1];
+  if (!dialog.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+  else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+</script>"#;
+
 fn clean_archive_extract_dir(src: &Path) -> PathBuf {
     let parent = src.parent().unwrap_or(src);
     let name = src
@@ -340,6 +358,8 @@ fn main() {
     let config = Config::new()
         .with_menu(None)
         .with_disable_context_menu(true)
+        .with_background_color(Theme::load_persisted().background_rgba())
+        .with_custom_head(FOCUS_TRAP_SCRIPT.to_string())
         .with_window(window);
 
     dioxus::LaunchBuilder::desktop()

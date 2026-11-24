@@ -36,6 +36,18 @@ impl Theme {
         }
     }
 
+    /// Color de fondo de la ventana antes del primer render (igual a `--bg` del tema en `main.css`).
+    pub fn background_rgba(&self) -> (u8, u8, u8, u8) {
+        match self {
+            Self::Dark => (0x0f, 0x11, 0x1a, 0xff),
+            Self::Cyberpunk => (0x0d, 0x09, 0x1a, 0xff),
+            Self::Light => (0xf1, 0xf5, 0xf9, 0xff),
+            Self::Nord => (0x2e, 0x34, 0x40, 0xff),
+            Self::Emerald => (0x07, 0x13, 0x0e, 0xff),
+            Self::Crimson => (0x12, 0x09, 0x0c, 0xff),
+        }
+    }
+
     pub fn display_name(&self, en: bool) -> &'static str {
         match (self, en) {
             (Self::Dark, false) => "Oscuro",
