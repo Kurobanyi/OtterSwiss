@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY, KEY_WRITE};
-use winreg::RegKey;
+use winreg::{RegKey, RegValue};
 
 use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
 use crate::core::trust::ensure_admin_only_data_dir;
 use crate::core::win_common::NamedMutex;
@@ -38,6 +39,8 @@ impl DebloatCategory {
     }
 }
 
+/// SYS-20: solo se preseleccionan apps sin uso real habitual; Outlook, To Do, Enlace Móvil y Teams
+/// quedan desmarcadas porque mucha gente las usa.
 #[derive(Debug, Clone)]
 pub struct DebloatAppSpec {
     pub id: &'static str,
@@ -127,7 +130,7 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
         display_name: "Microsoft To Do",
         description: "Lista de tareas sincronizada con cuenta Microsoft",
         category: DebloatCategory::Recommended,
-        default_selected: true,
+        default_selected: false,
     },
     DebloatAppSpec {
         id: "feedback_hub",
@@ -151,7 +154,7 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
         display_name: "Enlace Móvil (Phone Link)",
         description: "Sincronización continua con Android/iOS en segundo plano",
         category: DebloatCategory::Recommended,
-        default_selected: true,
+        default_selected: false,
     },
     DebloatAppSpec {
         id: "zune_music",
@@ -183,7 +186,7 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
         display_name: "Microsoft Teams (Personal)",
         description: "Cliente preinstalado de Teams que arranca en segundo plano",
         category: DebloatCategory::Recommended,
-        default_selected: true,
+        default_selected: false,
     },
     DebloatAppSpec {
         id: "copilot_app",
@@ -215,7 +218,7 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
         display_name: "Nuevo Outlook para Windows",
         description: "Cliente web de Outlook preinstalado con anuncios",
         category: DebloatCategory::Recommended,
-        default_selected: true,
+        default_selected: false,
     },
     DebloatAppSpec {
         id: "sound_recorder",
@@ -445,6 +448,8 @@ pub struct DebloatItemOutcome {
 
 #[derive(Debug, Clone, Default)]
 pub struct DebloatReport {
+    /// `true` si el usuario canceló: el informe incluye lo que ya se hizo antes de cancelar.
+    pub cancelled: bool,
     pub removed_apps: usize,
     pub applied_reg_tweaks: usize,
     pub failed_count: usize,
@@ -457,7 +462,43 @@ struct DebloatRegSnapshot {
     subkey: String,
     value_name: String,
     existed: bool,
+    /// Formato antiguo (solo DWORD). Se conserva para leer respaldos de versiones previas.
+    #[serde(default)]
     previous_dword: Option<u32>,
+    /// Tipo y bytes exactos del valor original, sea cual sea su tipo.
+    #[serde(default)]
+    previous_type: Option<u32>,
+    #[serde(default)]
+    previous_raw: Option<Vec<u8>>,
+}
+
+impl DebloatRegSnapshot {
+    /// La entrada solo es válida si corresponde a un ajuste del catálogo embebido. Cualquier otra clave
+    /// en el respaldo solo puede venir de un archivo manipulado y nunca se escribe en el registro.
+    fn catalog_entry(&self) -> Option<&'static DebloatRegEntry> {
+        DEBLOAT_REG_TWEAKS
+            .iter()
+            .flat_map(|t| t.entries.iter())
+            .find(|e| {
+                e.hive == self.hive
+                    && e.subkey.eq_ignore_ascii_case(&self.subkey)
+                    && e.value_name.eq_ignore_ascii_case(&self.value_name)
+            })
+    }
+
+    fn is_valid(&self) -> bool {
+        if self.catalog_entry().is_none() {
+            return false;
+        }
+        if !self.existed {
+            return self.previous_raw.is_none();
+        }
+        match (&self.previous_raw, self.previous_type, self.previous_dword) {
+            (Some(raw), Some(t), _) => raw.len() <= 1024 && [1, 2, 3, 4, 11].contains(&t),
+            (None, None, Some(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -507,7 +548,12 @@ fn is_valid_package_ident(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '~'))
 }
 
-fn run_ps_cancellable(ps_path: &Path, script: &str, cancel: &AtomicBool, timeout_ms: u64) -> CoreResult<()> {
+/// Ejecuta un script de PowerShell y devuelve su salida estándar. Las salidas se leen en hilos mientras el
+/// proceso corre: si solo se leyeran al final, un error largo llenaría el pipe y PowerShell se quedaría
+/// bloqueado hasta el timeout (ERR-01).
+fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResult<String> {
+    use std::io::Read;
+
     let mut child = Command::new(ps_path)
         .args([
             "-NoProfile",
@@ -518,39 +564,38 @@ fn run_ps_cancellable(ps_path: &Path, script: &str, cancel: &AtomicBool, timeout
             script,
         ])
         .creation_flags(CREATE_NO_WINDOW)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;
 
-    let started = Instant::now();
-    loop {
-        if cancel.load(Ordering::Acquire) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(CoreError::Cancelled);
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_reader = thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = p.read_to_end(&mut buf);
         }
+        buf
+    });
+    let err_reader = thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = err_pipe.as_mut() {
+            let _ = p.read_to_end(&mut buf);
+        }
+        buf
+    });
+
+    let started = Instant::now();
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                if status.success() {
-                    return Ok(());
-                }
-                let out = child.wait_with_output()?;
-                let err_txt = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                return Err(CoreError::SystemTool {
-                    message: if err_txt.is_empty() {
-                        format!("PowerShell finalizó con código {:?}", status.code())
-                    } else {
-                        err_txt
-                    },
-                    source: None,
-                });
-            }
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if started.elapsed() >= Duration::from_millis(timeout_ms) {
                     let _ = child.kill();
                     let _ = child.wait();
                     return Err(CoreError::SystemTool {
-                        message: "Tiempo límite excedido ejecutando desinstalación Appx".into(),
+                        message: "Tiempo límite excedido ejecutando PowerShell".into(),
                         source: None,
                     });
                 }
@@ -558,7 +603,52 @@ fn run_ps_cancellable(ps_path: &Path, script: &str, cancel: &AtomicBool, timeout
             }
             Err(e) => return Err(CoreError::Io(e)),
         }
+    };
+
+    let stdout = String::from_utf8_lossy(&out_reader.join().unwrap_or_default()).into_owned();
+    let stderr = String::from_utf8_lossy(&err_reader.join().unwrap_or_default())
+        .trim()
+        .to_string();
+    if status.success() {
+        Ok(stdout)
+    } else {
+        Err(CoreError::SystemTool {
+            message: if stderr.is_empty() {
+                format!("PowerShell finalizó con código {:?}", status.code())
+            } else {
+                stderr
+            },
+            source: None,
+        })
     }
+}
+
+fn ps_scan_output(out: &std::process::Output, what: &str) -> CoreResult<String> {
+    if !out.status.success() {
+        return Err(CoreError::SystemTool {
+            message: format!(
+                "{} falló: {}",
+                what,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            source: None,
+        });
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// `ConvertTo-Json` devuelve un objeto suelto (no una lista) cuando hay un solo elemento.
+fn parse_ps_json(txt: &str, what: &str) -> CoreResult<Vec<PsAppxEntry>> {
+    let t = txt.trim();
+    let parsed = if t.starts_with('{') {
+        serde_json::from_str::<PsAppxEntry>(t).map(|e| vec![e])
+    } else {
+        serde_json::from_str::<Vec<PsAppxEntry>>(t)
+    };
+    parsed.map_err(|e| CoreError::SystemTool {
+        message: format!("No se pudo interpretar la salida de {}: {}", what, e),
+        source: None,
+    })
 }
 
 fn debloat_backup_path() -> CoreResult<PathBuf> {
@@ -569,6 +659,9 @@ pub struct DebloaterManager;
 
 impl DebloaterManager {
     pub fn scan_system() -> CoreResult<DebloatScanResult> {
+        // ERR-05: sin elevación `Get-AppxPackage -AllUsers` falla con acceso denegado y, con
+        // `-ErrorAction SilentlyContinue`, el escaneo diría «nada instalado».
+        ElevationManager::require_elevated("Escanear las apps instaladas para todos los usuarios")?;
         let ps_path = get_powershell_path()?;
 
         let ps_installed = Command::new(&ps_path)
@@ -584,9 +677,10 @@ impl DebloaterManager {
             .output()?;
 
         let mut full_map: HashMap<String, Vec<String>> = HashMap::new();
-        if ps_installed.status.success() {
-            let txt = String::from_utf8_lossy(&ps_installed.stdout);
-            if let Ok(entries) = serde_json::from_str::<Vec<PsAppxEntry>>(txt.trim()) {
+        {
+            let txt = ps_scan_output(&ps_installed, "Get-AppxPackage")?;
+            let entries = parse_ps_json(&txt, "Get-AppxPackage")?;
+            {
                 for e in entries {
                     if let (Some(n), Some(full)) = (e.name, e.package_full_name) {
                         if is_valid_package_ident(&full) {
@@ -613,9 +707,10 @@ impl DebloaterManager {
             .output()?;
 
         let mut prov_map: HashMap<String, Vec<String>> = HashMap::new();
-        if ps_prov.status.success() {
-            let txt = String::from_utf8_lossy(&ps_prov.stdout);
-            if let Ok(entries) = serde_json::from_str::<Vec<PsAppxEntry>>(txt.trim()) {
+        {
+            let txt = ps_scan_output(&ps_prov, "Get-AppxProvisionedPackage")?;
+            let entries = parse_ps_json(&txt, "Get-AppxProvisionedPackage")?;
+            {
                 for e in entries {
                     if let (Some(dn), Some(pn)) = (e.display_name, e.package_name) {
                         if is_valid_package_ident(&pn) {
@@ -685,7 +780,8 @@ impl DebloaterManager {
 
         for app in apps_to_remove {
             if cancel.load(Ordering::Acquire) {
-                return Err(CoreError::Cancelled);
+                report.cancelled = true;
+                return Ok(report);
             }
 
             step_idx += 1;
@@ -709,21 +805,24 @@ impl DebloaterManager {
 
             let mut app_ok = true;
             let mut last_err = String::new();
+            let mut only_current_user = false;
 
             for full_name in &app.full_names {
                 if !is_valid_package_ident(full_name) {
                     continue;
                 }
+                // Cada paquete se deja terminar: cancelar a mitad de Remove-AppxPackage puede dejarlo roto.
                 let cmd = format!(
-                    "try {{ Remove-AppxPackage -Package '{}' -AllUsers -ErrorAction Stop }} catch {{ Remove-AppxPackage -Package '{}' -ErrorAction Stop }}",
+                    "try {{ Remove-AppxPackage -Package '{}' -AllUsers -ErrorAction Stop; 'SCOPE=ALL' }} catch {{ Remove-AppxPackage -Package '{}' -ErrorAction Stop; 'SCOPE=USER' }}",
                     full_name, full_name
                 );
-                if let Err(e) = run_ps_cancellable(&ps_path, &cmd, cancel, 90_000) {
-                    if matches!(e, CoreError::Cancelled) {
-                        return Err(e);
+                match run_ps(&ps_path, &cmd, 90_000) {
+                    Ok(out) if out.contains("SCOPE=USER") => only_current_user = true,
+                    Ok(_) => {}
+                    Err(e) => {
+                        app_ok = false;
+                        last_err = e.to_string();
                     }
-                    app_ok = false;
-                    last_err = e.to_string();
                 }
             }
 
@@ -735,10 +834,7 @@ impl DebloaterManager {
                     "Remove-AppxProvisionedPackage -Online -PackageName '{}' -ErrorAction Stop | Out-Null",
                     prov_name
                 );
-                if let Err(e) = run_ps_cancellable(&ps_path, &cmd, cancel, 90_000) {
-                    if matches!(e, CoreError::Cancelled) {
-                        return Err(e);
-                    }
+                if let Err(e) = run_ps(&ps_path, &cmd, 90_000) {
                     app_ok = false;
                     last_err = e.to_string();
                 }
@@ -749,7 +845,13 @@ impl DebloaterManager {
                 report.outcomes.push(DebloatItemOutcome {
                     label: app.display_name.to_string(),
                     success: true,
-                    message: "Eliminada y desaprovisionada".into(),
+                    message: if only_current_user {
+                        "Eliminada solo para el usuario actual (otros perfiles la conservan)".into()
+                    } else if app.provisioned_names.is_empty() {
+                        "Eliminada para todos los usuarios".into()
+                    } else {
+                        "Eliminada para todos los usuarios y desaprovisionada".into()
+                    },
                 });
             } else {
                 report.failed_count += 1;
@@ -764,7 +866,8 @@ impl DebloaterManager {
 
         for &tweak_id in reg_tweak_ids {
             if cancel.load(Ordering::Acquire) {
-                return Err(CoreError::Cancelled);
+                report.cancelled = true;
+                return Ok(report);
             }
             step_idx += 1;
 
@@ -808,22 +911,40 @@ impl DebloaterManager {
         Ok(report)
     }
 
+    /// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
+    /// entradas que no son del catálogo, falla: el archivo fue manipulado.
+    fn load_backup_doc(path: &Path) -> CoreResult<DebloatBackupDoc> {
+        if !path.exists() {
+            return Ok(DebloatBackupDoc {
+                version: 2,
+                entries: Vec::new(),
+            });
+        }
+        let bytes = read_bounded_bytes(path, MAX_DEBLOAT_BACKUP_BYTES)?;
+        let doc: DebloatBackupDoc =
+            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
+                message: format!(
+                    "debloat_backup.json está dañado ({}); no se tocará el registro para no perder el estado original",
+                    e
+                ),
+                source: Some(Box::new(e)),
+            })?;
+        if let Some(bad) = doc.entries.iter().find(|e| !e.is_valid()) {
+            return Err(CoreError::Backup {
+                message: format!(
+                    "debloat_backup.json contiene una entrada que no es del catálogo ({:?}\\{}\\{}); posible manipulación",
+                    bad.hive, bad.subkey, bad.value_name
+                ),
+                source: None,
+            });
+        }
+        Ok(doc)
+    }
+
     fn backup_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
         let backup_file = debloat_backup_path()?;
-        let mut doc = if backup_file.exists() {
-            read_bounded_bytes(&backup_file, MAX_DEBLOAT_BACKUP_BYTES)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<DebloatBackupDoc>(&b).ok())
-                .unwrap_or(DebloatBackupDoc {
-                    version: 1,
-                    entries: Vec::new(),
-                })
-        } else {
-            DebloatBackupDoc {
-                version: 1,
-                entries: Vec::new(),
-            }
-        };
+        let mut doc = Self::load_backup_doc(&backup_file)?;
+        doc.version = 2;
 
         for entry in entries {
             let already = doc.entries.iter().any(|s| {
@@ -844,17 +965,37 @@ impl DebloaterManager {
                 DebloatRegHive::Hklm => KEY_READ | KEY_WOW64_64KEY,
             };
 
-            let prev = root
-                .open_subkey_with_flags(entry.subkey, flags)
-                .ok()
-                .and_then(|k| k.get_value::<u32, _>(entry.value_name).ok());
+            // Distinguir «no existe» de un error real: un error no puede guardarse como «no existía».
+            let prev = match root.open_subkey_with_flags(entry.subkey, flags) {
+                Ok(key) => match key.get_raw_value(entry.value_name) {
+                    Ok(raw) => Some(raw),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => {
+                        return Err(CoreError::Registry {
+                            path: format!("{}\\{}", entry.subkey, entry.value_name),
+                            message: format!("No se pudo leer el valor original: {}", e),
+                            source: Some(e),
+                        })
+                    }
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => {
+                    return Err(CoreError::Registry {
+                        path: entry.subkey.to_string(),
+                        message: format!("No se pudo abrir la clave original: {}", e),
+                        source: Some(e),
+                    })
+                }
+            };
 
             doc.entries.push(DebloatRegSnapshot {
                 hive: entry.hive,
                 subkey: entry.subkey.to_string(),
                 value_name: entry.value_name.to_string(),
                 existed: prev.is_some(),
-                previous_dword: prev,
+                previous_dword: None,
+                previous_type: prev.as_ref().map(|r| reg_type_to_u32(&r.vtype)),
+                previous_raw: prev.map(|r| r.bytes),
             });
         }
 
@@ -887,6 +1028,13 @@ impl DebloaterManager {
         Ok(())
     }
 
+    /// `true` si hay ajustes de registro del Debloater pendientes de revertir.
+    pub fn has_registry_backup() -> bool {
+        debloat_backup_path().map(|p| p.exists()).unwrap_or(false)
+    }
+
+    /// Revierte los ajustes de registro del Debloater. Solo toca claves del catálogo, propaga cada error
+    /// y conserva el respaldo si algo no se pudo revertir, para poder reintentar.
     pub fn revert_registry_debloat() -> CoreResult<usize> {
         ElevationManager::require_elevated("Revertir ajustes de registro del Debloater")?;
         let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
@@ -898,37 +1046,133 @@ impl DebloaterManager {
             });
         }
 
-        let bytes = read_bounded_bytes(&backup_file, MAX_DEBLOAT_BACKUP_BYTES)?;
-        let doc: DebloatBackupDoc =
-            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
-                message: format!("Error leyendo debloat_backup.json: {}", e),
-                source: Some(Box::new(e)),
-            })?;
+        let doc = Self::load_backup_doc(&backup_file)?;
 
         let mut restored = 0usize;
+        let mut failures: Vec<String> = Vec::new();
         for snap in doc.entries.iter().rev() {
-            let root = RegKey::predef(match snap.hive {
-                DebloatRegHive::Hkcu => HKEY_CURRENT_USER,
-                DebloatRegHive::Hklm => HKEY_LOCAL_MACHINE,
-            });
-            let flags = match snap.hive {
-                DebloatRegHive::Hkcu => KEY_WRITE,
-                DebloatRegHive::Hklm => KEY_WRITE | KEY_WOW64_64KEY,
-            };
-
-            if let Ok(key) = root.open_subkey_with_flags(&snap.subkey, flags) {
-                if snap.existed {
-                    if let Some(prev) = snap.previous_dword {
-                        let _ = key.set_value(&snap.value_name, &prev);
-                    }
-                } else {
-                    let _ = key.delete_value(&snap.value_name);
-                }
-                restored += 1;
+            match Self::restore_snapshot(snap) {
+                Ok(()) => restored += 1,
+                Err(e) => failures.push(format!("{}\\{}: {}", snap.subkey, snap.value_name, e)),
             }
+        }
+
+        if !failures.is_empty() {
+            return Err(CoreError::Backup {
+                message: format!(
+                    "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
+                    restored,
+                    failures.len(),
+                    failures.join("; ")
+                ),
+                source: None,
+            });
         }
 
         delete_verified_file(&backup_file)?;
         Ok(restored)
+    }
+
+    fn restore_snapshot(snap: &DebloatRegSnapshot) -> CoreResult<()> {
+        let entry = snap.catalog_entry().ok_or_else(|| {
+            CoreError::Validation("Entrada fuera del catálogo del Debloater".into())
+        })?;
+        let root = RegKey::predef(match entry.hive {
+            DebloatRegHive::Hkcu => HKEY_CURRENT_USER,
+            DebloatRegHive::Hklm => HKEY_LOCAL_MACHINE,
+        });
+        let flags = match entry.hive {
+            DebloatRegHive::Hkcu => KEY_READ | KEY_WRITE,
+            DebloatRegHive::Hklm => KEY_READ | KEY_WRITE | KEY_WOW64_64KEY,
+        };
+
+        if snap.existed {
+            let (key, _) = root.create_subkey_with_flags(entry.subkey, flags)?;
+            match (&snap.previous_raw, snap.previous_type, snap.previous_dword) {
+                (Some(raw), Some(t), _) => key.set_raw_value(
+                    entry.value_name,
+                    &RegValue {
+                        bytes: raw.clone(),
+                        vtype: u32_to_reg_type(t),
+                    },
+                )?,
+                (None, None, Some(dword)) => key.set_value(entry.value_name, &dword)?,
+                _ => {
+                    return Err(CoreError::Validation(
+                        "Snapshot inconsistente: existía sin valor guardado".into(),
+                    ))
+                }
+            }
+            Ok(())
+        } else {
+            match root.open_subkey_with_flags(entry.subkey, flags) {
+                Ok(key) => match key.delete_value(entry.value_name) {
+                    Ok(()) => Ok(()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(e) => Err(e.into()),
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(e.into()),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snapshot() -> DebloatRegSnapshot {
+        let entry = &DEBLOAT_REG_TWEAKS[0].entries[0];
+        DebloatRegSnapshot {
+            hive: entry.hive,
+            subkey: entry.subkey.to_string(),
+            value_name: entry.value_name.to_string(),
+            existed: true,
+            previous_dword: None,
+            previous_type: Some(4),
+            previous_raw: Some(vec![1, 0, 0, 0]),
+        }
+    }
+
+    /// SEC-03 / SYS-11: solo se revierte lo del catálogo, con el tipo exacto o el formato viejo.
+    #[test]
+    fn snapshot_del_debloater_solo_del_catalogo() {
+        assert!(snapshot().is_valid());
+
+        let mut formato_viejo = snapshot();
+        formato_viejo.previous_type = None;
+        formato_viejo.previous_raw = None;
+        formato_viejo.previous_dword = Some(1);
+        assert!(formato_viejo.is_valid());
+
+        let mut manipulado = snapshot();
+        manipulado.subkey = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run".into();
+        assert!(!manipulado.is_valid());
+
+        let mut tipo_raro = snapshot();
+        tipo_raro.previous_type = Some(7);
+        assert!(!tipo_raro.is_valid());
+
+        let mut no_existia_con_bytes = snapshot();
+        no_existia_con_bytes.existed = false;
+        assert!(!no_existia_con_bytes.is_valid());
+    }
+
+    #[test]
+    fn identificadores_de_paquete_sin_inyeccion() {
+        assert!(is_valid_package_ident("Microsoft.BingNews_4.55.62231.0_x64__8wekyb3d8bbwe"));
+        assert!(!is_valid_package_ident("x'; Remove-Item C:\\ -Recurse; '"));
+        assert!(!is_valid_package_ident(""));
+        assert!(!is_valid_package_ident(&"a".repeat(300)));
+    }
+
+    /// SYS-20: Outlook, To Do, Enlace Móvil y Teams no vienen preseleccionadas.
+    #[test]
+    fn apps_de_uso_real_no_vienen_marcadas() {
+        for name in ["Microsoft.OutlookForWindows", "Microsoft.Todos", "Microsoft.YourPhone", "MSTeams"] {
+            let spec = DEBLOAT_APP_CATALOG.iter().find(|a| a.package_name == name).expect(name);
+            assert!(!spec.default_selected, "{} viene preseleccionada", name);
+        }
     }
 }
