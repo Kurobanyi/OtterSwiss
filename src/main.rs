@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use dioxus::desktop::{icon_from_memory, use_window, Config, WindowBuilder};
 use dioxus::prelude::*;
-use otter_swiss::core::archiver::{ArchiveFormat, ArchiveManager, ArchiveProgress};
+use otter_swiss::core::archiver::{
+    resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
+};
 use otter_swiss::core::context_menu::ContextMenuManager;
 use otter_swiss::ui::i18n::Lang;
 use otter_swiss::ui::theme::Theme;
@@ -36,10 +38,8 @@ fn clean_archive_extract_dir(src: &Path) -> PathBuf {
     let low = name.to_ascii_lowercase();
     let folder = if low.ends_with(".tar.gz") {
         &name[..name.len() - 7]
-    } else if let Some(stem) = src.file_stem().and_then(|s| s.to_str()) {
-        stem
     } else {
-        "extracted"
+        src.file_stem().and_then(|s| s.to_str()).unwrap_or("extracted")
     };
     let clean = if folder.is_empty() { "extracted" } else { folder };
     parent.join(clean)
@@ -79,7 +79,7 @@ fn MiniArchiveProgressApp() -> Element {
     use_hook(move || {
         let Some(job) = job_opt else {
             is_running.set(false);
-            error_msg.set(Some("Trabajo inválido".into()));
+            error_msg.set(Some(if en { "Invalid job" } else { "Trabajo inválido" }.into()));
             return;
         };
 
@@ -118,7 +118,7 @@ fn MiniArchiveProgressApp() -> Element {
 
             let res = handle
                 .await
-                .unwrap_or_else(|e| Err(format!("Thread error: {}", e)));
+                .unwrap_or_else(|e| Err(e.to_string()));
 
             if let Ok(snap) = prog_arc.lock() {
                 progress.set(snap.clone());
@@ -206,33 +206,33 @@ fn MiniArchiveProgressApp() -> Element {
             }
 
             div {
-                style: "flex: 1; padding: 14px 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px;",
+                style: "flex: 1; padding: var(--space-4) var(--space-4); display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-3);",
                 if let Some(err) = err_opt {
-                    div { class: "badge badge-danger", style: "padding: 8px; white-space: normal;", "{err}" }
+                    div { class: "badge badge-danger", style: "padding: var(--space-2); white-space: normal;", "{err}" }
                 } else {
-                    div { style: "display: flex; flex-direction: column; gap: 6px;",
+                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
                         div {
-                            style: "font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
+                            style: "font-size: var(--font-size-xs); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
                             "{current_file_lbl}"
                         }
                         div {
-                            style: "width: 100%; height: 10px; background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                            style: "width: 100%; height: var(--space-2); background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
                             div {
                                 style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.15s ease;",
                             }
                         }
-                        div { style: "display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);",
+                        div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
                         }
                     }
                 }
 
-                div { style: "display: flex; justify-content: flex-end; gap: 8px;",
+                div { style: "display: flex; justify-content: flex-end; gap: var(--space-2);",
                     if running {
                         button {
                             class: "btn btn-danger",
-                            style: "padding: 6px 14px; font-size: 12px;",
+                            style: "padding: var(--space-2) var(--space-4); font-size: var(--font-size-xs);",
                             onclick: move |_| cancel_btn.store(true, Ordering::Release),
                             "{cancel_lbl}"
                         }
@@ -240,14 +240,14 @@ fn MiniArchiveProgressApp() -> Element {
                         if let Some(dest) = dest_for_open {
                             button {
                                 class: "btn btn-secondary",
-                                style: "padding: 6px 12px; font-size: 12px;",
+                                style: "padding: var(--space-2) var(--space-3); font-size: var(--font-size-xs);",
                                 onclick: move |_| open_folder_in_explorer(&dest),
                                 "{open_folder_lbl}"
                             }
                         }
                         button {
                             class: "btn btn-primary",
-                            style: "padding: 6px 14px; font-size: 12px;",
+                            style: "padding: var(--space-2) var(--space-4); font-size: var(--font-size-xs);",
                             onclick: move |_| win_done.close(),
                             "{close_lbl}"
                         }
@@ -262,7 +262,8 @@ fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
     if let Some(pos) = args.iter().position(|a| a == "--extract") {
         if let Some(target) = args.get(pos + 1) {
             let src = PathBuf::from(target.trim().trim_matches('"'));
-            let dest = clean_archive_extract_dir(&src);
+            // Nunca se extrae sobre una carpeta existente: se usa la hermana libre «nombre (2)».
+            let dest = resolve_extract_destination(&clean_archive_extract_dir(&src));
             return Some(MiniArchiveJob {
                 is_extract: true,
                 src,
@@ -273,12 +274,9 @@ fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
     if let Some(pos) = args.iter().position(|a| a == "--compress-zip") {
         if let Some(target) = args.get(pos + 1) {
             let src = PathBuf::from(target.trim().trim_matches('"'));
-            let dest = if src.is_dir() {
-                src.with_extension("zip")
-            } else {
-                let name = src.file_name().unwrap_or_default().to_string_lossy();
-                src.parent().unwrap_or(&src).join(format!("{}.zip", name))
-            };
+            // UI-15: `mi.proyecto\` debe dar `mi.proyecto.zip`, no `mi.zip`.
+            let name = src.file_name().unwrap_or_default().to_string_lossy();
+            let dest = src.parent().unwrap_or(&src).join(format!("{}.zip", name));
             return Some(MiniArchiveJob {
                 is_extract: false,
                 src,

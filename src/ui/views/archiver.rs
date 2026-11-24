@@ -5,8 +5,10 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::archiver::{ArchiveFormat, ArchiveManager, ArchiveProgress};
-use crate::ui::components::Card;
+use crate::core::archiver::{
+    resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
+};
+use crate::ui::components::{Card, Modal};
 use crate::ui::i18n::Lang;
 
 #[component]
@@ -28,7 +30,13 @@ pub fn ArchiverView() -> Element {
     let on_execute = move |_| {
         let current_mode = *mode.read();
         let src = PathBuf::from(src_path.read().trim().trim_matches('"'));
-        let dest = PathBuf::from(dest_path.read().trim().trim_matches('"'));
+        let typed_dest = PathBuf::from(dest_path.read().trim().trim_matches('"'));
+        // Extraer nunca borra ni mezcla una carpeta existente: se usa la hermana libre «nombre (2)».
+        let dest = if current_mode == "extract" {
+            resolve_extract_destination(&typed_dest)
+        } else {
+            typed_dest
+        };
         let fmt = *selected_format.read();
 
         if !src.exists() {
@@ -51,6 +59,7 @@ pub fn ArchiverView() -> Element {
         let prog_worker = Arc::clone(&prog_arc);
         let cancel_worker = Arc::clone(&cancel_for_exec);
 
+        let dest_display = dest.display().to_string();
         spawn(async move {
             let handle = tokio::task::spawn_blocking(move || {
                 if current_mode == "extract" {
@@ -82,15 +91,21 @@ pub fn ArchiverView() -> Element {
 
             let res = handle
                 .await
-                .unwrap_or_else(|e| Err(format!("Thread error: {}", e)));
+                .unwrap_or_else(|e| {
+                    Err(if en {
+                        format!("Internal error: {}", e)
+                    } else {
+                        format!("Error interno: {}", e)
+                    })
+                });
 
             match res {
                 Ok(bytes) => {
                     let mb = bytes as f64 / (1024.0 * 1024.0);
                     status_msg.set(Some(if en {
-                        format!("Done ({:.2} MB processed).", mb)
+                        format!("Done ({:.2} MB processed) → {}", mb, dest_display)
                     } else {
-                        format!("Completado ({:.2} MB procesados).", mb)
+                        format!("Completado ({:.2} MB procesados) → {}", mb, dest_display)
                     }));
                     is_error.set(false);
                 }
@@ -117,48 +132,34 @@ pub fn ArchiverView() -> Element {
 
     rsx! {
         div { class: "content-body",
+            // UI-09: diálogo de progreso; Escape no cancela por accidente (para eso está «Cancelar»).
             if *is_working.read() {
-                div {
-                    style: "position: fixed; inset: 0; background: rgba(0,0,0,0.72); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px;",
-                    div {
-                        class: "card",
-                        style: "max-width: 460px; width: 100%; border: 1px solid var(--accent);",
-                        div { class: "card-header",
-                            div {
-                                h3 { class: "card-title",
-                                    if *mode.read() == "extract" {
-                                        if en { "Extracting archive..." } else { "Extrayendo archivo..." }
-                                    } else if en {
-                                        "Compressing..."
-                                    } else {
-                                        "Comprimiendo..."
-                                    }
-                                }
-                                p {
-                                    class: "card-subtitle",
-                                    style: "max-width: 400px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
-                                    if prog.current_file.is_empty() { "..." } else { "{prog.current_file}" }
-                                }
-                            }
-                        }
+                Modal {
+                    title: match (*mode.read() == "extract", en) {
+                        (true, true) => "Extracting archive...".to_string(),
+                        (true, false) => "Extrayendo archivo...".to_string(),
+                        (false, true) => "Compressing...".to_string(),
+                        (false, false) => "Comprimiendo...".to_string(),
+                    },
+                    subtitle: Some(if prog.current_file.is_empty() { "...".to_string() } else { prog.current_file.clone() }),
+                    on_close: move |_| {},
                         div {
-                            style: "width: 100%; height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
                             div {
                                 style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.15s ease;",
                             }
                         }
-                        div { style: "display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted);",
+                        div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
                         }
-                        div { style: "display: flex; justify-content: flex-end;",
+                        div { class: "modal-actions",
                             button {
                                 class: "btn btn-danger",
                                 onclick: move |_| cancel_for_btn.store(true, Ordering::Release),
                                 if en { "Cancel" } else { "Cancelar" }
                             }
                         }
-                    }
                 }
             }
 
@@ -196,7 +197,7 @@ pub fn ArchiverView() -> Element {
                             placeholder: "C:\\Path\\To\\Target",
                             value: "{src_path.read()}",
                             disabled: *is_working.read(),
-                            style: "padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            style: "padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
                             oninput: move |evt| src_path.set(evt.value()),
                         }
 
@@ -214,12 +215,12 @@ pub fn ArchiverView() -> Element {
                             placeholder: if *mode.read() == "extract" { "C:\\Extracted" } else { "C:\\Backup\\Archive.zip" },
                             value: "{dest_path.read()}",
                             disabled: *is_working.read(),
-                            style: "padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            style: "padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
                             oninput: move |evt| dest_path.set(evt.value()),
                         }
 
                         if *mode.read() == "compress" {
-                            div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: 4px;",
+                            div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                                 span { style: "font-size: var(--font-size-xs); color: var(--text-muted);", if en { "Format:" } else { "Formato:" } }
                                 button {
                                     class: if *selected_format.read() == ArchiveFormat::Zip { "btn btn-primary" } else { "btn btn-secondary" },

@@ -5,6 +5,8 @@ use winreg::RegKey;
 
 use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::safe_fs::{canonical_dos_path, path_is_strictly_under};
+use crate::core::win_common::{program_files_dir, program_files_x86_dir};
 
 pub struct ContextMenuManager;
 
@@ -12,6 +14,8 @@ struct MenuEntrySpec {
     subkey: &'static str,
     label: &'static str,
     cmd_template: &'static str,
+    /// Filtro AQS del verbo (`AppliesTo`); `None` = todos los archivos de la clase.
+    applies_to: Option<&'static str>,
 }
 
 const MENU_ENTRIES: &[MenuEntrySpec] = &[
@@ -19,41 +23,50 @@ const MENU_ENTRIES: &[MenuEntrySpec] = &[
         subkey: r"Software\Classes\Directory\Background\shell\OtterSwiss",
         label: "Abrir OtterSwiss",
         cmd_template: "\"{exe}\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\Directory\shell\OtterSwissCompress",
         label: "Comprimir carpeta a .zip (OtterSwiss)",
         cmd_template: "\"{exe}\" --compress-zip \"%V\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\*\shell\OtterSwissCompress",
         label: "Comprimir a .zip (OtterSwiss)",
         cmd_template: "\"{exe}\" --compress-zip \"%1\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\SystemFileAssociations\.zip\shell\OtterSwissExtract",
         label: "Extraer aquí con OtterSwiss",
         cmd_template: "\"{exe}\" --extract \"%1\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\SystemFileAssociations\.7z\shell\OtterSwissExtract",
         label: "Extraer aquí con OtterSwiss",
         cmd_template: "\"{exe}\" --extract \"%1\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\SystemFileAssociations\.tar\shell\OtterSwissExtract",
         label: "Extraer aquí con OtterSwiss",
         cmd_template: "\"{exe}\" --extract \"%1\"",
+        applies_to: None,
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\SystemFileAssociations\.gz\shell\OtterSwissExtract",
         label: "Extraer aquí con OtterSwiss",
         cmd_template: "\"{exe}\" --extract \"%1\"",
+        // UI-15: solo se extraen .tar.gz; un .gz suelto no debe ofrecer el verbo.
+        applies_to: Some("System.FileName:\"*.tar.gz\""),
     },
     MenuEntrySpec {
         subkey: r"Software\Classes\SystemFileAssociations\.tgz\shell\OtterSwissExtract",
         label: "Extraer aquí con OtterSwiss",
         cmd_template: "\"{exe}\" --extract \"%1\"",
+        applies_to: None,
     },
 ];
 
@@ -89,7 +102,22 @@ impl ContextMenuManager {
         ElevationManager::require_elevated("Registrar menú contextual en HKLM")?;
 
         let current_exe = std::env::current_exe()?;
-        let exe_str = current_exe.to_string_lossy().to_string();
+        // El menú vive en HKLM (lo ven todos los usuarios) y cada clic eleva este ejecutable: solo se registra
+        // si está instalado en Program Files, donde un usuario sin privilegios no puede reemplazarlo ni dejar
+        // DLLs a su lado (SEC-13). Una copia portable en Descargas no lo registra.
+        let exe_canon = canonical_dos_path(&current_exe)?;
+        let in_program_files = [program_files_dir(), program_files_x86_dir()]
+            .into_iter()
+            .flatten()
+            .filter_map(|pf| canonical_dos_path(&pf).ok())
+            .any(|pf| path_is_strictly_under(&exe_canon, &pf));
+        if !in_program_files {
+            return Err(CoreError::Validation(format!(
+                "El menú contextual solo se registra con OtterSwiss instalado en Program Files (ejecutable actual: '{}')",
+                exe_canon.display()
+            )));
+        }
+        let exe_str = exe_canon.to_string_lossy().to_string();
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
         for entry in MENU_ENTRIES {
@@ -105,6 +133,9 @@ impl ContextMenuManager {
 
             menu_key.set_value("", &entry.label)?;
             menu_key.set_value("Icon", &format!("{},0", exe_str))?;
+            if let Some(filter) = entry.applies_to {
+                menu_key.set_value("AppliesTo", &filter)?;
+            }
 
             let (cmd_key, _) = menu_key
                 .create_subkey_with_flags("command", KEY_WRITE | KEY_WOW64_64KEY)

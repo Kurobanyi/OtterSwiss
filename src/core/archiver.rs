@@ -8,16 +8,17 @@ use std::time::{Duration, Instant};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use sevenz_rust::{Password, SevenZReader};
+use sevenz_rust2::{ArchiveReader, Password};
 use tar::{Archive as TarArchive, Builder as TarBuilder, EntryType};
 use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::safe_fs::{
-    canonical_dos_path, create_verified_new_file, delete_tree_verified, is_safe_non_root_dir,
-    write_zone_identifier,
+    canonical_dos_path, create_verified_new_file, delete_tree_verified, delete_verified_file,
+    is_safe_non_root_dir, open_verified_file_read, write_zone_identifier_raw,
 };
+use crate::core::trust::{create_admin_only_dir, reset_to_inherited_acl};
 
 const RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5",
@@ -49,8 +50,8 @@ impl ArchiveProgress {
                 self.total_bytes.saturating_sub(self.bytes_processed) as f64 / (1024.0 * 1024.0);
             self.eta_seconds = Some((remaining_mb / self.speed_mbps).ceil() as u64);
             self.percent = ((self.bytes_processed * 100) / self.total_bytes).min(99) as u8;
-        } else if self.total_files > 0 {
-            self.percent = ((self.files_done * 100) / self.total_files).min(99) as u8;
+        } else if let Some(pct) = (self.files_done * 100).checked_div(self.total_files) {
+            self.percent = pct.min(99) as u8;
         }
     }
 }
@@ -125,6 +126,12 @@ fn sanitize_archive_rel_path(raw: &str) -> CoreResult<PathBuf> {
     if clean.as_os_str().is_empty() {
         return Err(CoreError::Validation("Entrada de archivo con ruta vacía".into()));
     }
+    if clean.components().count() > MAX_ARCHIVE_DEPTH {
+        return Err(CoreError::Validation(format!(
+            "Ruta demasiado profunda en el archivo (más de {} niveles): '{}'",
+            MAX_ARCHIVE_DEPTH, raw
+        )));
+    }
     validate_path_components(&clean)?;
     Ok(clean)
 }
@@ -143,6 +150,39 @@ fn validate_cli_paths(src: &Path, dst: &Path) -> CoreResult<()> {
     Ok(())
 }
 
+/// Profundidad máxima de rutas dentro de un archivo comprimido. La limpieza usa el mismo límite, así que
+/// nunca queda un staging a medio borrar (ERR-08).
+const MAX_ARCHIVE_DEPTH: usize = 48;
+
+/// Destino real de una extracción: si `dest` ya existe, la carpeta hermana libre `dest (2)`, `dest (3)`…
+/// Extraer nunca borra ni mezcla una carpeta existente (SYS-01).
+pub fn resolve_extract_destination(dest: &Path) -> PathBuf {
+    if !dest.exists() {
+        return dest.to_path_buf();
+    }
+    let name = dest
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "extracted".into());
+    let parent = dest.parent().unwrap_or(dest);
+    for i in 2..1000 {
+        let candidate = parent.join(format!("{} ({})", name, i));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    parent.join(format!(
+        "{} ({})",
+        name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ))
+}
+
+/// Crea el staging **solo para administradores**: durante la extracción (que corre elevada) ningún proceso
+/// del usuario puede cambiar una subcarpeta por una junction para redirigir escrituras (SEC-08).
 fn create_staging_dir(dest_dir: &Path) -> CoreResult<(&Path, PathBuf)> {
     let parent = dest_dir
         .parent()
@@ -153,16 +193,72 @@ fn create_staging_dir(dest_dir: &Path) -> CoreResult<(&Path, PathBuf)> {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     let tmp_dir = parent.join(format!(".extract.{}.{}.tmp", pid, nonce));
-    std::fs::create_dir_all(&tmp_dir)?;
+    create_admin_only_dir(&tmp_dir)?;
     Ok((parent, tmp_dir))
 }
 
-fn finalize_staging_dir(tmp_dir: &Path, dest_dir: &Path, parent: &Path) -> CoreResult<()> {
-    if dest_dir.exists() {
-        delete_tree_verified(dest_dir, parent, 16)?;
+/// Borra el staging tras un error o una cancelación, con el mismo límite de profundidad que la extracción.
+fn discard_staging(tmp_dir: &Path, parent: &Path) {
+    let _ = delete_tree_verified(tmp_dir, parent, MAX_ARCHIVE_DEPTH + 2);
+}
+
+/// Mueve el staging a `dest_dir` (que no debe existir), le devuelve los permisos heredados de la carpeta
+/// destino y propaga el Mark-of-the-Web del archivo original a cada archivo extraído (SEC-15).
+fn finalize_staging_dir(
+    tmp_dir: &Path,
+    dest_dir: &Path,
+    parent: &Path,
+    zone_identifier: Option<&[u8]>,
+) -> CoreResult<()> {
+    let res = (|| -> CoreResult<()> {
+        if let Some(zone) = zone_identifier {
+            mark_tree_with_zone(tmp_dir, zone)?;
+        }
+        if dest_dir.exists() {
+            return Err(CoreError::Validation(format!(
+                "El destino '{}' ya existe; no se sobrescribe",
+                dest_dir.display()
+            )));
+        }
+        std::fs::rename(tmp_dir, dest_dir)?;
+        Ok(())
+    })();
+    if let Err(e) = res {
+        discard_staging(tmp_dir, parent);
+        return Err(e);
     }
-    std::fs::rename(tmp_dir, dest_dir)?;
-    let _ = write_zone_identifier(dest_dir, "archive://extracted");
+    reset_to_inherited_acl(dest_dir)?;
+    Ok(())
+}
+
+/// `Zone.Identifier` del archivo comprimido, si lo tiene (descargado de internet).
+fn read_zone_identifier(archive_path: &Path) -> Option<Vec<u8>> {
+    let mut ads = archive_path.as_os_str().to_os_string();
+    ads.push(":Zone.Identifier");
+    let data = std::fs::read(PathBuf::from(ads)).ok()?;
+    if data.is_empty() || data.len() > 8192 {
+        None
+    } else {
+        Some(data)
+    }
+}
+
+fn mark_tree_with_zone(root: &Path, zone: &[u8]) -> CoreResult<()> {
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let ft = entry.file_type()?;
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
+                stack.push(entry.path());
+            } else if ft.is_file() {
+                write_zone_identifier_raw(&entry.path(), zone)?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -225,6 +321,7 @@ impl<'a> TelemetryCtx<'a> {
     }
 }
 
+#[allow(clippy::too_many_arguments)] // Estado de una extracción en curso; agruparlo no aclara nada.
 fn copy_with_quota<R: Read + ?Sized>(
     reader: &mut R,
     out_path: &Path,
@@ -320,6 +417,7 @@ impl ArchiveManager {
         cancel: &AtomicBool,
         progress: Option<&Arc<Mutex<ArchiveProgress>>>,
     ) -> CoreResult<u64> {
+        let zone = read_zone_identifier(archive_path);
         let file = File::open(archive_path)?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| CoreError::Archive {
             message: format!("Error abriendo ZIP: {}", e),
@@ -358,17 +456,14 @@ impl ArchiveManager {
                     )));
                 }
 
-                let raw_path = match entry.enclosed_name() {
-                    Some(p) => p.to_path_buf(),
-                    None => {
-                        return Err(CoreError::Validation(format!(
-                            "Ruta insegura en archivo ZIP: {}",
-                            entry.name()
-                        )));
-                    }
-                };
-
-                validate_path_components(&raw_path)?;
+                if entry.enclosed_name().is_none() {
+                    return Err(CoreError::Validation(format!(
+                        "Ruta insegura en archivo ZIP: {}",
+                        entry.name()
+                    )));
+                }
+                // Mismo saneo que 7z y tar: rechaza también ':' (flujos alternos NTFS) y rutas profundas.
+                let raw_path = sanitize_archive_rel_path(entry.name())?;
                 let rel_display = raw_path.to_string_lossy().into_owned();
                 let out_path = tmp_dir.join(&raw_path);
 
@@ -392,11 +487,11 @@ impl ArchiveManager {
         })();
 
         if let Err(e) = extract_res {
-            let _ = delete_tree_verified(&tmp_dir, parent, 16);
+            discard_staging(&tmp_dir, parent);
             return Err(e);
         }
 
-        finalize_staging_dir(&tmp_dir, dest_dir, parent)?;
+        finalize_staging_dir(&tmp_dir, dest_dir, parent, zone.as_deref())?;
         tel.finish(bytes_written, total_files);
         Ok(bytes_written)
     }
@@ -408,9 +503,9 @@ impl ArchiveManager {
         cancel: &AtomicBool,
         progress: Option<&Arc<Mutex<ArchiveProgress>>>,
     ) -> CoreResult<u64> {
+        let zone = read_zone_identifier(archive_path);
         let file = File::open(archive_path)?;
-        let len = file.metadata()?.len();
-        let mut reader = SevenZReader::new(file, len, Password::empty()).map_err(|e| {
+        let mut reader = ArchiveReader::new(file, Password::empty()).map_err(|e| {
             CoreError::Archive {
                 message: format!("Error abriendo archivo 7Z: {}", e),
                 source: None,
@@ -472,18 +567,18 @@ impl ArchiveManager {
         });
 
         if let Some(e) = inner_err {
-            let _ = delete_tree_verified(&tmp_dir, parent, 16);
+            discard_staging(&tmp_dir, parent);
             return Err(e);
         }
         if let Err(e) = sz_res {
-            let _ = delete_tree_verified(&tmp_dir, parent, 16);
+            discard_staging(&tmp_dir, parent);
             return Err(CoreError::Archive {
                 message: format!("Error extrayendo 7Z: {}", e),
                 source: None,
             });
         }
 
-        finalize_staging_dir(&tmp_dir, dest_dir, parent)?;
+        finalize_staging_dir(&tmp_dir, dest_dir, parent, zone.as_deref())?;
         tel.finish(bytes_written, files_done);
         Ok(bytes_written)
     }
@@ -497,7 +592,8 @@ impl ArchiveManager {
     ) -> CoreResult<u64> {
         let file = File::open(archive_path)?;
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
-        Self::extract_tar_reader(file, len, dest_dir, max_quota_bytes, cancel, progress)
+        let zone = read_zone_identifier(archive_path);
+        Self::extract_tar_reader(file, len, dest_dir, max_quota_bytes, cancel, progress, zone)
     }
 
     pub fn extract_tar_gz(
@@ -510,7 +606,8 @@ impl ArchiveManager {
         let file = File::open(archive_path)?;
         let len = file.metadata().map(|m| m.len()).unwrap_or(0);
         let gz = GzDecoder::new(file);
-        Self::extract_tar_reader(gz, len, dest_dir, max_quota_bytes, cancel, progress)
+        let zone = read_zone_identifier(archive_path);
+        Self::extract_tar_reader(gz, len, dest_dir, max_quota_bytes, cancel, progress, zone)
     }
 
     fn extract_tar_reader<R: Read>(
@@ -520,6 +617,7 @@ impl ArchiveManager {
         max_quota_bytes: u64,
         cancel: &AtomicBool,
         progress: Option<&Arc<Mutex<ArchiveProgress>>>,
+        zone: Option<Vec<u8>>,
     ) -> CoreResult<u64> {
         let mut tar = TarArchive::new(reader);
         let mut tel = TelemetryCtx::new(progress);
@@ -587,11 +685,11 @@ impl ArchiveManager {
         })();
 
         if let Err(e) = res {
-            let _ = delete_tree_verified(&tmp_dir, parent, 16);
+            discard_staging(&tmp_dir, parent);
             return Err(e);
         }
 
-        finalize_staging_dir(&tmp_dir, dest_dir, parent)?;
+        finalize_staging_dir(&tmp_dir, dest_dir, parent, zone.as_deref())?;
         tel.finish(bytes_written, files_done);
         Ok(bytes_written)
     }
@@ -613,16 +711,47 @@ impl ArchiveManager {
         progress: Option<&Arc<Mutex<ArchiveProgress>>>,
     ) -> CoreResult<u64> {
         validate_cli_paths(src_path, dest_archive)?;
-
-        match format {
-            ArchiveFormat::Zip => Self::compress_to_zip(src_path, dest_archive, cancel, progress),
-            ArchiveFormat::SevenZip => {
-                Self::compress_to_7z(src_path, dest_archive, cancel, progress)
-            }
-            ArchiveFormat::TarGz => {
-                Self::compress_to_tar_gz(src_path, dest_archive, cancel, progress)
-            }
+        if dest_archive.exists() {
+            return Err(CoreError::Validation(format!(
+                "El archivo '{}' ya existe; no se sobrescribe",
+                dest_archive.display()
+            )));
         }
+
+        // Se escribe en un temporal y solo se renombra al terminar bien: cancelar o fallar nunca deja
+        // un .zip truncado con apariencia de válido (SYS-22).
+        let name = dest_archive
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "archivo".into());
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let partial = dest_archive.with_file_name(format!(".{}.{}.partial", name, nonce));
+
+        let res = match format {
+            ArchiveFormat::Zip => Self::compress_to_zip(src_path, &partial, cancel, progress),
+            ArchiveFormat::SevenZip => Self::compress_to_7z(src_path, &partial, cancel, progress),
+            ArchiveFormat::TarGz => Self::compress_to_tar_gz(src_path, &partial, cancel, progress),
+        };
+        let res = res.and_then(|n| {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(CoreError::Cancelled);
+            }
+            if dest_archive.exists() {
+                return Err(CoreError::Validation(format!(
+                    "El archivo '{}' apareció mientras se comprimía; no se sobrescribe",
+                    dest_archive.display()
+                )));
+            }
+            std::fs::rename(&partial, dest_archive)?;
+            Ok(n)
+        });
+        if res.is_err() && partial.exists() {
+            let _ = delete_verified_file(&partial);
+        }
+        res
     }
 
     fn count_source_stats(src: &Path) -> (usize, u64) {
@@ -687,7 +816,7 @@ impl ArchiveManager {
                         source: None,
                     }
                 })?;
-                let mut f = File::open(&current)?;
+                let (mut f, _) = open_verified_file_read(&current, false, None)?;
                 let mut buf = [0u8; 64 * 1024];
                 loop {
                     if cancel.load(Ordering::Relaxed) {
@@ -728,7 +857,7 @@ impl ArchiveManager {
                                 source: None,
                             }
                         })?;
-                        let mut f = File::open(&p)?;
+                        let (mut f, _) = open_verified_file_read(&p, false, None)?;
                         let mut buf = [0u8; 64 * 1024];
                         loop {
                             if cancel.load(Ordering::Relaxed) {
@@ -772,8 +901,8 @@ impl ArchiveManager {
         tel.init(total_files, total_bytes_est);
         tel.tick(Some(&src_path.to_string_lossy()), 0, 0, true);
 
-        sevenz_rust::compress_to_path(src_path, dest_archive).map_err(|e| CoreError::Archive {
-            message: format!("Error comprimiendo con sevenz-rust (7Z): {}", e),
+        sevenz_rust2::compress_to_path(src_path, dest_archive).map_err(|e| CoreError::Archive {
+            message: format!("Error comprimiendo en 7Z: {}", e),
             source: None,
         })?;
         let sz = dest_archive.metadata().map(|m| m.len()).unwrap_or(0);
@@ -798,9 +927,12 @@ impl ArchiveManager {
         let (file, _) = create_verified_new_file(dest_archive, true)?;
         let enc = GzEncoder::new(file, Compression::default());
         let mut tar = TarBuilder::new(enc);
+        // No seguir symlinks ni junctions: la compresión corre elevada y podría empaquetar archivos de
+        // fuera del origen que el usuario no puede leer (SEC-16).
+        tar.follow_symlinks(false);
 
         if src_path.is_file() {
-            let mut f = File::open(src_path)?;
+            let (mut f, _) = open_verified_file_read(src_path, false, None)?;
             let name = src_path
                 .file_name()
                 .ok_or_else(|| CoreError::Validation("Nombre de archivo inválido".into()))?;
@@ -823,5 +955,76 @@ impl ArchiveManager {
         let sz = dest_archive.metadata().map(|m| m.len()).unwrap_or(0);
         tel.finish(sz, total_files);
         Ok(sz)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Carpeta temporal única para un test (se borra al final de cada test).
+    fn temp_dir(tag: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("otter_test_{}_{}_{}", tag, std::process::id(), nonce));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn saneo_rechaza_traversal_unidades_y_ads() {
+        for bad in ["../x", "a/../../x", "C:/Windows/x", "/abs", "\\\\srv\\share\\x", "a/b:stream", "c:x"] {
+            assert!(sanitize_archive_rel_path(bad).is_err(), "aceptó '{}'", bad);
+        }
+    }
+
+    #[test]
+    fn saneo_rechaza_nombres_reservados_y_finales_invalidos() {
+        for bad in ["CON", "dir/NUL.txt", "dir/file.", "dir/file ", "", "./"] {
+            assert!(sanitize_archive_rel_path(bad).is_err(), "aceptó '{}'", bad);
+        }
+    }
+
+    #[test]
+    fn saneo_normaliza_rutas_validas() {
+        let p = sanitize_archive_rel_path("dir\\sub/./file.txt").unwrap();
+        assert_eq!(p, PathBuf::from("dir").join("sub").join("file.txt"));
+    }
+
+    #[test]
+    fn saneo_limita_la_profundidad() {
+        let ok = vec!["d"; MAX_ARCHIVE_DEPTH].join("/");
+        let deep = vec!["d"; MAX_ARCHIVE_DEPTH + 1].join("/");
+        assert!(sanitize_archive_rel_path(&ok).is_ok());
+        assert!(sanitize_archive_rel_path(&deep).is_err());
+    }
+
+    #[test]
+    fn componentes_de_ruta_rechazan_raiz_y_padre() {
+        assert!(validate_path_components(Path::new("a/b.txt")).is_ok());
+        assert!(validate_path_components(Path::new("../b.txt")).is_err());
+        assert!(validate_path_components(Path::new("C:\\b.txt")).is_err());
+    }
+
+    /// SYS-01: extraer junto a una carpeta existente nunca la reutiliza ni la borra.
+    #[test]
+    fn destino_existente_usa_carpeta_hermana_y_conserva_el_centinela() {
+        let root = temp_dir("dest");
+        let dest = root.join("proyecto");
+        assert_eq!(resolve_extract_destination(&dest), dest);
+
+        std::fs::create_dir_all(&dest).unwrap();
+        let sentinel = dest.join("centinela.txt");
+        std::fs::write(&sentinel, b"no borrar").unwrap();
+
+        let resolved = resolve_extract_destination(&dest);
+        assert_eq!(resolved, root.join("proyecto (2)"));
+        assert!(sentinel.is_file());
+
+        std::fs::create_dir_all(&resolved).unwrap();
+        assert_eq!(resolve_extract_destination(&dest), root.join("proyecto (3)"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
