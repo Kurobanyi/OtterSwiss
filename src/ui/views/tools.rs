@@ -10,7 +10,7 @@ use crate::core::dependencies::DependencyManager;
 use crate::core::elevation::ElevationManager;
 use crate::core::error::CoreError;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
-use crate::ui::components::Card;
+use crate::ui::components::{Card, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::{InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState};
 
@@ -39,7 +39,7 @@ pub fn ToolsView() -> Element {
                 .await
                 .unwrap_or_else(|e| {
                     Err(CoreError::SystemTool {
-                        message: format!("Thread error: {}", e),
+                        message: e.to_string(),
                         source: None,
                     })
                 });
@@ -82,7 +82,7 @@ pub fn ToolsView() -> Element {
             .await
             .unwrap_or_else(|e| {
                 Err(CoreError::SystemTool {
-                    message: format!("Thread error: {}", e),
+                    message: e.to_string(),
                     source: None,
                 })
             });
@@ -135,36 +135,25 @@ pub fn ToolsView() -> Element {
 
     rsx! {
         div { class: "content-body",
-            if let Some(report) = ram_report_modal.read().as_ref() {
-                div {
-                    style: "position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 24px;",
-                    div {
-                        class: "card",
-                        style: "max-width: 560px; width: 100%; border: 1px solid var(--accent);",
-                        div { class: "card-header",
-                            div {
-                                h3 { class: "card-title", if en { "RAM Working Sets Trimmed" } else { "Optimización de RAM Completada" } }
-                                p { class: "card-subtitle",
-                                    if en {
-                                        "Trimmed: {report.processes_trimmed} | Skipped: {report.processes_skipped}"
-                                    } else {
-                                        "Procesados: {report.processes_trimmed} | Omitidos: {report.processes_skipped}"
-                                    }
-                                }
-                            }
+            if let Some(report) = ram_report_modal.read().clone() {
+                Modal {
+                    title: if en { "RAM Working Sets Trimmed".to_string() } else { "Optimización de RAM Completada".to_string() },
+                    subtitle: Some(if en {
+                        format!("Trimmed: {} | Skipped: {}", report.processes_trimmed, report.processes_skipped)
+                    } else {
+                        format!("Procesados: {} | Omitidos: {}", report.processes_trimmed, report.processes_skipped)
+                    }),
+                    on_close: move |_| ram_report_modal.set(None),
+                    div { class: "modal-list",
+                        for proc_name in report.trimmed_processes.iter() {
+                            div { key: "{proc_name}", "• {proc_name}" }
                         }
-                        div {
-                            style: "max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); background: var(--bg); font-size: var(--font-size-xs); display: flex; flex-direction: column; gap: 4px;",
-                            for proc_name in report.trimmed_processes.iter() {
-                                div { key: "{proc_name}", "• {proc_name}" }
-                            }
-                        }
-                        div { style: "display: flex; justify-content: flex-end; margin-top: var(--space-3);",
-                            button {
-                                class: "btn btn-primary",
-                                onclick: move |_| ram_report_modal.set(None),
-                                if en { "Close" } else { "Cerrar" }
-                            }
+                    }
+                    div { class: "modal-actions",
+                        button {
+                            class: "btn btn-primary",
+                            onclick: move |_| ram_report_modal.set(None),
+                            if en { "Close" } else { "Cerrar" }
                         }
                     }
                 }
@@ -173,7 +162,7 @@ pub fn ToolsView() -> Element {
             if state.is_working {
                 div {
                     class: "card",
-                    style: "border: 1px solid var(--warning); background: rgba(255, 193, 7, 0.08);",
+                    style: "border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface));",
                     div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
                         strong { style: "color: var(--warning);",
                             if en { "Installing — Please keep OtterSwiss open until finished." } else { "Instalando — No cierres OtterSwiss hasta que finalice." }
@@ -182,7 +171,7 @@ pub fn ToolsView() -> Element {
                             div { style: "font-size: var(--font-size-sm);", "{lbl} ({state.progress_percent}%)" }
                         }
                         div {
-                            style: "width: 100%; height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
                             div {
                                 style: "height: 100%; width: {state.progress_percent}%; background: var(--accent); transition: width 0.25s ease;",
                             }
@@ -191,9 +180,10 @@ pub fn ToolsView() -> Element {
                 }
             }
 
-            if let Some(msg) = state.tool_log.as_ref() {
-                div { class: "badge badge-info", style: "padding: var(--space-3); font-size: var(--font-size-sm);",
-                    "{msg}"
+            if let Some(msg) = state.tool_log.clone() {
+                StatusBanner {
+                    tone: if msg.starts_with("Error") { Tone::Danger } else { Tone::Info },
+                    text: msg,
                 }
             }
 
@@ -218,7 +208,7 @@ pub fn ToolsView() -> Element {
                 Card {
                     title: ctx_title,
                     subtitle: ctx_sub,
-                    div { style: "display: flex; align-items: center; justify-content: space-between; gap: 10px;",
+                    div { style: "display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);",
                         span {
                             class: if *context_menu_active.read() { "badge badge-success" } else { "badge badge-warning" },
                             if *context_menu_active.read() {
@@ -257,7 +247,7 @@ pub fn ToolsView() -> Element {
                             rsx! {
                                 div {
                                     key: "{dep_id}",
-                                    style: "display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);",
+                                    style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
                                     div {
                                         div { style: "font-weight: 600; font-size: var(--font-size-sm);", "{dep.name}" }
                                     }
@@ -275,7 +265,7 @@ pub fn ToolsView() -> Element {
                                         if !installed {
                                             button {
                                                 class: "btn btn-primary",
-                                                style: "padding: 5px 12px; font-size: var(--font-size-xs);",
+                                                style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                                                 disabled: any_busy,
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallRuntime(dep_id));
@@ -375,8 +365,8 @@ pub fn BatchAppStoreCard() -> Element {
                 }
 
                 for cat in categories {
-                    div { key: "{cat.label(en)}", style: "display: flex; flex-direction: column; gap: 6px;",
-                        h4 { style: "font-size: var(--font-size-xs); color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px;",
+                    div { key: "{cat.label(en)}", style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                        h4 { style: "font-size: var(--font-size-xs); color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1);",
                             "{cat.label(en)}"
                         }
                         for pkg in AppStoreManager::get_catalog().iter().filter(|p| p.category == cat) {
@@ -386,11 +376,17 @@ pub fn BatchAppStoreCard() -> Element {
                                 let is_installed = state.installed_app_ids.contains(pkg_id);
                                 let st = state.app_statuses.get(pkg_id).cloned();
                                 let desc = if en { pkg.description_en } else { pkg.description_es };
+                                // UI-15: «Evergreen» no es un número de versión.
+                                let version_label = if pkg.version == "Evergreen" {
+                                    if en { "latest version".to_string() } else { "última versión".to_string() }
+                                } else {
+                                    format!("v{}", pkg.version)
+                                };
 
                                 rsx! {
                                     div {
                                         key: "{pkg_id}",
-                                        style: "display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius);",
+                                        style: "display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius);",
                                         label {
                                             style: "display: flex; justify-content: space-between; align-items: center; cursor: pointer;",
                                             div { style: "display: flex; align-items: center; gap: var(--space-3);",
@@ -410,8 +406,8 @@ pub fn BatchAppStoreCard() -> Element {
                                                 div {
                                                     div { style: "font-weight: 600; font-size: var(--font-size-sm);",
                                                         "{pkg.name} "
-                                                        span { style: "font-weight: 400; font-size: 11px; color: var(--text-muted);",
-                                                            "v{pkg.version} • © {pkg.copyright_holder} ({pkg.license})"
+                                                        span { style: "font-weight: 400; font-size: var(--font-size-xs); color: var(--text-muted);",
+                                                            "{version_label} • © {pkg.copyright_holder} ({pkg.license})"
                                                         }
                                                     }
                                                     div { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
@@ -436,7 +432,7 @@ pub fn BatchAppStoreCard() -> Element {
                                         }
                                         if let Some(InstallStatus::Failed(err_msg)) = st {
                                             div {
-                                                style: "font-size: var(--font-size-xs); color: var(--danger); margin-left: 26px;",
+                                                style: "font-size: var(--font-size-xs); color: var(--danger); margin-left: var(--space-5);",
                                                 "{err_msg}"
                                             }
                                         }

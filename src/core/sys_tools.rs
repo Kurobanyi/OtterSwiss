@@ -144,7 +144,7 @@ impl SysTools {
 
         report
             .trimmed_processes
-            .sort_by(|a, b| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()));
+            .sort_by_key(|a| a.to_ascii_lowercase());
 
         Ok(report)
     }

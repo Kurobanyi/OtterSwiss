@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -9,9 +8,15 @@ use winreg::RegKey;
 
 use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::process::{run_in_job, Launch, ProcessExit};
+use crate::core::win_common::{
+    local_app_data_dir, program_files_dir, program_files_x86_dir, windows_dir,
+};
 use crate::core::safe_fs::delete_verified_file;
-use crate::core::trust::{ensure_admin_only_data_dir, secure_download_and_verify, DownloadPolicy};
-use crate::core::win_common::{to_wide_null, JobObject, SafeHandle};
+use crate::core::trust::{
+    ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
+    DownloadPolicy,
+};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeDependency {
@@ -164,14 +169,11 @@ impl DependencyManager {
 
         // Comprobación física en disco (EdgeWebView\Application\<version>\msedgewebview2.exe)
         let mut app_dirs = Vec::new();
-        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
-            app_dirs.push(Path::new(&pf86).join(r"Microsoft\EdgeWebView\Application"));
-        }
-        if let Ok(pf) = std::env::var("ProgramFiles") {
-            app_dirs.push(Path::new(&pf).join(r"Microsoft\EdgeWebView\Application"));
-        }
-        if let Ok(local) = std::env::var("LocalAppData") {
-            app_dirs.push(Path::new(&local).join(r"Microsoft\EdgeWebView\Application"));
+        for base in [program_files_x86_dir(), program_files_dir(), local_app_data_dir()]
+            .into_iter()
+            .flatten()
+        {
+            app_dirs.push(base.join(r"Microsoft\EdgeWebView\Application"));
         }
 
         for dir in app_dirs {
@@ -210,19 +212,15 @@ impl DependencyManager {
     }
 
     pub fn is_dotnet8_desktop_installed(arch: &str) -> bool {
-        let env_var = if arch == "x86" {
-            "ProgramFiles(x86)"
+        let base_pf = if arch == "x86" {
+            program_files_x86_dir()
         } else {
-            "ProgramFiles"
+            program_files_dir()
         };
-        let base_pf = std::env::var(env_var).unwrap_or_else(|_| {
-            if arch == "x86" {
-                r"C:\Program Files (x86)".to_string()
-            } else {
-                r"C:\Program Files".to_string()
-            }
-        });
-        let base = Path::new(&base_pf).join(r"dotnet\shared\Microsoft.WindowsDesktop.App");
+        let Some(base_pf) = base_pf else {
+            return false;
+        };
+        let base = base_pf.join(r"dotnet\shared\Microsoft.WindowsDesktop.App");
         std::fs::read_dir(base)
             .map(|entries| {
                 entries
@@ -233,8 +231,8 @@ impl DependencyManager {
     }
 
     pub fn is_directx_legacy_installed() -> bool {
-        if let Ok(sys_root) = std::env::var("SystemRoot") {
-            let root = Path::new(&sys_root);
+        if let Some(sys_root) = windows_dir() {
+            let root = sys_root.as_path();
             let dll64 = root.join(r"System32\d3dx9_43.dll");
             let dll32 = root.join(r"SysWOW64\d3dx9_43.dll");
             return dll64.is_file() && dll32.is_file();
@@ -289,86 +287,41 @@ impl DependencyManager {
             max_bytes: runtime.max_bytes,
         };
 
-        let file = match secure_download_and_verify(&installer_path, &policy) {
-            Ok(f) => f,
+        match secure_download_and_verify(&installer_path, &policy) {
+            Ok(f) => drop(f),
             Err(e) => {
                 let _ = delete_verified_file(&installer_path);
                 return Err(e);
             }
-        };
-        drop(file);
+        }
 
-        let job = JobObject::new_kill_on_close()?;
-        let cmd_line = format!("\"{}\" {}", installer_path.display(), runtime.silent_args);
-        let mut cmd_wide = to_wide_null(&cmd_line);
-
-        let mut pi = windows::Win32::System::Threading::PROCESS_INFORMATION::default();
-        let si = windows::Win32::System::Threading::STARTUPINFOW {
-            cb: std::mem::size_of::<windows::Win32::System::Threading::STARTUPINFOW>() as u32,
-            ..Default::default()
-        };
-
-        let wide_exe = to_wide_null(&installer_path);
-        unsafe {
-            windows::Win32::System::Threading::CreateProcessW(
-                windows::core::PCWSTR(wide_exe.as_ptr()),
-                windows::core::PWSTR(cmd_wide.as_mut_ptr()),
+        let run = (|| -> CoreResult<ProcessExit> {
+            // Mientras este handle viva nadie puede reemplazar el instalador (SEC-05).
+            let _exec_lock = reopen_verified_for_exec(&installer_path, &policy)?;
+            run_in_job(
+                &Launch {
+                    application: &installer_path,
+                    command_line: format!(
+                        "\"{}\" {}",
+                        installer_path.display(),
+                        runtime.silent_args
+                    ),
+                    working_dir: &secure_dir,
+                    user_token: None,
+                },
+                Duration::from_secs(300),
                 None,
-                None,
-                false,
-                Default::default(),
-                None,
-                windows::core::PCWSTR::null(),
-                &si,
-                &mut pi,
             )
-        }
-        .map_err(|e| {
-            let _ = delete_verified_file(&installer_path);
-            CoreError::SystemTool {
-                message: format!("Error ejecutando instalador runtime: {}", e),
-                source: None,
-            }
-        })?;
-
-        let _proc_handle = SafeHandle::new(pi.hProcess);
-        let _thread_handle = SafeHandle::new(pi.hThread);
-
-        if let Some(h) = _proc_handle.as_ref() {
-            job.assign(h.raw())?;
-        }
-
-        let wait_res =
-            unsafe { windows::Win32::System::Threading::WaitForSingleObject(pi.hProcess, 300_000) };
-
-        if wait_res == windows::Win32::Foundation::WAIT_TIMEOUT {
-            job.terminate_all(1);
-            let _ = delete_verified_file(&installer_path);
-            return Err(CoreError::SystemTool {
-                message: format!("Tiempo límite excedido instalando {}", runtime.name),
-                source: None,
-            });
-        }
-
-        let mut exit_code = 0u32;
-        unsafe {
-            windows::Win32::System::Threading::GetExitCodeProcess(pi.hProcess, &mut exit_code)
-        }
-        .map_err(|e| {
-            let _ = delete_verified_file(&installer_path);
-            CoreError::SystemTool {
-                message: format!("GetExitCodeProcess falló: {}", e),
-                source: None,
-            }
-        })?;
-
+        })();
         let _ = delete_verified_file(&installer_path);
+        let exit = run?;
 
-        if exit_code != 0 && exit_code != 3010 && exit_code != 1641 && exit_code != 1638 {
+        // 1638 = otra versión del producto ya instalada.
+        if !exit.is_success() && exit.exit_code != 1638 {
             return Err(CoreError::SystemTool {
                 message: format!(
                     "Instalador runtime finalizó con código de error {}",
-                    exit_code
+                    exit.exit_code
                 ),
                 source: None,
             });

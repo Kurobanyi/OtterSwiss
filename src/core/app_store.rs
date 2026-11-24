@@ -3,22 +3,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use windows::core::{PCWSTR, PWSTR};
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Security::{
-    DuplicateTokenEx, SecurityImpersonation, TokenPrimary, TOKEN_ALL_ACCESS, TOKEN_DUPLICATE,
-    TOKEN_QUERY,
-};
-use windows::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
-use windows::Win32::System::Threading::{
-    CreateProcessWithTokenW, GetExitCodeProcess, OpenProcess, OpenProcessToken,
-    WaitForSingleObject, CREATE_UNICODE_ENVIRONMENT, LOGON_WITH_PROFILE, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
-};
-use windows::Win32::UI::Shell::{FOLDERID_Public, SHGetKnownFolderPath, KF_FLAG_DEFAULT};
-use windows::Win32::UI::WindowsAndMessaging::{GetShellWindow, GetWindowThreadProcessId};
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
 };
@@ -26,11 +12,35 @@ use winreg::RegKey;
 
 use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::safe_fs::{create_verified_new_file, delete_verified_file};
-use crate::core::trust::{ensure_admin_only_data_dir, secure_download_and_verify, DownloadPolicy};
-use crate::core::win_common::{
-    to_wide_null, wide_ptr_to_string_and_free, JobObject, SafeHandle,
+use crate::core::process::{
+    duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir, Launch,
 };
+use crate::core::safe_fs::{
+    canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
+    delete_verified_file, delete_verified_file_under, path_is_strictly_under,
+};
+use crate::core::trust::{
+    ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
+    DownloadPolicy,
+};
+use crate::core::win_common::SafeHandle;
+
+/// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se
+/// piden en inglés (Firefox `lang=en-US`, Battle.net `--lang=enUS`).
+fn localize_catalog_text(text: &str, spanish: bool) -> String {
+    if spanish {
+        text.to_string()
+    } else {
+        text.replace("lang=es-ES", "lang=en-US")
+            .replace("--lang=esES", "--lang=enUS")
+    }
+}
+
+fn windows_ui_is_spanish() -> bool {
+    const LANG_SPANISH: u16 = 0x0a;
+    let lang_id = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
+    lang_id & 0x3ff == LANG_SPANISH
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AppCategory {
@@ -194,14 +204,14 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://playnite.link/",
         description_es: "Gestor unificado de juegos open-source",
         description_en: "Open-source game library manager",
-        version: "10.63",
-        url: "https://github.com/JosefNemec/Playnite/releases/download/10.63/Playnite1063.exe",
+        version: "10.65",
+        url: "https://github.com/JosefNemec/Playnite/releases/download/10.65/Playnite1065.exe",
         allowed_hosts: &[
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
         ],
-        expected_sha256: Some("675816d029dfdaa1fa458316a5ef726d27dc9527e3d7041bf76cb9fe6037cedc"),
+        expected_sha256: Some("99959aabf2feae11c71b8a4dbd4286f01071ed2a865b02f3c069974acf8244f1"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
@@ -261,20 +271,20 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://obsproject.com/",
         description_es: "Grabación y streaming libre",
         description_en: "Open-source recording & streaming",
-        version: "31.1.2",
-        url: "https://github.com/obsproject/obs-studio/releases/download/31.1.2/OBS-Studio-31.1.2-Windows-x64-Installer.exe",
+        version: "33.0.3",
+        url: "https://github.com/obsproject/obs-studio/releases/download/33.0.3/OBS-Studio-33.0.3-Windows-x64-Installer.exe",
         allowed_hosts: &[
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
         ],
-        expected_sha256: Some("2505c88de000799c274e8abd09743295b23a4b5c5bf5d3a3c294b2e001585dba"),
+        expected_sha256: Some("700be33c01468c2a1e43820bbcc49ba914f570f0f82250022bb680fba43b2a67"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
         run_unelevated: false,
         silent_args: "/S",
-        max_bytes: 200 * 1024 * 1024,
+        max_bytes: 230 * 1024 * 1024,
         uninstall_display_prefix: "OBS Studio",
     },
     CuratedPackage {
@@ -328,16 +338,14 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.7-zip.org/",
         description_es: "Compresor de archivos de alto ratio",
         description_en: "High-ratio file archiver",
-        version: "24.09",
-        url: "https://www.7-zip.org/a/7z2409-x64.exe",
+        version: "26.06",
+        url: "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-x64.exe",
         allowed_hosts: &[
-            "www.7-zip.org",
-            "7-zip.org",
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
         ],
-        expected_sha256: Some("bdd1a33de78618d16ee4ce148b849932c05d0015491c34887846d431d29f308e"),
+        expected_sha256: Some("9b697f65ecc2d9b0152f5ee96d72dde522a7827690349d9307935dacf40f42ec"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
@@ -358,8 +366,10 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         version: "5.1.4",
         url: "https://downloads.sourceforge.net/project/qbittorrent/qbittorrent-win32/qbittorrent-5.1.4/qbittorrent_5.1.4_x64_setup.exe",
         allowed_hosts: &["downloads.sourceforge.net", "*.dl.sourceforge.net"],
-        expected_sha256: None,
-        signer_cn: Some("Open Source Developer, Christophe Dumez|Christophe Dumez|SignPath Foundation|qBittorrent"),
+        // SEC-12: el instalador no trae firma Authenticode (qBittorrent firma con PGP), así que se fija
+        // el SHA-256 del archivo publicado en SourceForge (descargado y medido el 2026-11-24).
+        expected_sha256: Some("b279e16d682299f218edf48ddf75f7c5802263b7d6a74132d9e31fd5a255aa9d"),
+        signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
         run_unelevated: false,
@@ -400,15 +410,15 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://gitforwindows.org/",
         description_es: "Control de versiones distribuido",
         description_en: "Distributed version control",
-        version: "2.47.1",
-        url: "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe",
+        version: "2.56.1",
+        url: "https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe",
         allowed_hosts: &[
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
         ],
-        expected_sha256: None,
-        signer_cn: Some("Johannes Schindelin"),
+        expected_sha256: Some("c330c72e10b408cc39994bfefdb63542b0d93d21699325c3e0bd874af8a5a559"),
+        signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
         run_unelevated: false,
@@ -425,15 +435,15 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://notepad-plus-plus.org/",
         description_es: "Editor rápido de texto y código",
         description_en: "Fast source & text editor",
-        version: "8.7.5",
-        url: "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.5/npp.8.7.5.Installer.x64.exe",
+        version: "8.9.9.1",
+        url: "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.9.1/npp.8.9.9.1.Installer.x64.exe",
         allowed_hosts: &[
             "github.com",
             "objects.githubusercontent.com",
             "release-assets.githubusercontent.com",
         ],
-        expected_sha256: None,
-        signer_cn: Some("Notepad++"),
+        expected_sha256: Some("ce3267f5c4e7e42f847e00f4b20234da6150647203033cdde34a69593efc3152"),
+        signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
         run_unelevated: false,
@@ -443,119 +453,55 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
     },
 ];
 
-struct EnvBlockGuard(*mut std::ffi::c_void);
-impl Drop for EnvBlockGuard {
+/// Copia de un instalador preparada en el `Temp` del usuario del Explorador, para que un instalador que corre
+/// sin elevación pueda leerla. Se borra al soltarse.
+struct UserStagedCopy {
+    dir: PathBuf,
+    path: PathBuf,
+}
+
+impl Drop for UserStagedCopy {
     fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                let _ = DestroyEnvironmentBlock(self.0);
-            }
+        let _ = delete_verified_file_under(&self.path, Some(&self.dir));
+        if let Some(parent) = self.dir.parent() {
+            let _ = delete_verified_empty_dir_under(&self.dir, Some(parent));
         }
     }
 }
 
-fn get_msiexec_path() -> CoreResult<PathBuf> {
-    let mut buf = [0u16; 260];
-    let len = unsafe {
-        windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf))
-    } as usize;
-    if len == 0 || len >= buf.len() {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo localizar System32 para msiexec.exe".into(),
-            source: None,
-        });
+/// Prepara la copia en `%USERPROFILE%\AppData\Local\Temp\OtterSwiss_<nonce>` del usuario de `token`.
+/// La carpeta se crea nueva (falla si existe) y se comprueba que no escape del perfil por una junction.
+fn stage_copy_for_user(
+    token: &SafeHandle,
+    src: &Path,
+    file_name: &str,
+    nonce: u128,
+) -> CoreResult<UserStagedCopy> {
+    let profile = user_profile_dir(token)?;
+    let profile_canon = canonical_dos_path(&profile)?;
+    let dir = profile
+        .join(r"AppData\Local\Temp")
+        .join(format!("OtterSwiss_{}_{}", std::process::id(), nonce));
+    std::fs::create_dir(&dir)?;
+    let dir_canon = canonical_dos_path(&dir)?;
+    if !path_is_strictly_under(&dir_canon, &profile_canon) {
+        let _ = std::fs::remove_dir(&dir);
+        return Err(CoreError::Validation(format!(
+            "La carpeta temporal del usuario escapa de su perfil: '{}'",
+            dir_canon.display()
+        )));
     }
-    let sys_dir = String::from_utf16_lossy(&buf[..len]);
-    Ok(PathBuf::from(sys_dir).join("msiexec.exe"))
-}
-
-fn get_public_unelevated_staging_dir() -> CoreResult<PathBuf> {
-    let raw_ptr =
-        unsafe { SHGetKnownFolderPath(&FOLDERID_Public, KF_FLAG_DEFAULT, None) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("SHGetKnownFolderPath(FOLDERID_Public) falló: {}", e),
-                source: None,
-            }
-        })?;
-    let pub_dir = wide_ptr_to_string_and_free(raw_ptr);
-    if pub_dir.is_empty() {
-        return Err(CoreError::SystemTool {
-            message: "FOLDERID_Public devolvió ruta vacía".into(),
-            source: None,
-        });
-    }
-    let staging = PathBuf::from(pub_dir).join("OtterSwiss_Staging");
-    std::fs::create_dir_all(&staging)?;
-    Ok(staging)
-}
-
-fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
-    let shell_hwnd = unsafe { GetShellWindow() };
-    if shell_hwnd.0.is_null() {
-        return Err(CoreError::SystemTool {
-            message: "No se encontró el Explorador de escritorio para ejecutar sin elevación"
-                .into(),
-            source: None,
-        });
-    }
-
-    let mut shell_pid = 0u32;
-    unsafe {
-        GetWindowThreadProcessId(shell_hwnd, Some(&mut shell_pid));
-    }
-    if shell_pid == 0 {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo obtener el PID de explorer.exe".into(),
-            source: None,
-        });
-    }
-
-    let shell_proc_raw =
-        unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, shell_pid) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("OpenProcess(explorer.exe) falló: {}", e),
-                source: None,
-            }
-        })?;
-    let shell_proc = SafeHandle::new(shell_proc_raw)
-        .ok_or_else(|| CoreError::from_win32("Handle de explorer.exe inválido"))?;
-
-    let mut shell_tok_raw = HANDLE::default();
-    unsafe { OpenProcessToken(shell_proc.raw(), TOKEN_DUPLICATE | TOKEN_QUERY, &mut shell_tok_raw) }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("OpenProcessToken(explorer.exe) falló: {}", e),
-            source: None,
-        })?;
-    let shell_tok = SafeHandle::new(shell_tok_raw)
-        .ok_or_else(|| CoreError::from_win32("Token de explorer.exe inválido"))?;
-
-    let mut primary_raw = HANDLE::default();
-    unsafe {
-        DuplicateTokenEx(
-            shell_tok.raw(),
-            TOKEN_ALL_ACCESS,
-            None,
-            SecurityImpersonation,
-            TokenPrimary,
-            &mut primary_raw,
-        )
-    }
-    .map_err(|e| CoreError::SystemTool {
-        message: format!("DuplicateTokenEx falló: {}", e),
-        source: None,
-    })?;
-
-    SafeHandle::new(primary_raw)
-        .ok_or_else(|| CoreError::from_win32("Token primario duplicado inválido"))
-}
-
-fn copy_verified_to_path(src_path: &Path, dst_path: &Path) -> CoreResult<()> {
-    let mut src = File::open(src_path)?;
-    let (mut dst, _) = create_verified_new_file(dst_path, true)?;
-    std::io::copy(&mut src, &mut dst)?;
+    let path = dir.join(file_name);
+    let staged = UserStagedCopy {
+        dir: dir.clone(),
+        path: path.clone(),
+    };
+    let mut src_file = File::open(src)?;
+    let (mut dst, _) = create_verified_new_file(&path, false)?;
+    std::io::copy(&mut src_file, &mut dst)?;
     dst.flush()?;
     dst.sync_all()?;
-    Ok(())
+    Ok(staged)
 }
 
 fn check_spotify_presence_on_disk() -> bool {
@@ -582,18 +528,54 @@ fn check_spotify_presence_on_disk() -> bool {
             }
         }
     }
-    if let Ok(pf) = std::env::var("ProgramFiles") {
-        if Path::new(&pf).join(r"Spotify\Spotify.exe").is_file() {
+    if let Some(pf) = crate::core::win_common::program_files_dir() {
+        if pf.join(r"Spotify\Spotify.exe").is_file() {
             return true;
         }
     }
-    if RegKey::predef(HKEY_CURRENT_USER)
+    RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey(r"Software\Spotify")
         .is_ok()
-    {
+}
+
+/// `true` si el `DisplayName` del registro es el del paquete: el prefijo exacto, o el prefijo seguido de
+/// espacio/guion y un número de versión. «Git 2.47» sí; «Git LFS» o «GitHub Desktop», no.
+fn display_name_matches(display_name: &str, prefix: &str) -> bool {
+    let dn = display_name.trim().to_ascii_lowercase();
+    let pref = prefix.trim().to_ascii_lowercase();
+    if dn == pref {
         return true;
     }
-    false
+    let Some(rest) = dn.strip_prefix(&pref) else {
+        return false;
+    };
+    let mut chars = rest.chars();
+    match chars.next() {
+        Some(' ') | Some('-') => {}
+        _ => return false,
+    }
+    let after = chars.as_str().trim_start_matches(['v', 'V']);
+    after.chars().next().is_some_and(|c| c.is_ascii_digit())
+        || after.starts_with('(')
+}
+
+/// `"25.01"` → `[25, 1]`; `"2.47.1.windows.1"` → `[2, 47, 1]`. `None` si no empieza con un número.
+fn parse_numeric_version(v: &str) -> Option<Vec<u64>> {
+    let clean = v.trim().trim_start_matches(['v', 'V']);
+    let mut parts = Vec::new();
+    for seg in clean.split(['.', '-', ' ']) {
+        match seg.parse::<u64>() {
+            Ok(n) => parts.push(n),
+            Err(_) => break,
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    while parts.len() > 1 && parts.last() == Some(&0) {
+        parts.pop();
+    }
+    Some(parts)
 }
 
 pub struct AppStoreManager;
@@ -609,26 +591,23 @@ impl AppStoreManager {
             .find(|p| p.id.eq_ignore_ascii_case(package_id))
     }
 
+    /// Paquete del catálogo con una versión **mayor** que la instalada. La versión se compara por números,
+    /// no como texto: con 7-Zip 25 instalado no se ofrece «actualizar» a una versión anterior (ERR-09).
     pub fn find_newer_curated_version(
         display_name: &str,
         current_version: &str,
     ) -> Option<&'static CuratedPackage> {
-        let dn_low = display_name.to_ascii_lowercase();
-        let cur_pkg = CURATED_CATALOG.iter().find(|p| {
-            let pref = p.uninstall_display_prefix.to_ascii_lowercase();
-            dn_low == pref
-                || dn_low.starts_with(&format!("{} ", pref))
-                || dn_low.starts_with(&format!("{}-", pref))
-        })?;
+        let cur_pkg = CURATED_CATALOG
+            .iter()
+            .find(|p| display_name_matches(display_name, p.uninstall_display_prefix))?;
 
         if cur_pkg.version == "Evergreen" {
             return None;
         }
 
-        let installed_clean = current_version.trim().trim_start_matches('v');
-        let catalog_clean = cur_pkg.version.trim().trim_start_matches('v');
-
-        if !installed_clean.is_empty() && installed_clean != catalog_clean {
+        let installed = parse_numeric_version(current_version)?;
+        let catalog = parse_numeric_version(cur_pkg.version)?;
+        if catalog > installed {
             Some(cur_pkg)
         } else {
             None
@@ -664,13 +643,9 @@ impl AppStoreManager {
 
         let mut installed = HashSet::new();
         for pkg in CURATED_CATALOG {
-            let pref = pkg.uninstall_display_prefix.to_ascii_lowercase();
-            let found = display_names.iter().any(|name| {
-                let low = name.to_ascii_lowercase();
-                low == pref
-                    || low.starts_with(&format!("{} ", pref))
-                    || low.starts_with(&format!("{}-", pref))
-            });
+            let found = display_names
+                .iter()
+                .any(|name| display_name_matches(name, pkg.uninstall_display_prefix));
             if found {
                 installed.insert(pkg.id);
             }
@@ -702,18 +677,19 @@ impl AppStoreManager {
             ))
         })?;
 
-        let secure_dir = ensure_admin_only_data_dir()?.join("staging");
-        std::fs::create_dir_all(&secure_dir)?;
+        let staging = ensure_admin_only_data_dir()?.join("staging");
+        std::fs::create_dir_all(&staging)?;
         let ext = if pkg.is_msi { "msi" } else { "exe" };
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let installer_path =
-            secure_dir.join(format!("{}_{}_{}.{}", pkg.id, std::process::id(), nonce, ext));
+        let file_name = format!("{}_{}_{}.{}", pkg.id, std::process::id(), nonce, ext);
+        let installer_path = staging.join(&file_name);
 
+        let url = localize_catalog_text(pkg.url, windows_ui_is_spanish());
         let policy = DownloadPolicy {
-            url: pkg.url,
+            url: &url,
             allowed_final_hosts: pkg.allowed_hosts,
             expected_sha256_hex: pkg.expected_sha256,
             expected_cert_thumbprint_sha1: pkg.cert_thumbprint_sha1,
@@ -721,194 +697,118 @@ impl AppStoreManager {
             max_bytes: pkg.max_bytes,
         };
 
-        let downloaded_file = match secure_download_and_verify(&installer_path, &policy) {
-            Ok(f) => f,
+        match secure_download_and_verify(&installer_path, &policy) {
+            Ok(f) => drop(f),
             Err(e) => {
                 let _ = delete_verified_file(&installer_path);
                 return Err(e);
             }
-        };
-        drop(downloaded_file);
+        }
 
+        let result =
+            Self::run_verified_installer(pkg, &installer_path, &file_name, nonce, &policy, cancel);
+        let _ = delete_verified_file(&installer_path);
+        result
+    }
+
+    fn run_verified_installer(
+        pkg: &CuratedPackage,
+        installer_path: &Path,
+        file_name: &str,
+        nonce: u128,
+        policy: &DownloadPolicy<'_>,
+        cancel: &AtomicBool,
+    ) -> CoreResult<()> {
         if cancel.load(Ordering::Acquire) {
-            let _ = delete_verified_file(&installer_path);
             return Err(CoreError::Cancelled);
         }
 
-        let mut unelevated_copy: Option<PathBuf> = None;
-        let run_path = if pkg.run_unelevated {
-            let pub_staging = match get_public_unelevated_staging_dir() {
-                Ok(d) => d,
-                Err(e) => {
-                    let _ = delete_verified_file(&installer_path);
-                    return Err(e);
-                }
-            };
-            let target = pub_staging.join(format!(
-                "{}_{}_{}.{}",
-                pkg.id,
-                std::process::id(),
-                nonce,
-                ext
-            ));
-            if let Err(e) = copy_verified_to_path(&installer_path, &target) {
-                let _ = delete_verified_file(&target);
-                let _ = delete_verified_file(&installer_path);
-                return Err(e);
-            }
-            unelevated_copy = Some(target.clone());
-            target
+        let user_token = if pkg.run_unelevated {
+            Some(duplicate_desktop_shell_primary_token()?)
         } else {
-            installer_path.clone()
+            None
         };
-
-        let cleanup_files = || {
-            if let Some(ref copy_p) = unelevated_copy {
-                let _ = delete_verified_file(copy_p);
-            }
-            let _ = delete_verified_file(&installer_path);
+        let user_copy = match user_token.as_ref() {
+            Some(tok) => Some(stage_copy_for_user(tok, installer_path, file_name, nonce)?),
+            None => None,
         };
+        let run_path: &Path = user_copy.as_ref().map_or(installer_path, |c| c.path.as_path());
 
-        let (exe_to_run, cmd_line) = if pkg.is_msi {
-            let msiexec = match get_msiexec_path() {
-                Ok(p) => p,
-                Err(e) => {
-                    cleanup_files();
-                    return Err(e);
-                }
-            };
+        // Mientras este handle viva nadie puede reemplazar el instalador (SEC-05).
+        let _exec_lock = reopen_verified_for_exec(run_path, policy)?;
+        let working_dir = run_path.parent().unwrap_or(run_path);
+
+        let silent_args = localize_catalog_text(pkg.silent_args, windows_ui_is_spanish());
+        let (application, command_line) = if pkg.is_msi {
+            let msiexec = system32_dir()?.join("msiexec.exe");
             let cmd = format!(
                 "\"{}\" /i \"{}\" {}",
                 msiexec.display(),
                 run_path.display(),
-                pkg.silent_args
+                silent_args
             );
             (msiexec, cmd)
         } else {
-            let cmd = format!("\"{}\" {}", run_path.display(), pkg.silent_args);
-            (run_path.clone(), cmd)
+            let cmd = format!("\"{}\" {}", run_path.display(), silent_args);
+            (run_path.to_path_buf(), cmd)
         };
 
-        let job = JobObject::new_kill_on_close()?;
-        let mut cmd_wide = to_wide_null(&cmd_line);
+        let exit = run_in_job(
+            &Launch {
+                application: &application,
+                command_line,
+                working_dir,
+                user_token: user_token.as_ref(),
+            },
+            Duration::from_secs(300),
+            Some(cancel),
+        )?;
 
-        let mut pi = PROCESS_INFORMATION::default();
-        let si = STARTUPINFOW {
-            cb: std::mem::size_of::<STARTUPINFOW>() as u32,
-            ..Default::default()
-        };
-
-        if pkg.run_unelevated {
-            let user_token = match duplicate_desktop_shell_primary_token() {
-                Ok(t) => t,
-                Err(e) => {
-                    cleanup_files();
-                    return Err(e);
-                }
-            };
-
-            let mut env_block: *mut std::ffi::c_void = std::ptr::null_mut();
-            if let Err(e) = unsafe { CreateEnvironmentBlock(&mut env_block, user_token.raw(), false) }
-            {
-                cleanup_files();
-                return Err(CoreError::SystemTool {
-                    message: format!("CreateEnvironmentBlock falló: {}", e),
-                    source: None,
-                });
-            }
-            let _env_guard = EnvBlockGuard(env_block);
-
-            if let Err(e) = unsafe {
-                CreateProcessWithTokenW(
-                    user_token.raw(),
-                    LOGON_WITH_PROFILE,
-                    PCWSTR::null(),
-                    PWSTR(cmd_wide.as_mut_ptr()),
-                    CREATE_UNICODE_ENVIRONMENT,
-                    Some(env_block),
-                    PCWSTR::null(),
-                    &si,
-                    &mut pi,
-                )
-            } {
-                cleanup_files();
-                return Err(CoreError::SystemTool {
-                    message: format!("CreateProcessWithTokenW para '{}' falló: {}", pkg.name, e),
-                    source: None,
-                });
-            }
-        } else {
-            let wide_exe = to_wide_null(&exe_to_run);
-            if let Err(e) = unsafe {
-                windows::Win32::System::Threading::CreateProcessW(
-                    PCWSTR(wide_exe.as_ptr()),
-                    PWSTR(cmd_wide.as_mut_ptr()),
-                    None,
-                    None,
-                    false,
-                    Default::default(),
-                    None,
-                    PCWSTR::null(),
-                    &si,
-                    &mut pi,
-                )
-            } {
-                cleanup_files();
-                return Err(CoreError::SystemTool {
-                    message: format!("Error ejecutando instalador de '{}': {}", pkg.name, e),
-                    source: None,
-                });
-            }
-        }
-
-        let _proc_handle = SafeHandle::new(pi.hProcess);
-        let _thread_handle = SafeHandle::new(pi.hThread);
-
-        if let Some(h) = _proc_handle.as_ref() {
-            job.assign(h.raw())?;
-        }
-
-        let mut elapsed_ms = 0u32;
-        let max_wait_ms = 300_000u32;
-        loop {
-            if cancel.load(Ordering::Acquire) {
-                job.terminate_all(1);
-                cleanup_files();
-                return Err(CoreError::Cancelled);
-            }
-            let wait_res = unsafe { WaitForSingleObject(pi.hProcess, 500) };
-            if wait_res == windows::Win32::Foundation::WAIT_OBJECT_0 {
-                break;
-            }
-            elapsed_ms = elapsed_ms.saturating_add(500);
-            if elapsed_ms >= max_wait_ms {
-                job.terminate_all(1);
-                cleanup_files();
-                return Err(CoreError::SystemTool {
-                    message: format!("Tiempo límite excedido instalando '{}'", pkg.name),
-                    source: None,
-                });
-            }
-        }
-
-        let mut exit_code = 0u32;
-        if let Err(e) = unsafe { GetExitCodeProcess(pi.hProcess, &mut exit_code) } {
-            cleanup_files();
+        // 1638 = otra versión del producto ya instalada.
+        if !exit.is_success() && exit.exit_code != 1638 {
             return Err(CoreError::SystemTool {
-                message: format!("GetExitCodeProcess falló: {}", e),
+                message: format!(
+                    "Instalador de '{}' terminó con código {}",
+                    pkg.name, exit.exit_code
+                ),
                 source: None,
             });
         }
-
-        cleanup_files();
-
-        if exit_code != 0 && exit_code != 3010 && exit_code != 1641 && exit_code != 1638 {
-            return Err(CoreError::SystemTool {
-                message: format!("Instalador de '{}' terminó con código {}", pkg.name, exit_code),
-                source: None,
-            });
-        }
-
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nombre_del_registro_coincide_solo_con_el_paquete() {
+        assert!(display_name_matches("Git", "Git"));
+        assert!(display_name_matches("Git 2.47.1", "Git"));
+        assert!(!display_name_matches("Git LFS version 3.5", "Git"));
+        assert!(!display_name_matches("GitHub Desktop", "Git"));
+        assert!(display_name_matches("7-Zip 24.09 (x64)", "7-Zip"));
+        assert!(display_name_matches("Notepad++ (64-bit x64)", "Notepad++"));
+    }
+
+    #[test]
+    fn version_numerica_no_ofrece_downgrade() {
+        assert!(parse_numeric_version("25.01") > parse_numeric_version("24.09"));
+        assert!(parse_numeric_version("2.47.1.windows.1") < parse_numeric_version("2.56.1"));
+        assert_eq!(parse_numeric_version("8.7"), parse_numeric_version("8.7.0"));
+        assert_eq!(parse_numeric_version("Evergreen"), None);
+        // ERR-09: con una versión instalada más nueva que la del catálogo no hay «Actualizar».
+        assert!(AppStoreManager::find_newer_curated_version("7-Zip 99.00 (x64)", "99.00").is_none());
+    }
+
+    /// UI-15: con Windows en otro idioma, Firefox y Battle.net se piden en inglés.
+    #[test]
+    fn catalogo_se_localiza_segun_idioma() {
+        let url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=es-ES";
+        assert_eq!(localize_catalog_text(url, true), url);
+        assert!(localize_catalog_text(url, false).ends_with("lang=en-US"));
+        assert!(localize_catalog_text("--lang=esES --installpath=x", false).starts_with("--lang=enUS"));
+        assert_eq!(localize_catalog_text("/S", false), "/S");
     }
 }

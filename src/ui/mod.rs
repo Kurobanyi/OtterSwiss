@@ -120,7 +120,9 @@ fn run_installer_worker(
     mut rx: UnboundedReceiver<InstallJobRequest>,
     cancel_worker: Arc<AtomicBool>,
     mut state_sig: Signal<ToolsSharedState>,
+    lang: Signal<Lang>,
 ) {
+    let lang_is_en = move || lang.peek().is_en();
     spawn(async move {
         while let Some(req) = rx.recv().await {
             cancel_worker.store(false, Ordering::Release);
@@ -131,7 +133,7 @@ fn run_installer_worker(
                         s.is_working = true;
                         s.progress_percent = 30;
                         s.progress_label = Some(format!("{}...", dep_id));
-                        s.tool_log = Some(format!("Instalando '{}'...", dep_id));
+                        s.tool_log = Some(format!("{} '{}'...", if lang_is_en() { "Installing" } else { "Instalando" }, dep_id));
                     }
 
                     let res = tokio::task::spawn_blocking(move || {
@@ -140,7 +142,7 @@ fn run_installer_worker(
                     .await
                     .unwrap_or_else(|e| {
                         Err(CoreError::SystemTool {
-                            message: format!("Fallo interno de hilo: {}", e),
+                            message: e.to_string(),
                             source: None,
                         })
                     });
@@ -160,7 +162,13 @@ fn run_installer_worker(
                     s.progress_label = None;
                     s.is_working = false;
                     match res {
-                        Ok(()) => s.tool_log = Some(format!("'{}' OK.", dep_id)),
+                        Ok(()) => {
+                            s.tool_log = Some(if lang_is_en() {
+                                format!("'{}' installed.", dep_id)
+                            } else {
+                                format!("'{}' instalado.", dep_id)
+                            })
+                        }
                         Err(e) => s.tool_log = Some(format!("Error '{}': {}", dep_id, e)),
                     }
                 }
@@ -171,7 +179,11 @@ fn run_installer_worker(
                         s.is_working = true;
                         s.progress_percent = 5;
                         s.progress_label = Some(format!("0/{}", total));
-                        s.summary_msg = Some(format!("Cola: {} app(s)...", total));
+                        s.summary_msg = Some(if lang_is_en() {
+                            format!("Queue: {} app(s)...", total)
+                        } else {
+                            format!("Cola: {} app(s)...", total)
+                        });
                         s.app_statuses.clear();
                         for &id in &ids {
                             s.app_statuses.insert(id, InstallStatus::Queued);
@@ -180,6 +192,7 @@ fn run_installer_worker(
 
                     let mut ok_count = 0usize;
                     let mut err_count = 0usize;
+                    let mut cancelled = false;
 
                     for (idx, &pkg_id) in ids.iter().enumerate() {
                         if cancel_worker.load(Ordering::Acquire) {
@@ -201,7 +214,7 @@ fn run_installer_worker(
                         .await
                         .unwrap_or_else(|e| {
                             Err(CoreError::SystemTool {
-                                message: format!("Fallo interno de hilo: {}", e),
+                                message: e.to_string(),
                                 source: None,
                             })
                         });
@@ -213,8 +226,13 @@ fn run_installer_worker(
                                 s.app_statuses.insert(pkg_id, InstallStatus::Done);
                             }
                             Err(CoreError::Cancelled) => {
-                                s.app_statuses
-                                    .insert(pkg_id, InstallStatus::Failed("Cancelado".into()));
+                                cancelled = true;
+                                s.app_statuses.insert(
+                                    pkg_id,
+                                    InstallStatus::Failed(
+                                        if lang_is_en() { "Cancelled" } else { "Cancelado" }.into(),
+                                    ),
+                                );
                                 break;
                             }
                             Err(e) => {
@@ -235,7 +253,16 @@ fn run_installer_worker(
                     s.progress_percent = 100;
                     s.progress_label = None;
                     s.is_working = false;
-                    s.summary_msg = Some(format!("OK: {} | Error: {}", ok_count, err_count));
+                    // UI-02: el resumen dice qué falló o si se canceló, no un «OK» genérico.
+                    let en = lang_is_en();
+                    s.summary_msg = Some(match (cancelled, err_count, en) {
+                        (true, _, true) => format!("Cancelled: {} installed, {} failed.", ok_count, err_count),
+                        (true, _, false) => format!("Cancelado: {} instaladas, {} con error.", ok_count, err_count),
+                        (false, 0, true) => format!("{} app(s) installed.", ok_count),
+                        (false, 0, false) => format!("{} app(s) instalada(s).", ok_count),
+                        (false, _, true) => format!("{} installed, {} failed: see each app's status.", ok_count, err_count),
+                        (false, _, false) => format!("{} instaladas, {} con error: mira el estado de cada app.", ok_count, err_count),
+                    });
                 }
             }
         }
@@ -283,7 +310,7 @@ pub fn App() -> Element {
 
     let dispatcher = use_hook(|| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<InstallJobRequest>();
-        run_installer_worker(rx, Arc::clone(&cancel_flag), tools_state);
+        run_installer_worker(rx, Arc::clone(&cancel_flag), tools_state, current_lang);
         InstallerDispatcher {
             tx,
             cancel_flag: Arc::clone(&cancel_flag),
