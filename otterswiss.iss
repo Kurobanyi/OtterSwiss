@@ -50,4 +50,5 @@ Filename: "{app}\otter_swiss.exe"; Parameters: "--install-context-menu"; Tasks: 
 Filename: "{app}\otter_swiss.exe"; Description: "{cm:LaunchAfterInstall}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
+Filename: "{app}\otter_swiss.exe"; Parameters: "--rollback"; Flags: runhidden waituntilterminated; RunOnceId: "RevertAllChanges"
 Filename: "{app}\otter_swiss.exe"; Parameters: "--uninstall-context-menu"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallContextMenu"

@@ -291,12 +291,12 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.iter().any(|a| a == "--rollback") {
-        if let Ok(prog_data) = otter_swiss::core::trust::get_program_data_dir() {
-            let data_dir = prog_data.join("OtterSwiss");
-            let engine = otter_swiss::core::engine::OptimizationEngine::new(&data_dir);
-            let _ = engine.rollback(false);
-        }
-        return;
+        let code = match otter_swiss::core::uninstaller::UninstallerManager::revert_all_changes() {
+            Ok(report) if report.is_complete() => 0,
+            Ok(_) => 2,
+            Err(_) => 1,
+        };
+        std::process::exit(code);
     }
 
     if args.iter().any(|a| a == "--install-context-menu") {

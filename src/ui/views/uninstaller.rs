@@ -9,7 +9,7 @@ use crate::core::app_store::AppStoreManager;
 use crate::core::uninstaller::{
     InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallerManager,
 };
-use crate::ui::components::Card;
+use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::{refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState};
 
@@ -19,6 +19,19 @@ enum SortMode {
     NameDesc,
     SizeDesc,
     SizeAsc,
+}
+
+/// Mensaje de estado con su tono (UI-02).
+type Status = Option<(String, Tone)>;
+
+/// SYS-02: códigos de salida que significan «desinstalado» (3010 y 1641 piden reinicio).
+fn uninstall_exit_is_success(code: u32) -> bool {
+    matches!(code, 0 | 3010 | 1641)
+}
+
+/// Solo se preseleccionan los restos que el core marca como seguros (SYS-03).
+fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
+    items.iter().filter(|i| i.recommended).map(|i| i.id.clone()).collect()
 }
 
 fn format_size_mb(bytes: u64) -> String {
@@ -52,54 +65,69 @@ fn start_scan(
     app: InstalledApp,
     en: bool,
     mut is_working: Signal<bool>,
-    mut status_msg: Signal<Option<String>>,
+    mut status_msg: Signal<Status>,
     mut selected_leftovers: Signal<HashSet<String>>,
     mut leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
 ) {
     is_working.set(true);
-    status_msg.set(Some(if en {
-        format!("Scanning leftovers for '{}'...", app.display_name)
-    } else {
-        format!("Escaneando rastros de '{}'...", app.display_name)
-    }));
+    status_msg.set(Some((
+        if en {
+            format!("Scanning leftovers for '{}'...", app.display_name)
+        } else {
+            format!("Escaneando rastros de '{}'...", app.display_name)
+        },
+        Tone::Info,
+    )));
 
     spawn(async move {
         let app_clone = app.clone();
-        let found = tokio::task::spawn_blocking(move || {
-            UninstallerManager::scan_leftovers(&app_clone)
-        })
-        .await
-        .ok()
-        .and_then(|r| r.ok())
-        .unwrap_or_default();
+        let res = tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_clone))
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r.map_err(|e| e.to_string()));
 
-        let ids: HashSet<String> = found.iter().map(|i| i.id.clone()).collect();
-        selected_leftovers.set(ids);
-        if found.is_empty() {
-            status_msg.set(Some(if en {
-                format!("No leftovers found for '{}'.", app.display_name)
-            } else {
-                format!("Sin rastros residuales de '{}'.", app.display_name)
-            }));
-        } else {
-            status_msg.set(Some(if en {
-                format!("Found {} leftover(s) for '{}'.", found.len(), app.display_name)
-            } else {
-                format!("{} rastro(s) detectados de '{}'.", found.len(), app.display_name)
-            }));
-            leftovers_modal.set(Some((app, found)));
+        match res {
+            Err(err) => status_msg.set(Some((
+                if en {
+                    format!("Could not scan '{}': {}", app.display_name, err)
+                } else {
+                    format!("No se pudo escanear '{}': {}", app.display_name, err)
+                },
+                Tone::Danger,
+            ))),
+            Ok(found) if found.is_empty() => status_msg.set(Some((
+                if en {
+                    format!("No leftovers found for '{}'.", app.display_name)
+                } else {
+                    format!("Sin rastros residuales de '{}'.", app.display_name)
+                },
+                Tone::Success,
+            ))),
+            Ok(found) => {
+                selected_leftovers.set(recommended_ids(&found));
+                status_msg.set(Some((
+                    if en {
+                        format!("Found {} leftover(s) for '{}'.", found.len(), app.display_name)
+                    } else {
+                        format!("{} rastro(s) detectados de '{}'.", found.len(), app.display_name)
+                    },
+                    Tone::Info,
+                )));
+                leftovers_modal.set(Some((app, found)));
+            }
         }
         is_working.set(false);
     });
 }
 
+#[allow(clippy::too_many_arguments)] // Señales de la vista; son `Copy` y no ganan nada agrupadas.
 fn start_uninstall_and_scan(
     app: InstalledApp,
     en: bool,
     mut is_working: Signal<bool>,
     mut purge_summary: Signal<Option<PurgeReport>>,
-    mut status_msg: Signal<Option<String>>,
-    mut apps: Signal<Vec<InstalledApp>>,
+    mut status_msg: Signal<Status>,
+    apps: Signal<Vec<InstalledApp>>,
     extra_sizes: Signal<HashMap<String, u64>>,
     mut selected_leftovers: Signal<HashSet<String>>,
     mut leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
@@ -107,11 +135,14 @@ fn start_uninstall_and_scan(
 ) {
     is_working.set(true);
     purge_summary.set(None);
-    status_msg.set(Some(if en {
-        format!("Uninstalling '{}'...", app.display_name)
-    } else {
-        format!("Desinstalando '{}'...", app.display_name)
-    }));
+    status_msg.set(Some((
+        if en {
+            format!("Uninstalling '{}'...", app.display_name)
+        } else {
+            format!("Desinstalando '{}'...", app.display_name)
+        },
+        Tone::Info,
+    )));
 
     spawn(async move {
         let app_run = app.clone();
@@ -119,47 +150,111 @@ fn start_uninstall_and_scan(
             UninstallerManager::run_uninstaller(&app_run, Duration::from_secs(300))
         })
         .await
-        .map_err(|e| format!("Thread error: {}", e))
+        .map_err(|e| e.to_string())
         .and_then(|r| r.map_err(|e| e.to_string()));
 
-        match res {
-            Ok(_) => {
-                let app_scan = app.clone();
-                let found = tokio::task::spawn_blocking(move || {
-                    UninstallerManager::scan_leftovers(&app_scan)
+        let name = app.display_name.clone();
+        let (text, tone) = match res {
+            Err(err) => (
+                if en {
+                    format!("Could not uninstall '{}': {}", name, err)
+                } else {
+                    format!("No se pudo desinstalar '{}': {}", name, err)
+                },
+                Tone::Danger,
+            ),
+            // SYS-02: un código de fallo no cuenta como desinstalación y no se buscan restos.
+            Ok(code) if !uninstall_exit_is_success(code) => (
+                if en {
+                    format!("The uninstaller of '{}' ended with code {}; leftovers were not scanned.", name, code)
+                } else {
+                    format!("El desinstalador de '{}' terminó con el código {}; no se buscaron restos.", name, code)
+                },
+                Tone::Danger,
+            ),
+            Ok(code) => {
+                let app_check = app.clone();
+                let still = tokio::task::spawn_blocking(move || {
+                    UninstallerManager::is_still_registered(&app_check)
                 })
                 .await
-                .ok()
-                .and_then(|r| r.ok())
-                .unwrap_or_default();
+                .unwrap_or(true);
+                let reboot_note = match (code != 0, en) {
+                    (false, _) => "",
+                    (true, true) => " Restart Windows to finish.",
+                    (true, false) => " Reinicia Windows para terminar.",
+                };
 
-                let refreshed = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
-                    .await
-                    .ok()
-                    .and_then(|r| r.ok())
-                    .unwrap_or_default();
-                apps.set(refreshed.clone());
-                spawn_fill_missing_sizes(refreshed, extra_sizes);
-                refresh_tools_inventory(tools_state);
-
-                if found.is_empty() {
-                    status_msg.set(Some(if en {
-                        format!("'{}' removed cleanly.", app.display_name)
-                    } else {
-                        format!("'{}' desinstalado sin rastros.", app.display_name)
-                    }));
+                if still {
+                    (
+                        if en {
+                            format!("'{}' is still installed; its uninstaller may need a restart or your input.", name)
+                        } else {
+                            format!("'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.", name)
+                        },
+                        Tone::Warning,
+                    )
                 } else {
-                    let ids: HashSet<String> = found.iter().map(|i| i.id.clone()).collect();
-                    selected_leftovers.set(ids);
-                    leftovers_modal.set(Some((app, found)));
+                    let app_scan = app.clone();
+                    let scan = tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_scan))
+                        .await
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()));
+                    match scan {
+                        Err(err) => (
+                            if en {
+                                format!("'{}' uninstalled, but its leftovers could not be scanned: {}", name, err)
+                            } else {
+                                format!("'{}' desinstalada, pero no se pudieron buscar sus restos: {}", name, err)
+                            },
+                            Tone::Warning,
+                        ),
+                        Ok(found) if found.is_empty() => (
+                            if en {
+                                format!("'{}' uninstalled; no leftovers found.{}", name, reboot_note)
+                            } else {
+                                format!("'{}' desinstalada; no se encontraron restos.{}", name, reboot_note)
+                            },
+                            Tone::Success,
+                        ),
+                        Ok(found) => {
+                            selected_leftovers.set(recommended_ids(&found));
+                            leftovers_modal.set(Some((app, found)));
+                            (
+                                if en {
+                                    format!("'{}' uninstalled; review its leftovers.{}", name, reboot_note)
+                                } else {
+                                    format!("'{}' desinstalada; revisa sus restos.{}", name, reboot_note)
+                                },
+                                Tone::Success,
+                            )
+                        }
+                    }
                 }
             }
-            Err(err) => {
-                status_msg.set(Some(format!("Error '{}': {}", app.display_name, err)));
-            }
-        }
+        };
+
+        reload_apps(apps, extra_sizes, tools_state).await;
+        status_msg.set(Some((text, tone)));
         is_working.set(false);
     });
+}
+
+/// Relee el inventario; si falla, conserva la lista anterior.
+async fn reload_apps(
+    mut apps: Signal<Vec<InstalledApp>>,
+    extra_sizes: Signal<HashMap<String, u64>>,
+    tools_state: Signal<ToolsSharedState>,
+) {
+    let refreshed = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
+        .await
+        .ok()
+        .and_then(|r| r.ok());
+    if let Some(list) = refreshed {
+        apps.set(list.clone());
+        spawn_fill_missing_sizes(list, extra_sizes);
+    }
+    refresh_tools_inventory(tools_state);
 }
 
 #[component]
@@ -167,37 +262,51 @@ pub fn UninstallerView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
 
-    let mut apps = use_signal(|| UninstallerManager::list_installed_apps().unwrap_or_default());
+    // UI-05: el inventario se lee fuera del hilo de UI.
+    let mut apps = use_signal(Vec::<InstalledApp>::new);
+    let mut apps_loaded = use_signal(|| false);
     let extra_sizes = use_signal(HashMap::<String, u64>::new);
     let mut search_query = use_signal(String::new);
     let mut sort_mode = use_signal(|| SortMode::NameAsc);
     let mut is_working = use_signal(|| false);
-    let mut status_msg = use_signal(|| Option::<String>::None);
+    let mut status_msg = use_signal(|| Status::None);
+    let mut confirm_uninstall = use_signal(|| Option::<InstalledApp>::None);
     let mut leftovers_modal = use_signal(|| Option::<(InstalledApp, Vec<LeftoverItem>)>::None);
     let mut selected_leftovers = use_signal(HashSet::<String>::new);
     let mut purge_summary = use_signal(|| Option::<PurgeReport>::None);
     let tools_state = use_context::<Signal<ToolsSharedState>>();
     let dispatcher = use_context::<InstallerDispatcher>();
 
-    use_hook(move || {
-        let initial = apps.read().clone();
-        spawn_fill_missing_sizes(initial, extra_sizes);
-    });
-
-    let on_refresh = move |_| {
+    let mut load_apps = move || {
         is_working.set(true);
         spawn(async move {
-            let list = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
+            let res = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
                 .await
-                .ok()
-                .and_then(|r| r.ok())
-                .unwrap_or_default();
-            apps.set(list.clone());
-            spawn_fill_missing_sizes(list, extra_sizes);
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()));
+            match res {
+                Ok(list) => {
+                    apps.set(list.clone());
+                    spawn_fill_missing_sizes(list, extra_sizes);
+                }
+                Err(err) => status_msg.set(Some((
+                    if en {
+                        format!("Could not read the installed apps: {}", err)
+                    } else {
+                        format!("No se pudieron leer las apps instaladas: {}", err)
+                    },
+                    Tone::Danger,
+                ))),
+            }
+            apps_loaded.set(true);
             refresh_tools_inventory(tools_state);
             is_working.set(false);
         });
     };
+
+    use_hook(load_apps);
+
+    let on_refresh = move |_| load_apps();
 
     let on_purge_selected = move |_| {
         let Some((app, items)) = leftovers_modal.read().clone() else {
@@ -219,31 +328,35 @@ pub fn UninstallerView() -> Element {
                 UninstallerManager::purge_leftover_items(&to_delete)
             })
             .await
-            .unwrap_or_default();
+            .unwrap_or_else(|e| PurgeReport {
+                failed_count: 1,
+                errors: vec![e.to_string()],
+                ..Default::default()
+            });
 
-            let refreshed = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
-                .await
-                .ok()
-                .and_then(|r| r.ok())
-                .unwrap_or_default();
-            apps.set(refreshed);
-            refresh_tools_inventory(tools_state);
+            reload_apps(apps, extra_sizes, tools_state).await;
 
-            status_msg.set(Some(if en {
-                format!(
-                    "Cleaned '{}': {} removed ({} freed).",
-                    app.display_name,
-                    report.removed_count,
-                    format_size_mb(report.bytes_freed)
-                )
-            } else {
-                format!(
-                    "Purga de '{}': {} eliminados ({} liberados).",
-                    app.display_name,
-                    report.removed_count,
-                    format_size_mb(report.bytes_freed)
-                )
-            }));
+            let tone = if report.failed_count > 0 { Tone::Warning } else { Tone::Success };
+            status_msg.set(Some((
+                if en {
+                    format!(
+                        "Cleaned '{}': {} removed, {} failed ({} freed).",
+                        app.display_name,
+                        report.removed_count,
+                        report.failed_count,
+                        format_size_mb(report.bytes_freed)
+                    )
+                } else {
+                    format!(
+                        "Purga de '{}': {} eliminados, {} con error ({} liberados).",
+                        app.display_name,
+                        report.removed_count,
+                        report.failed_count,
+                        format_size_mb(report.bytes_freed)
+                    )
+                },
+                tone,
+            )));
             purge_summary.set(Some(report));
             is_working.set(false);
         });
@@ -268,10 +381,10 @@ pub fn UninstallerView() -> Element {
 
     match *sort_mode.read() {
         SortMode::NameAsc => {
-            filtered.sort_by(|a, b| a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()));
+            filtered.sort_by_key(|a| a.display_name.to_lowercase());
         }
         SortMode::NameDesc => {
-            filtered.sort_by(|a, b| b.display_name.to_lowercase().cmp(&a.display_name.to_lowercase()));
+            filtered.sort_by_key(|a| std::cmp::Reverse(a.display_name.to_lowercase()));
         }
         SortMode::SizeDesc => {
             filtered.sort_by(|a, b| match (effective_kb(a), effective_kb(b)) {
@@ -321,29 +434,34 @@ pub fn UninstallerView() -> Element {
                     } else {
                         format!("Rastros de '{}'", modal_app.display_name)
                     };
-                    let modal_sub = if en { "Select items to purge." } else { "Selecciona los restos a eliminar." };
+                    let modal_sub = if en {
+                        "Only the items marked as safe are preselected. Review the rest before purging."
+                    } else {
+                        "Solo vienen marcados los restos seguros. Revisa el resto antes de eliminar."
+                    };
+                    let warn_lbl = if en {
+                        "Files and folders are deleted permanently (not to the Recycle Bin). Registry keys are exported first to ProgramData\\OtterSwiss\\RegBackups."
+                    } else {
+                        "Los archivos y carpetas se borran de forma permanente (no van a la Papelera). Las claves de registro se exportan antes a ProgramData\\OtterSwiss\\RegBackups."
+                    };
+                    let review_lbl = if en { "Review" } else { "Revisar" };
                     let close_lbl = if en { "Close" } else { "Cerrar" };
                     let purge_lbl = if en {
-                        format!("Purge ({})", sel_count)
+                        format!("Delete permanently ({})", sel_count)
                     } else {
-                        format!("Eliminar ({})", sel_count)
+                        format!("Borrar de forma permanente ({})", sel_count)
                     };
 
                     rsx! {
-                        div {
-                            style: "position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 24px;",
-                            div {
-                                class: "card",
-                                style: "max-width: 720px; width: 100%; border: 1px solid var(--accent);",
-                                div { class: "card-header",
-                                    div {
-                                        h3 { class: "card-title", "{modal_title}" }
-                                        p { class: "card-subtitle", "{modal_sub}" }
-                                    }
-                                }
+                        Modal {
+                            title: modal_title,
+                            subtitle: Some(modal_sub.to_string()),
+                            tone: Tone::Danger,
+                            wide: true,
+                            on_close: move |_| leftovers_modal.set(None),
+                                StatusBanner { text: warn_lbl.to_string(), tone: Tone::Warning }
 
-                                div {
-                                    style: "max-height: 340px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); background: var(--bg); display: flex; flex-direction: column; gap: 6px;",
+                                div { class: "modal-list",
                                     for item in found_items.iter() {
                                         {
                                             let item_id = item.id.clone();
@@ -362,7 +480,7 @@ pub fn UninstallerView() -> Element {
                                             rsx! {
                                                 label {
                                                     key: "{item_id}",
-                                                    style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: 6px 8px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--font-size-xs);",
+                                                    style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--font-size-xs);",
                                                     div { style: "display: flex; align-items: center; gap: var(--space-2); min-width: 0;",
                                                         input {
                                                             r#type: "checkbox",
@@ -377,7 +495,12 @@ pub fn UninstallerView() -> Element {
                                                             },
                                                         }
                                                         div { style: "min-width: 0;",
-                                                            div { style: "font-weight: 600;", "[{badge_lbl}] {item.category}" }
+                                                            div { style: "font-weight: 600;",
+                                                                "[{badge_lbl}] {item.category} "
+                                                                if !item.recommended {
+                                                                    span { class: "badge badge-warning", "{review_lbl}" }
+                                                                }
+                                                            }
                                                             div { style: "color: var(--text-muted); word-break: break-all;", "{item.target_display}" }
                                                         }
                                                     }
@@ -388,11 +511,11 @@ pub fn UninstallerView() -> Element {
                                     }
                                 }
 
-                                div { style: "display: flex; justify-content: space-between; align-items: center; margin-top: var(--space-3); gap: var(--space-3); flex-wrap: wrap;",
-                                    span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
+                                    span { class: "text-xs text-muted",
                                         "{sel_count} • {format_size_mb(total_sel_bytes)}"
                                     }
-                                    div { style: "display: flex; gap: var(--space-2);",
+                                    div { class: "modal-actions",
                                         button {
                                             class: "btn btn-secondary",
                                             onclick: move |_| leftovers_modal.set(None),
@@ -406,16 +529,55 @@ pub fn UninstallerView() -> Element {
                                         }
                                     }
                                 }
-                            }
                         }
                     }
                 }
             }
 
-            if let Some(msg) = status_msg.read().as_ref() {
-                div { class: "badge badge-info", style: "padding: var(--space-3); font-size: var(--font-size-sm);",
-                    "{msg}"
+            // UX-01: desinstalar pide confirmación y avisa que corre en modo silencioso.
+            if let Some(target) = confirm_uninstall.read().clone() {
+                {
+                    let title = if en {
+                        format!("Uninstall '{}'?", target.display_name)
+                    } else {
+                        format!("¿Desinstalar '{}'?", target.display_name)
+                    };
+                    let body = if en {
+                        "Its uninstaller will run silently, without asking for confirmation. Afterwards you can review its leftovers before deleting anything."
+                    } else {
+                        "Su desinstalador se ejecutará en modo silencioso, sin pedir confirmación. Después podrás revisar sus restos antes de borrar nada."
+                    };
+                    rsx! {
+                        ConfirmDialog {
+                            title,
+                            subtitle: None,
+                            confirm_label: uninst_lbl.to_string(),
+                            cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                            tone: Tone::Danger,
+                            on_cancel: move |_| confirm_uninstall.set(None),
+                            on_confirm: move |_| {
+                                confirm_uninstall.set(None);
+                                start_uninstall_and_scan(
+                                    target.clone(),
+                                    en,
+                                    is_working,
+                                    purge_summary,
+                                    status_msg,
+                                    apps,
+                                    extra_sizes,
+                                    selected_leftovers,
+                                    leftovers_modal,
+                                    tools_state,
+                                );
+                            },
+                            p { class: "text-xs", "{body}" }
+                        }
+                    }
                 }
+            }
+
+            if let Some((msg, tone)) = status_msg.read().clone() {
+                StatusBanner { text: msg, tone }
             }
 
             if let Some(rep) = purge_summary.read().as_ref() {
@@ -423,7 +585,7 @@ pub fn UninstallerView() -> Element {
                     Card {
                         title: locked_title,
                         subtitle: None,
-                        div { style: "font-size: var(--font-size-xs); color: var(--danger); display: flex; flex-direction: column; gap: 4px;",
+                        div { style: "font-size: var(--font-size-xs); color: var(--danger); display: flex; flex-direction: column; gap: var(--space-1);",
                             for err in rep.errors.iter() {
                                 div { "{err}" }
                             }
@@ -441,7 +603,7 @@ pub fn UninstallerView() -> Element {
                             r#type: "text",
                             placeholder: "{search_placeholder}",
                             value: "{search_query.read()}",
-                            style: "flex: 1; min-width: 220px; padding: 8px 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            style: "flex: 1; min-width: 220px; padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
                             oninput: move |evt| search_query.set(evt.value()),
                         }
                         span { class: "badge badge-info", "{filtered.len()}" }
@@ -457,25 +619,25 @@ pub fn UninstallerView() -> Element {
                         span { style: "font-size: var(--font-size-xs); color: var(--text-muted);", "{sort_lbl}" }
                         button {
                             class: if *sort_mode.read() == SortMode::NameAsc { "btn btn-primary" } else { "btn btn-secondary" },
-                            style: "padding: 4px 10px; font-size: var(--font-size-xs);",
+                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameAsc),
                             "A - Z"
                         }
                         button {
                             class: if *sort_mode.read() == SortMode::NameDesc { "btn btn-primary" } else { "btn btn-secondary" },
-                            style: "padding: 4px 10px; font-size: var(--font-size-xs);",
+                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameDesc),
                             "Z - A"
                         }
                         button {
                             class: if *sort_mode.read() == SortMode::SizeDesc { "btn btn-primary" } else { "btn btn-secondary" },
-                            style: "padding: 4px 10px; font-size: var(--font-size-xs);",
+                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeDesc),
                             "{sort_largest_lbl}"
                         }
                         button {
                             class: if *sort_mode.read() == SortMode::SizeAsc { "btn btn-primary" } else { "btn btn-secondary" },
-                            style: "padding: 4px 10px; font-size: var(--font-size-xs);",
+                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeAsc),
                             "{sort_smallest_lbl}"
                         }
@@ -487,6 +649,11 @@ pub fn UninstallerView() -> Element {
                 title: installed_title,
                 subtitle: None,
                 div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    if !*apps_loaded.read() {
+                        LoadingState {
+                            message: if en { "Reading installed apps...".to_string() } else { "Leyendo las apps instaladas...".to_string() },
+                        }
+                    }
                     for app in filtered.into_iter() {
                         {
                             let app_for_uninst = app.clone();
@@ -516,7 +683,7 @@ pub fn UninstallerView() -> Element {
                                                 }
                                             }
                                         }
-                                        div { style: "font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;",
+                                        div { style: "font-size: var(--font-size-xs); color: var(--text-muted); margin-top: var(--space-1);",
                                             if !app.publisher.is_empty() {
                                                 "{app.publisher} • "
                                             }
@@ -529,7 +696,7 @@ pub fn UninstallerView() -> Element {
                                         if let Some(newer) = update_opt {
                                             button {
                                                 class: "btn btn-primary",
-                                                style: "padding: 6px 12px; font-size: var(--font-size-xs);",
+                                                style: "padding: var(--space-2) var(--space-3); font-size: var(--font-size-xs);",
                                                 disabled: *is_working.read(),
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallAppBatch(vec![newer.id]));
@@ -553,18 +720,7 @@ pub fn UninstallerView() -> Element {
                                         button {
                                             class: "btn btn-danger",
                                             disabled: *is_working.read(),
-                                            onclick: move |_| start_uninstall_and_scan(
-                                                app_for_uninst.clone(),
-                                                en,
-                                                is_working,
-                                                purge_summary,
-                                                status_msg,
-                                                apps,
-                                                extra_sizes,
-                                                selected_leftovers,
-                                                leftovers_modal,
-                                                tools_state,
-                                            ),
+                                            onclick: move |_| confirm_uninstall.set(Some(app_for_uninst.clone())),
                                             "{uninst_lbl}"
                                         }
                                     }
@@ -574,6 +730,22 @@ pub fn UninstallerView() -> Element {
                     }
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SYS-02: solo 0, 3010 y 1641 cuentan como desinstalado.
+    #[test]
+    fn codigos_de_salida_de_exito() {
+        for ok in [0, 3010, 1641] {
+            assert!(uninstall_exit_is_success(ok));
+        }
+        for fail in [1, 1602, 1603, 5, u32::MAX] {
+            assert!(!uninstall_exit_is_success(fail));
         }
     }
 }
