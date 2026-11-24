@@ -25,6 +25,7 @@ use windows::Win32::System::SystemInformation::{
 
 use crate::core::error::CoreError;
 use crate::core::safe_fs;
+use crate::core::win_common::AlignedBuf;
 
 const RSMB_PROVIDER: FIRMWARE_TABLE_PROVIDER = FIRMWARE_TABLE_PROVIDER(0x5253_4D42);
 
@@ -123,6 +124,9 @@ pub struct SystemSpecs {
     pub memory: MemorySpecs,
     pub gpus: Vec<GpuSpecs>,
     pub storage: Vec<StorageSpecs>,
+    /// UI-06: lo que no se pudo leer; el resto de los datos sigue siendo válido.
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }
 
 impl SystemSpecs {
@@ -155,11 +159,22 @@ impl SystemSpecs {
     }
 }
 
+/// Lee todo lo que se pueda: una fuente que falla deja su sección vacía y un aviso en `warnings` (UI-06).
 pub fn collect_system_specs() -> Result<SystemSpecs, CoreError> {
+    let mut warnings = Vec::new();
     let os = read_os_specs();
-    let cpu = read_cpu_specs()?;
-    let (motherboard, memory) = read_smbios_board_and_memory()?;
-    let gpus = read_dxgi_gpus()?;
+    let cpu = read_cpu_specs().unwrap_or_else(|e| {
+        warnings.push(format!("CPU: {}", e));
+        CpuSpecs::default()
+    });
+    let (motherboard, memory) = read_smbios_board_and_memory().unwrap_or_else(|e| {
+        warnings.push(format!("SMBIOS: {}", e));
+        (MotherboardSpecs::default(), MemorySpecs::default())
+    });
+    let gpus = read_dxgi_gpus().unwrap_or_else(|e| {
+        warnings.push(format!("GPU (DXGI): {}", e));
+        Vec::new()
+    });
     let storage = read_storage_devices();
 
     Ok(SystemSpecs {
@@ -169,6 +184,7 @@ pub fn collect_system_specs() -> Result<SystemSpecs, CoreError> {
         memory,
         gpus,
         storage,
+        warnings,
     })
 }
 
@@ -318,7 +334,7 @@ fn read_core_topology() -> Result<(usize, Option<usize>, Option<usize>, usize), 
         });
     }
 
-    let mut buf = vec![0u8; len as usize];
+    let mut buf = AlignedBuf::zeroed(len as usize);
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationProcessorCore,
@@ -377,7 +393,7 @@ fn read_cache_sizes() -> Result<(u32, u32, u32), CoreError> {
         return Ok((0, 0, 0));
     }
 
-    let mut buf = vec![0u8; len as usize];
+    let mut buf = AlignedBuf::zeroed(len as usize);
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationCache,
@@ -436,7 +452,9 @@ fn read_smbios_board_and_memory() -> Result<(MotherboardSpecs, MemorySpecs), Cor
         });
     }
 
-    let data = &raw[8..written as usize];
+    // ERR-12: si el firmware informa más bytes de los pedidos, se acota al buffer en vez de entrar en pánico.
+    let end = (written as usize).min(raw.len());
+    let data = &raw[8..end];
     let mut board = MotherboardSpecs::default();
     let mut modules = Vec::new();
     let mut cursor = 0usize;
@@ -604,7 +622,8 @@ fn parse_smbios_type17(formatted: &[u8], strings: &[String]) -> Option<MemoryMod
 
     let manufacturer = get_smbios_str(strings, formatted.get(0x17).copied());
     let part_number = get_smbios_str(strings, formatted.get(0x1A).copied());
-    let voltage_mv = read_u16_le(formatted, 0x28).filter(|&v| v > 0);
+    // ERR-12: el voltaje configurado está en 0x26 (0x28 es «Memory Technology»).
+    let voltage_mv = read_u16_le(formatted, 0x26).filter(|&v| v > 0);
 
     Some(MemoryModuleSpec {
         slot,
@@ -618,6 +637,20 @@ fn parse_smbios_type17(formatted: &[u8], strings: &[String]) -> Option<MemoryMod
     })
 }
 
+/// (proveedor, dispositivo, subsistema, revisión, VRAM dedicada) de un adaptador DXGI.
+type GpuKey = (u32, u32, u32, u32, usize);
+
+/// UI-16: descarta «Microsoft Basic Render Driver» (1414:008C) y la segunda vista del mismo hardware que
+/// crea un controlador de pantalla virtual (mismo hardware, otro LUID). Dos GPU idénticas reales se ven como una.
+fn keep_gpu_adapter(seen: &mut std::collections::HashSet<GpuKey>, key: GpuKey) -> bool {
+    const MICROSOFT: u32 = 0x1414;
+    const BASIC_RENDER: u32 = 0x8C;
+    if key.0 == MICROSOFT && key.1 == BASIC_RENDER {
+        return false;
+    }
+    seen.insert(key)
+}
+
 fn read_dxgi_gpus() -> Result<Vec<GpuSpecs>, CoreError> {
     let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.map_err(|e| {
         CoreError::SystemTool {
@@ -627,6 +660,7 @@ fn read_dxgi_gpus() -> Result<Vec<GpuSpecs>, CoreError> {
     })?;
 
     let mut gpus = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     let mut index = 0u32;
 
     while let Ok(adapter) = unsafe { factory.EnumAdapters1(index) } {
@@ -636,6 +670,16 @@ fn read_dxgi_gpus() -> Result<Vec<GpuSpecs>, CoreError> {
         };
 
         if (desc.Flags & (DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32)) != 0 {
+            continue;
+        }
+        let key = (
+            desc.VendorId,
+            desc.DeviceId,
+            desc.SubSysId,
+            desc.Revision,
+            desc.DedicatedVideoMemory,
+        );
+        if !keep_gpu_adapter(&mut seen, key) {
             continue;
         }
 
@@ -705,7 +749,7 @@ fn read_storage_devices() -> Vec<StorageSpecs> {
             AdditionalParameters: [0],
         };
 
-        let mut out_buf = vec![0u8; 1024];
+        let mut out_buf = AlignedBuf::zeroed(1024);
         let mut bytes_returned = 0u32;
 
         let ok = unsafe {
@@ -770,4 +814,63 @@ fn read_cstr_at(buf: &[u8], offset: usize) -> String {
     let slice = &buf[offset..];
     let end = slice.iter().position(|&b| b == 0).unwrap_or(slice.len());
     String::from_utf8_lossy(&slice[..end]).trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn type17(size: u16, mem_type: u8, speed: u16) -> Vec<u8> {
+        let mut f = vec![0u8; 0x5C];
+        f[0x0C..0x0E].copy_from_slice(&size.to_le_bytes());
+        f[0x10] = 1; // ranura = cadena 1
+        f[0x12] = mem_type;
+        f[0x20..0x22].copy_from_slice(&speed.to_le_bytes());
+        f
+    }
+
+    #[test]
+    fn modulo_ddr4_de_8_gb() {
+        let m = parse_smbios_type17(&type17(8192, 0x1A, 3200), &["DIMM A1".to_string()]).unwrap();
+        assert!(m.populated);
+        assert_eq!(m.capacity_mb, 8192);
+        assert_eq!(m.memory_type, "DDR4");
+        assert_eq!(m.speed_mts, 3200);
+        assert_eq!(m.slot, "DIMM A1");
+    }
+
+    #[test]
+    fn ranura_vacia_y_tamano_extendido() {
+        let vacia = parse_smbios_type17(&type17(0, 0, 0), &[]).unwrap();
+        assert!(!vacia.populated);
+
+        let mut ext = type17(0x7FFF, 0x22, 4800);
+        ext[0x1C..0x20].copy_from_slice(&65536u32.to_le_bytes());
+        assert_eq!(parse_smbios_type17(&ext, &[]).unwrap().capacity_mb, 65536);
+    }
+
+    #[test]
+    fn voltaje_configurado_en_0x26() {
+        let mut f = type17(8192, 0x1A, 3200);
+        f[0x26..0x28].copy_from_slice(&1200u16.to_le_bytes());
+        f[0x28] = 3; // Memory Technology: no es un voltaje
+        assert_eq!(parse_smbios_type17(&f, &[]).unwrap().voltage_mv, Some(1200));
+    }
+
+    #[test]
+    fn gpu_repetida_y_render_de_software_se_descartan() {
+        let mut seen = std::collections::HashSet::new();
+        let rx = (0x1002, 0x747E, 0x475D_1DA2, 0xC8, 16 << 30);
+        assert!(keep_gpu_adapter(&mut seen, rx));
+        assert!(!keep_gpu_adapter(&mut seen, rx));
+        assert!(!keep_gpu_adapter(&mut seen, (0x1414, 0x8C, 0, 0, 0)));
+        assert!(keep_gpu_adapter(&mut seen, (0x10DE, 0x2684, 1, 0, 24 << 30)));
+    }
+
+    /// ERR-12: una estructura truncada no provoca pánico.
+    #[test]
+    fn estructura_truncada_no_entra_en_panico() {
+        assert!(parse_smbios_type17(&[0u8; 4], &[]).is_none());
+        assert_eq!(get_smbios_str(&[], Some(3)), "");
+    }
 }

@@ -1,11 +1,13 @@
-use std::path::PathBuf;
 use dioxus::prelude::*;
-use crate::core::specs::{export_specs_json, SystemSpecs};
+use crate::core::specs::SystemSpecs;
+use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 
 #[derive(Props, Clone, PartialEq)]
 pub struct HardwareTabProps {
     pub specs: Option<SystemSpecs>,
+    #[props(default = None)]
+    pub error: Option<String>,
     #[props(default = None)]
     pub cpu_temp_c: Option<f32>,
     #[props(default = None)]
@@ -21,11 +23,17 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
     let mut status_msg = use_signal(|| None::<String>);
 
     let Some(specs) = props.specs.clone() else {
-        return rsx! {
-            div { class: "card", style: "padding: 24px; text-align: center;",
-                p { style: "color: var(--text-muted);",
-                    if en { "Scanning CPU, SMBIOS & DXGI..." } else { "Analizando CPU, SMBIOS y DXGI..." }
+        if let Some(err) = props.error.clone() {
+            return rsx! {
+                ErrorState {
+                    title: if en { "Could not read the hardware".to_string() } else { "No se pudo leer el hardware".to_string() },
+                    error_msg: err,
                 }
+            };
+        }
+        return rsx! {
+            LoadingState {
+                message: if en { "Scanning CPU, SMBIOS & DXGI...".to_string() } else { "Analizando CPU, SMBIOS y DXGI...".to_string() },
             }
         };
     };
@@ -44,18 +52,18 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
         div { class: "content-body",
             div {
                 class: "card",
-                style: "display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; flex-wrap: wrap; gap: 10px;",
+                style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); flex-wrap: wrap; gap: var(--space-3);",
                 div {
-                    h3 { style: "margin: 0; font-size: 15px; color: var(--text);",
+                    h3 { style: "margin: 0; font-size: var(--font-size-md); color: var(--text);",
                         if en { "Hardware Specifications" } else { "Especificaciones del Sistema" }
                     }
-                    span { style: "font-size: 12px; color: var(--text-muted);",
+                    span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
                         "{specs.os.edition} {specs.os.display_version} • Build {specs.os.build}"
                     }
                 }
-                div { style: "display: flex; align-items: center; gap: 8px;",
+                div { style: "display: flex; align-items: center; gap: var(--space-2);",
                     if let Some(msg) = status_msg() {
-                        span { style: "font-size: 12px; color: var(--accent); margin-right: 6px;", "{msg}" }
+                        span { style: "font-size: var(--font-size-xs); color: var(--accent); margin-right: var(--space-2);", "{msg}" }
                     }
                     button {
                         class: "btn btn-secondary",
@@ -71,10 +79,27 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                     button {
                         class: "btn btn-primary",
                         onclick: move |_| {
-                            let base_dir = dirs::desktop_dir().unwrap_or_else(|| PathBuf::from("."));
-                            let out_path = base_dir.join("OtterSwiss-Hardware-Specs.json");
-                            match export_specs_json(&specs_for_export, &out_path) {
-                                Ok(()) => status_msg.set(Some(format!("OK: {}", out_path.display()))),
+                            let res = dirs::desktop_dir()
+                                .ok_or_else(|| if en { "Desktop folder not available" } else { "Escritorio no disponible" }.to_string())
+                                .and_then(|desk| {
+                                    serde_json::to_vec_pretty(&specs_for_export)
+                                        .map_err(|e| e.to_string())
+                                        .and_then(|json| {
+                                            crate::core::safe_fs::write_file_inside(
+                                                &desk,
+                                                "",
+                                                "OtterSwiss-Hardware-Specs.json",
+                                                &json,
+                                            )
+                                            .map_err(|e| e.to_string())
+                                        })
+                                });
+                            match res {
+                                Ok(path) => status_msg.set(Some(if en {
+                                    format!("Saved: {}", path.display())
+                                } else {
+                                    format!("Guardado: {}", path.display())
+                                })),
                                 Err(e) => status_msg.set(Some(format!("Error: {e}"))),
                             }
                         },
@@ -83,15 +108,26 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                 }
             }
 
+            if !specs.warnings.is_empty() {
+                StatusBanner {
+                    text: format!(
+                        "{}\n{}",
+                        if en { "Some data could not be read:" } else { "Algunos datos no se pudieron leer:" },
+                        specs.warnings.join("\n")
+                    ),
+                    tone: Tone::Warning,
+                }
+            }
+
             div { class: "cards-grid",
-                div { class: "card", style: "padding: 16px;",
-                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;",
+                div { class: "card", style: "padding: var(--space-4);",
+                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
                         strong { style: "color: var(--accent);", "CPU" }
                         if let Some(temp) = props.cpu_temp_c {
-                            span { style: "font-size: 12px; font-weight: 600;", "{temp:.0} °C" }
+                            span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{temp:.0} °C" }
                         }
                     }
-                    div { style: "font-size: 14px; font-weight: 600; margin-bottom: 8px;", "{specs.cpu.brand}" }
+                    div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-2);", "{specs.cpu.brand}" }
                     SpecRow {
                         label: if en { "Arch".to_string() } else { "Arq.".to_string() },
                         value: format!("{} • F:{:X}h M:{:X}h S:{}", specs.cpu.vendor, specs.cpu.family, specs.cpu.model, specs.cpu.stepping),
@@ -110,11 +146,11 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: 16px;",
-                    div { style: "margin-bottom: 8px;",
+                div { class: "card", style: "padding: var(--space-4);",
+                    div { style: "margin-bottom: var(--space-2);",
                         strong { style: "color: var(--accent);", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
                     }
-                    div { style: "font-size: 14px; font-weight: 600; margin-bottom: 8px;", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
+                    div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-2);", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
                     SpecRow {
                         label: "BIOS".to_string(),
                         value: format!("{} ({})", specs.motherboard.bios_version, specs.motherboard.bios_date),
@@ -129,16 +165,17 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: 16px;",
-                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;",
+                div { class: "card", style: "padding: var(--space-4);",
+                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
                         strong { style: "color: var(--accent);", "GPU" }
                         if let Some(edge) = props.gpu_edge_temp_c {
-                            span { style: "font-size: 12px; font-weight: 600;", "{edge:.0} °C" }
+                            span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{edge:.0} °C" }
                         }
                     }
-                    for gpu in &specs.gpus {
-                        div { key: "{gpu.name}", style: "margin-bottom: 8px;",
-                            div { style: "font-size: 14px; font-weight: 600; margin-bottom: 4px;", "{gpu.name}" }
+                    // UI-14: dos GPU iguales tienen el mismo nombre; la clave es el índice.
+                    for (gpu_idx, gpu) in specs.gpus.iter().enumerate() {
+                        div { key: "{gpu_idx}", style: "margin-bottom: var(--space-2);",
+                            div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-1);", "{gpu.name}" }
                             SpecRow {
                                 label: "ID".to_string(),
                                 value: format!("{} ({:04X}:{:04X})", gpu.vendor_name, gpu.vendor_id, gpu.device_id),
@@ -151,13 +188,13 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: 16px;",
-                    div { style: "margin-bottom: 8px;",
+                div { class: "card", style: "padding: var(--space-4);",
+                    div { style: "margin-bottom: var(--space-2);",
                         strong { style: "color: var(--accent);", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
                     }
                     for drive in &specs.storage {
-                        div { key: "{drive.device_index}", style: "margin-bottom: 8px;",
-                            div { style: "font-size: 13px; font-weight: 600;", "[Disk {drive.device_index}] {drive.model}" }
+                        div { key: "{drive.device_index}", style: "margin-bottom: var(--space-2);",
+                            div { style: "font-size: var(--font-size-sm); font-weight: 600;", "[Disk {drive.device_index}] {drive.model}" }
                             SpecRow {
                                 label: "Bus / FW".to_string(),
                                 value: format!("{} • {}", drive.bus_type, drive.firmware),
@@ -167,24 +204,24 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                 }
             }
 
-            div { class: "card", style: "padding: 16px;",
-                div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;",
+            div { class: "card", style: "padding: var(--space-4);",
+                div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
                     strong { style: "color: var(--accent);", "RAM (SMBIOS)" }
-                    span { style: "font-size: 12px; color: var(--text-muted);",
+                    span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
                         "{ram_gb:.1} GB {specs.memory.memory_type} @ {specs.memory.effective_speed_mts} MT/s ({specs.memory.populated_slots}/{specs.memory.total_slots})"
                     }
                 }
-                div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px;",
+                div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-3);",
                     for module in &specs.memory.modules {
                         div {
                             key: "{module.slot}",
-                            style: "border: 1px solid var(--border); border-radius: 6px; padding: 10px;",
-                            div { style: "font-size: 12px; font-weight: 700; margin-bottom: 4px;", "{module.slot}" }
+                            style: "border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);",
+                            div { style: "font-size: var(--font-size-xs); font-weight: 700; margin-bottom: var(--space-1);", "{module.slot}" }
                             if module.populated {
-                                div { style: "font-size: 13px;", "{module.capacity_mb / 1024} GB {module.memory_type} • {module.speed_mts} MT/s" }
-                                div { style: "font-size: 11px; color: var(--text-muted);", "{module.manufacturer} ({module.part_number})" }
+                                div { style: "font-size: var(--font-size-sm);", "{format_capacity(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
+                                div { style: "font-size: var(--font-size-xs); color: var(--text-muted);", "{module.manufacturer} ({module.part_number})" }
                             } else {
-                                div { style: "font-size: 12px; color: var(--text-muted);", if en { "Empty slot" } else { "Ranura libre" } }
+                                div { style: "font-size: var(--font-size-xs); color: var(--text-muted);", if en { "Empty slot" } else { "Ranura libre" } }
                             }
                         }
                     }
@@ -197,9 +234,32 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
 #[component]
 fn SpecRow(label: String, value: String) -> Element {
     rsx! {
-        div { style: "display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);",
+        div { style: "display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--font-size-xs); padding: var(--space-1) 0; border-bottom: 1px solid var(--border);",
             span { style: "color: var(--text-muted);", "{label}" }
             span { style: "color: var(--text); text-align: right; font-weight: 500;", "{value}" }
         }
+    }
+}
+
+/// ERR-12: un módulo de 512 MB no debe verse como «0 GB».
+fn format_capacity(mb: u32) -> String {
+    if mb >= 1024 && mb.is_multiple_of(1024) {
+        format!("{} GB", mb / 1024)
+    } else if mb >= 1024 {
+        format!("{:.1} GB", mb as f64 / 1024.0)
+    } else {
+        format!("{} MB", mb)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capacidad_de_modulos_pequenos() {
+        assert_eq!(format_capacity(512), "512 MB");
+        assert_eq!(format_capacity(8192), "8 GB");
+        assert_eq!(format_capacity(1536), "1.5 GB");
     }
 }

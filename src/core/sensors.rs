@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::mem::{size_of, zeroed};
-use std::path::PathBuf;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -28,7 +27,9 @@ use windows::Win32::System::Wmi::{
 };
 use windows::Win32::System::IO::DeviceIoControl;
 
-use crate::core::win_common::{to_wide_null, ComGuard, SafeHandle, SafeLibrary};
+use crate::core::safe_fs::open_verified_file_read;
+use crate::core::trust::verify_authenticode_on_handle;
+use crate::core::win_common::{to_wide_null, AlignedBuf, ComGuard, SafeHandle, SafeLibrary};
 
 const RPC_C_AUTHN_WINNT: u32 = 10;
 const RPC_C_AUTHZ_NONE: u32 = 0;
@@ -39,6 +40,19 @@ pub struct SensorReading {
     pub sensor_type: String,
     pub current_celsius: f32,
     pub max_celsius: Option<f32>,
+}
+
+/// UI-14: dos GPU del mismo modelo dan el mismo nombre; la UI usa el nombre como clave y para picos.
+/// Desde la segunda aparición se agrega « #n».
+pub fn disambiguate_sensor_names(readings: &mut [SensorReading]) {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for r in readings.iter_mut() {
+        let count = seen.entry(r.name.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            r.name = format!("{} #{}", r.name, count);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -88,15 +102,19 @@ impl NvmlSession {
         let lib = match SafeLibrary::load_system("nvml.dll") {
             Ok(l) => l,
             Err(_) => {
-                let pf = std::env::var_os("ProgramFiles")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from(r"C:\Program Files"));
+                // Carpeta real de Program Files (no `%ProgramFiles%`, redefinible por el usuario) y DLL
+                // firmada por NVIDIA: el proceso corre elevado y cargar una DLL ajena sería ejecutar código.
+                let pf = crate::core::win_common::program_files_dir()?;
                 let fallback = pf.join(r"NVIDIA Corporation\NVSMI\nvml.dll");
-                let meta = std::fs::symlink_metadata(&fallback).ok()?;
-                if meta.file_type().is_symlink() || !meta.is_file() {
-                    return None;
-                }
-                SafeLibrary::load_from_verified_path(&fallback).ok()?
+                let (file, _) = open_verified_file_read(&fallback, true, None).ok()?;
+                let handle = windows::Win32::Foundation::HANDLE(
+                    std::os::windows::io::AsRawHandle::as_raw_handle(&file) as _,
+                );
+                verify_authenticode_on_handle(&fallback, handle, "NVIDIA Corporation", None).ok()?;
+                // `file` sigue abierto (solo lectura compartida) hasta después de cargar la DLL.
+                let lib = SafeLibrary::load_from_verified_path(&fallback).ok()?;
+                drop(file);
+                lib
             }
         };
 
@@ -610,7 +628,7 @@ impl SensorSession {
             }
 
             let buf_size = (header.Size as usize).min(4096);
-            let mut full_buf = vec![0u8; buf_size];
+            let mut full_buf = AlignedBuf::zeroed(buf_size);
             let full_ok = unsafe {
                 DeviceIoControl(
                     handle.raw(),
@@ -658,13 +676,9 @@ impl SensorSession {
                     } else {
                         format!("Disco {}", drive_num)
                     };
-                    let max_c = crit.or_else(|| {
-                        if info.OverThreshold > 0 && info.OverThreshold < 150 {
-                            Some(info.OverThreshold as f32)
-                        } else {
-                            None
-                        }
-                    });
+                    let over = (info.OverThreshold > 0 && info.OverThreshold < 150)
+                        .then_some(info.OverThreshold as f32);
+                    let max_c = crit.or(over);
 
                     readings.push(SensorReading {
                         name: label,
@@ -761,7 +775,8 @@ impl SensorSession {
 
                     readings.push(SensorReading {
                         name: format!("ACPI ({})", instance_name),
-                        sensor_type: "CPU / Placa (WMI ACPI)".into(),
+                        // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
+                        sensor_type: "Zona térmica ACPI (WMI)".into(),
                         current_celsius: c,
                         max_celsius: crit_c,
                     });
@@ -826,8 +841,8 @@ impl SensorSession {
                             .unwrap_or_else(|| format!("ThermalZone {}", idx));
 
                         readings.push(SensorReading {
-                            name: format!("Placa ({})", zone_name),
-                            sensor_type: "CPU / Placa (PerfCounter)".into(),
+                            name: format!("ACPI ({})", zone_name),
+                            sensor_type: "Zona térmica ACPI (PerfCounter)".into(),
                             current_celsius: c,
                             max_celsius: None,
                         });
@@ -849,7 +864,8 @@ impl SensorSession {
 
     pub fn poll_all(&self, started: Instant) -> SystemSensorsSnapshot {
         let (cpu_temps, wmi_note) = self.poll_wmi_acpi();
-        let (gpu_temps, gpu_note) = self.poll_gpu();
+        let (mut gpu_temps, gpu_note) = self.poll_gpu();
+        disambiguate_sensor_names(&mut gpu_temps);
         let storage_temps = self.poll_storage();
 
         let mut notes = Vec::new();
@@ -968,10 +984,33 @@ impl SensorMonitor {
 }
 
 impl Drop for SensorMonitor {
+    /// UI-05: no espera al hilo (un `poll_all` WMI puede tardar decenas de segundos y bloquearía la UI
+    /// al salir de Sensores). El hilo ve la bandera y termina solo; su sesión se libera dentro de él.
     fn drop(&mut self) {
         self.stop_flag.store(true, Ordering::Release);
-        if let Some(handle) = self.worker.take() {
-            let _ = handle.join();
+        drop(self.worker.take());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reading(name: &str) -> SensorReading {
+        SensorReading {
+            name: name.into(),
+            sensor_type: "GPU".into(),
+            current_celsius: 50.0,
+            max_celsius: None,
         }
+    }
+
+    /// UI-14: dos GPU del mismo modelo no comparten nombre (clave de la UI y de los picos).
+    #[test]
+    fn nombres_de_sensores_repetidos_se_distinguen() {
+        let mut list = vec![reading("RTX 3080"), reading("RTX 3080"), reading("RX 7900")];
+        disambiguate_sensor_names(&mut list);
+        let names: Vec<&str> = list.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["RTX 3080", "RTX 3080 #2", "RX 7900"]);
     }
 }

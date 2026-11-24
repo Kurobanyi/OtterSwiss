@@ -6,6 +6,7 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::win_common::AlignedBuf;
 
 #[derive(Debug, Clone)]
 pub struct InstalledDriverDevice {
@@ -88,14 +89,14 @@ fn get_device_property(
         return None;
     }
 
-    let mut buf = vec![0u8; required_size as usize];
+    let mut buf = AlignedBuf::zeroed(required_size as usize);
     let ok = unsafe {
         SetupDiGetDeviceRegistryPropertyW(
             h_dev_info,
             dev_data,
             property,
             None,
-            Some(buf.as_mut_slice()),
+            Some(&mut buf[..]),
             Some(&mut required_size),
         )
     };

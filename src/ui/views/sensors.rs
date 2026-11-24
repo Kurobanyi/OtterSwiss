@@ -67,7 +67,8 @@ pub fn SensorsView() -> Element {
     let empty_title = if en { "Waiting for sensors..." } else { "Esperando sensores..." }.to_string();
     let empty_desc = if en { "Checking NVML, ADL2, WMI & NVMe." } else { "Comprobando NVML, ADL2, WMI y NVMe." }.to_string();
 
-    let cpu_section_lbl = if en { "CPU / Board" } else { "CPU / Placa" };
+    // UI-14: son zonas térmicas ACPI; no siempre miden la CPU.
+    let cpu_section_lbl = if en { "ACPI thermal zones" } else { "Zonas térmicas ACPI" };
     let storage_section_lbl = if en { "Storage (NVMe / SSD)" } else { "Almacenamiento (NVMe / SSD)" };
     let diagnostics_title = if en { "Diagnostics" } else { "Diagnóstico" }.to_string();
 
@@ -108,7 +109,7 @@ pub fn SensorsView() -> Element {
                 Card {
                     title: diagnostics_title,
                     subtitle: None,
-                    div { style: "display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-xs); color: var(--text-muted);",
+                    div { style: "display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-xs); color: var(--text-muted);",
                         for note in snap.backend_notes.iter() {
                             p { key: "{note}", "• {note}" }
                         }
@@ -138,7 +139,7 @@ fn render_sensor_section(
                         key: "{reading.name}",
                         title: reading.name.clone(),
                         subtitle: Some(reading.sensor_type.clone()),
-                        div { style: "display: flex; flex-direction: column; gap: 6px;",
+                        div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
                             h2 {
                                 style: if reading.current_celsius >= 80.0 {
                                     "color: var(--danger); font-size: var(--font-size-xl);"
