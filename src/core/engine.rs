@@ -7,7 +7,8 @@ use crate::core::backup::BackupManager;
 use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::power::{
-    activate_prepared_power_scheme, capture_and_prepare_power_scheme, restore_power_snapshot,
+    activate_prepared_power_scheme, capture_and_prepare_power_scheme, discard_unused_scheme,
+    restore_power_snapshot,
     GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
 };
 use crate::core::registry::{
@@ -84,6 +85,16 @@ pub struct RollbackReport {
     pub backup_deleted: bool,
 }
 
+/// Decide si un ajuste entra en el perfil para el nivel de hardware efectivo (una sola regla para el
+/// plan que se muestra y para lo que se aplica).
+pub fn tweak_is_eligible(tier: HardwareTier, min_tier: HardwareTier, applies_to_low_end: bool) -> bool {
+    match tier {
+        HardwareTier::LowEnd => applies_to_low_end,
+        HardwareTier::MidRange => matches!(min_tier, HardwareTier::LowEnd | HardwareTier::MidRange),
+        HardwareTier::HighEnd => true,
+    }
+}
+
 pub struct OptimizationEngine {
     backup_mgr: BackupManager,
 }
@@ -108,13 +119,7 @@ impl OptimizationEngine {
 
         let mut plan = Vec::new();
         for spec in REGISTRY_TWEAKS {
-            let eligible = match effective_tier {
-                HardwareTier::LowEnd => spec.applies_to_low_end,
-                HardwareTier::MidRange => {
-                    matches!(spec.min_tier, HardwareTier::LowEnd | HardwareTier::MidRange)
-                }
-                HardwareTier::HighEnd => true,
-            };
+            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
                 category: format!("Registro ({})", spec.hive.as_str()),
                 label: spec.label.to_string(),
@@ -124,13 +129,7 @@ impl OptimizationEngine {
         }
 
         for spec in SERVICE_TWEAKS {
-            let eligible = match effective_tier {
-                HardwareTier::LowEnd => spec.applies_to_low_end,
-                HardwareTier::MidRange => {
-                    matches!(spec.min_tier, HardwareTier::LowEnd | HardwareTier::MidRange)
-                }
-                HardwareTier::HighEnd => true,
-            };
+            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
                 category: "Servicio Windows".to_string(),
                 label: spec.label.to_string(),
@@ -207,6 +206,9 @@ impl OptimizationEngine {
         let mut warnings = Vec::new();
         let mut requires_relogon = false;
         let mut step_results = Vec::new();
+        // Si un respaldo no se puede guardar, no se aplica nada más: un cambio sin respaldo no se
+        // podría revertir. El informe parcial se devuelve igual.
+        let mut backup_failed = false;
 
         let total_steps = (REGISTRY_TWEAKS.len() + SERVICE_TWEAKS.len() + 1).max(1);
         let mut step_idx = 0usize;
@@ -226,16 +228,13 @@ impl OptimizationEngine {
         };
 
         for spec in REGISTRY_TWEAKS {
+            if backup_failed {
+                break;
+            }
             step_idx += 1;
             push_progress(step_idx.saturating_sub(1), spec.label, None);
 
-            let eligible = match effective_tier {
-                HardwareTier::LowEnd => spec.applies_to_low_end,
-                HardwareTier::MidRange => {
-                    matches!(spec.min_tier, HardwareTier::LowEnd | HardwareTier::MidRange)
-                }
-                HardwareTier::HighEnd => true,
-            };
+            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
 
             if !eligible {
                 skipped_count += 1;
@@ -267,8 +266,17 @@ impl OptimizationEngine {
                 }
             };
 
-            self.backup_mgr
-                .record_registry_before_apply(&profile_name, snap)?;
+            if let Err(e) = self
+                .backup_mgr
+                .record_registry_before_apply(&profile_name, snap)
+            {
+                failed_items.push(format!(
+                    "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
+                    e
+                ));
+                backup_failed = true;
+                continue;
+            }
 
             match apply_registry_tweak(spec) {
                 Ok(()) => {
@@ -301,16 +309,13 @@ impl OptimizationEngine {
         }
 
         for spec in SERVICE_TWEAKS {
+            if backup_failed {
+                break;
+            }
             step_idx += 1;
             push_progress(step_idx.saturating_sub(1), spec.label, None);
 
-            let eligible = match effective_tier {
-                HardwareTier::LowEnd => spec.applies_to_low_end,
-                HardwareTier::MidRange => {
-                    matches!(spec.min_tier, HardwareTier::LowEnd | HardwareTier::MidRange)
-                }
-                HardwareTier::HighEnd => true,
-            };
+            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
 
             if !eligible {
                 skipped_count += 1;
@@ -355,8 +360,14 @@ impl OptimizationEngine {
                 continue;
             };
 
-            self.backup_mgr
-                .record_service_before_apply(&profile_name, snap)?;
+            if let Err(e) = self.backup_mgr.record_service_before_apply(&profile_name, snap) {
+                failed_items.push(format!(
+                    "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
+                    e
+                ));
+                backup_failed = true;
+                continue;
+            }
 
             match apply_service_tweak(spec) {
                 Ok(ServiceOpOutcome::Applied) => {
@@ -365,6 +376,24 @@ impl OptimizationEngine {
                         category: "Servicio Windows".into(),
                         label: spec.label.to_string(),
                         detail: format!("Servicio '{}' detenido y deshabilitado", spec.service_name),
+                        status: OptimizationStepStatus::Applied,
+                    };
+                    step_results.push(res.clone());
+                    push_progress(step_idx, spec.label, Some(res));
+                }
+                Ok(ServiceOpOutcome::AppliedPendingStop(why)) => {
+                    applied_count += 1;
+                    warnings.push(format!(
+                        "El servicio '{}' quedó deshabilitado pero no se pudo detener ahora ({}); se detendrá al reiniciar.",
+                        spec.service_name, why
+                    ));
+                    let res = OptimizationStepResult {
+                        category: "Servicio Windows".into(),
+                        label: spec.label.to_string(),
+                        detail: format!(
+                            "Servicio '{}' deshabilitado; se detendrá al reiniciar",
+                            spec.service_name
+                        ),
                         status: OptimizationStepStatus::Applied,
                     };
                     step_results.push(res.clone());
@@ -401,6 +430,13 @@ impl OptimizationEngine {
 
         let (target_guid, fallback_guid) = match effective_tier {
             HardwareTier::LowEnd => (GUID_BALANCED, None),
+            HardwareTier::MidRange if hw.is_laptop_or_battery => {
+                warnings.push(
+                    "Equipo portátil/con batería detectado: se mantiene el plan Equilibrado para proteger autonomía y térmicas."
+                        .into(),
+                );
+                (GUID_BALANCED, None)
+            }
             HardwareTier::MidRange => (GUID_HIGH_PERFORMANCE, Some(GUID_BALANCED)),
             HardwareTier::HighEnd => {
                 if hw.is_laptop_or_battery {
@@ -415,20 +451,37 @@ impl OptimizationEngine {
             }
         };
 
-        let existing_created: Vec<String> = self
-            .backup_mgr
-            .load_tolerant()
-            .ok()
-            .and_then(|(b, _)| b)
-            .map(|b| {
-                b.power_history
-                    .into_iter()
-                    .filter_map(|p| p.created_scheme_guid)
-                    .collect()
+        let existing_created: CoreResult<Vec<String>> = if backup_failed {
+            Err(CoreError::Backup {
+                message: "respaldo no disponible".into(),
+                source: None,
             })
-            .unwrap_or_default();
+        } else {
+            self.backup_mgr.load_tolerant().map(|(b, _)| {
+                b.map(|b| {
+                    b.power_history
+                        .into_iter()
+                        .filter_map(|p| p.created_scheme_guid)
+                        .collect()
+                })
+                .unwrap_or_default()
+            })
+        };
 
-        match capture_and_prepare_power_scheme(target_guid, fallback_guid, &existing_created) {
+        match existing_created.and_then(|created| {
+            capture_and_prepare_power_scheme(target_guid, fallback_guid, &created)
+        }) {
+            Ok(prep) if prep.already_managed => {
+                skipped_count += 1;
+                let res = OptimizationStepResult {
+                    category: "Plan de Energía".into(),
+                    label: "Esquema energético de Windows".into(),
+                    detail: "Ya hay un plan creado por OtterSwiss activo; revierte primero para cambiar de perfil".into(),
+                    status: OptimizationStepStatus::Skipped,
+                };
+                step_results.push(res.clone());
+                push_progress(step_idx, "Optimización completada", Some(res));
+            }
             Ok(prep) => {
                 if prep.used_fallback_scheme {
                     warnings.push(
@@ -436,10 +489,25 @@ impl OptimizationEngine {
                             .into(),
                     );
                 }
-                self.backup_mgr
-                    .record_power_before_apply(&profile_name, prep.snapshot.clone())?;
+                let recorded = self
+                    .backup_mgr
+                    .record_power_before_apply(&profile_name, prep.snapshot.clone())
+                    .map_err(|e| CoreError::Backup {
+                        message: e.to_string(),
+                        source: None,
+                    });
 
-                match activate_prepared_power_scheme(&prep.snapshot) {
+                match recorded.and_then(|()| activate_prepared_power_scheme(&prep.snapshot)) {
+                    Err(e @ CoreError::Backup { .. }) => {
+                        // Sin respaldo no se activa: se borra el esquema duplicado que no se usará.
+                        if let Some(ref created) = prep.snapshot.created_scheme_guid {
+                            discard_unused_scheme(created);
+                        }
+                        failed_items.push(format!(
+                            "[Respaldo] {} — no se cambió el plan de energía",
+                            e
+                        ));
+                    }
                     Ok(_) => {
                         applied_count += 1;
                         let res = OptimizationStepResult {
@@ -491,6 +559,11 @@ impl OptimizationEngine {
         })
     }
 
+    /// `true` si hay un respaldo de optimización pendiente de revertir.
+    pub fn has_backup(&self) -> bool {
+        self.backup_mgr.exists()
+    }
+
     pub fn rollback(&self, force_overwrite_user_changes: bool) -> CoreResult<RollbackReport> {
         self.rollback_with_progress(force_overwrite_user_changes, None)
     }
@@ -535,8 +608,9 @@ impl OptimizationEngine {
         for power_snap in backup.power_history.iter().rev() {
             step_idx += 1;
             push_rb(step_idx, "Restaurando Plan de Energía original...");
-            match restore_power_snapshot(power_snap) {
-                Ok(()) => restored_power += 1,
+            match restore_power_snapshot(power_snap, force_overwrite_user_changes) {
+                Ok(true) => restored_power += 1,
+                Ok(false) => skipped_user_modified += 1,
                 Err(e) => failed_items.push(format!("[Energía] {}", e)),
             }
         }
@@ -548,7 +622,9 @@ impl OptimizationEngine {
                 &format!("Restaurando servicio '{}'...", svc_snap.service_name),
             );
             match restore_service_snapshot(svc_snap, force_overwrite_user_changes) {
-                Ok(ServiceOpOutcome::Applied) => restored_services += 1,
+                Ok(ServiceOpOutcome::Applied | ServiceOpOutcome::AppliedPendingStop(_)) => {
+                    restored_services += 1
+                }
                 Ok(ServiceOpOutcome::SkippedUserModified) => skipped_user_modified += 1,
                 Ok(ServiceOpOutcome::SkippedNotInstalled) => {}
                 Err(e) => failed_items.push(format!("[Servicio: {}] {}", svc_snap.service_name, e)),
@@ -571,7 +647,8 @@ impl OptimizationEngine {
             }
         }
 
-        let backup_deleted = if failed_items.is_empty() {
+        // Con ítems omitidos el respaldo se conserva: el usuario aún puede forzar su restauración.
+        let backup_deleted = if failed_items.is_empty() && skipped_user_modified == 0 {
             self.backup_mgr.delete_if_clean()?;
             true
         } else {
@@ -588,5 +665,19 @@ impl OptimizationEngine {
             failed_items,
             backup_deleted,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn elegibilidad_por_nivel() {
+        assert!(tweak_is_eligible(HardwareTier::LowEnd, HardwareTier::LowEnd, true));
+        assert!(!tweak_is_eligible(HardwareTier::LowEnd, HardwareTier::LowEnd, false));
+        assert!(tweak_is_eligible(HardwareTier::MidRange, HardwareTier::MidRange, false));
+        assert!(!tweak_is_eligible(HardwareTier::MidRange, HardwareTier::HighEnd, false));
+        assert!(tweak_is_eligible(HardwareTier::HighEnd, HardwareTier::HighEnd, false));
     }
 }

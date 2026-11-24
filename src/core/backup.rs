@@ -11,6 +11,9 @@ use crate::core::win_common::NamedMutex;
 const BACKUP_SCHEMA_VERSION: u32 = 2;
 const MAX_BACKUP_BYTES: u64 = 2 * 1024 * 1024;
 const BACKUP_MUTEX_NAME: &str = r"Global\OtterSwiss_Backup_Lock";
+/// REG_SZ, REG_EXPAND_SZ, REG_BINARY, REG_DWORD, REG_QWORD.
+const ALLOWED_SNAPSHOT_TYPES: [u32; 5] = [1, 2, 3, 4, 11];
+const MAX_SNAPSHOT_VALUE_BYTES: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrySnapshot {
@@ -29,10 +32,18 @@ impl RegistrySnapshot {
         if !is_allowed_registry_entry(self.hive, &self.subkey, &self.value_name) {
             return false;
         }
-        matches!(
-            (self.existed, self.value_type, &self.raw_bytes),
-            (true, Some(_), Some(_)) | (false, None, None)
-        )
+        // Los valores del catálogo son DWORD/QWORD/cadenas cortas: tipos y tamaños fuera de eso solo
+        // pueden venir de un respaldo manipulado.
+        if self.applied_bytes.len() > MAX_SNAPSHOT_VALUE_BYTES {
+            return false;
+        }
+        match (self.existed, self.value_type, &self.raw_bytes) {
+            (true, Some(t), Some(raw)) => {
+                ALLOWED_SNAPSHOT_TYPES.contains(&t) && raw.len() <= MAX_SNAPSHOT_VALUE_BYTES
+            }
+            (false, None, None) => true,
+            _ => false,
+        }
     }
 }
 
@@ -157,7 +168,7 @@ impl BackupManager {
         }
 
         let _lock = NamedMutex::acquire_blocking(BACKUP_MUTEX_NAME)?;
-        let mut doc = self.load_or_init_unlocked(profile_name);
+        let mut doc = self.load_or_init_unlocked(profile_name)?;
         doc.last_updated_epoch = epoch_now();
         doc.last_profile_applied = profile_name.to_string();
 
@@ -188,7 +199,7 @@ impl BackupManager {
         }
 
         let _lock = NamedMutex::acquire_blocking(BACKUP_MUTEX_NAME)?;
-        let mut doc = self.load_or_init_unlocked(profile_name);
+        let mut doc = self.load_or_init_unlocked(profile_name)?;
         doc.last_updated_epoch = epoch_now();
         doc.last_profile_applied = profile_name.to_string();
 
@@ -211,7 +222,7 @@ impl BackupManager {
         snap: PowerSnapshot,
     ) -> CoreResult<()> {
         let _lock = NamedMutex::acquire_blocking(BACKUP_MUTEX_NAME)?;
-        let mut doc = self.load_or_init_unlocked(profile_name);
+        let mut doc = self.load_or_init_unlocked(profile_name)?;
         doc.last_updated_epoch = epoch_now();
         doc.last_profile_applied = profile_name.to_string();
         doc.power_history.push(snap);
@@ -226,21 +237,37 @@ impl BackupManager {
         Ok(())
     }
 
-    fn load_or_init_unlocked(&self, profile_name: &str) -> OptimizationBackup {
-        if let Ok(bytes) = read_bounded_bytes(&self.file_path, MAX_BACKUP_BYTES) {
-            if let Ok(mut parsed) = serde_json::from_slice::<OptimizationBackup>(&bytes) {
-                parsed.registry.retain(|r| r.is_valid());
-                parsed.services.retain(|s| s.is_valid());
-                return parsed;
-            }
+    /// Carga el respaldo para añadirle entradas. Si el archivo existe pero no se puede leer o
+    /// interpretar, falla: empezar uno vacío guardaría como «original» valores ya optimizados y el
+    /// estado de fábrica se perdería para siempre.
+    fn load_or_init_unlocked(&self, profile_name: &str) -> CoreResult<OptimizationBackup> {
+        if !self.file_path.exists() {
+            return Ok(OptimizationBackup::new(profile_name));
         }
-        OptimizationBackup::new(profile_name)
+        let bytes = read_bounded_bytes(&self.file_path, MAX_BACKUP_BYTES).map_err(|e| {
+            CoreError::Backup {
+                message: format!(
+                    "No se pudo leer el respaldo existente ({}); no se aplicarán cambios para no perder el estado original",
+                    e
+                ),
+                source: None,
+            }
+        })?;
+        let mut parsed = serde_json::from_slice::<OptimizationBackup>(&bytes).map_err(|e| {
+            CoreError::Backup {
+                message: format!(
+                    "El respaldo existente está dañado ({}); no se aplicarán cambios para no perder el estado original",
+                    e
+                ),
+                source: Some(Box::new(e)),
+            }
+        })?;
+        parsed.registry.retain(|r| r.is_valid());
+        parsed.services.retain(|s| s.is_valid());
+        Ok(parsed)
     }
 
     fn save_unlocked(&self, doc: &OptimizationBackup) -> CoreResult<()> {
-        if let Some(parent) = self.file_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
         let data = serde_json::to_vec_pretty(doc).map_err(|e| CoreError::Backup {
             message: format!("Error serializando backup.json: {}", e),
             source: Some(Box::new(e)),
@@ -254,4 +281,52 @@ fn epoch_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::tweaks_catalog::REGISTRY_TWEAKS;
+
+    fn snapshot() -> RegistrySnapshot {
+        let spec = &REGISTRY_TWEAKS[0];
+        RegistrySnapshot {
+            hive: spec.hive,
+            subkey: spec.subkey.to_string(),
+            value_name: spec.value_name.to_string(),
+            existed: true,
+            key_created: false,
+            value_type: Some(4),
+            raw_bytes: Some(vec![0, 0, 0, 0]),
+            applied_bytes: vec![1, 0, 0, 0],
+        }
+    }
+
+    /// SEC-10: solo entradas del catálogo, con tipos y tamaños acotados.
+    #[test]
+    fn snapshot_valida_catalogo_tipo_y_tamano() {
+        assert!(snapshot().is_valid());
+
+        let mut otra_clave = snapshot();
+        otra_clave.subkey = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run".into();
+        assert!(!otra_clave.is_valid());
+
+        let mut multi_sz = snapshot();
+        multi_sz.value_type = Some(7);
+        assert!(!multi_sz.is_valid());
+
+        let mut enorme = snapshot();
+        enorme.raw_bytes = Some(vec![0; 4096]);
+        assert!(!enorme.is_valid());
+
+        let mut incoherente = snapshot();
+        incoherente.existed = false;
+        assert!(!incoherente.is_valid());
+
+        let mut no_existia = snapshot();
+        no_existia.existed = false;
+        no_existia.value_type = None;
+        no_existia.raw_bytes = None;
+        assert!(no_existia.is_valid());
+    }
 }

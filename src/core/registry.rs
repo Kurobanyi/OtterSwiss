@@ -183,15 +183,24 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
                 });
             }
         }
+        // Solo se borra la clave creada por OtterSwiss si quedó vacía: otra política o programa puede
+        // haber escrito valores en ella después.
         if snap.key_created {
-            let _ = root.delete_subkey(&snap.subkey);
+            let is_empty = key
+                .query_info()
+                .map(|i| i.values == 0 && i.sub_keys == 0)
+                .unwrap_or(false);
+            drop(key);
+            if is_empty {
+                let _ = root.delete_subkey(&snap.subkey);
+            }
         }
     }
 
     Ok(true)
 }
 
-fn reg_type_to_u32(t: &winreg::enums::RegType) -> u32 {
+pub(crate) fn reg_type_to_u32(t: &winreg::enums::RegType) -> u32 {
     use winreg::enums::RegType::*;
     match t {
         REG_NONE => 0,
@@ -209,7 +218,7 @@ fn reg_type_to_u32(t: &winreg::enums::RegType) -> u32 {
     }
 }
 
-fn u32_to_reg_type(v: u32) -> winreg::enums::RegType {
+pub(crate) fn u32_to_reg_type(v: u32) -> winreg::enums::RegType {
     use winreg::enums::RegType::*;
     match v {
         0 => REG_NONE,

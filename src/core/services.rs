@@ -20,11 +20,13 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::tweaks_catalog::{
     is_allowed_service_name, is_valid_service_start_type, ServiceTargetAction, ServiceTweakSpec,
 };
-use crate::core::win_common::{to_wide_null, ScHandle};
+use crate::core::win_common::{to_wide_null, AlignedBuf, ScHandle};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceOpOutcome {
     Applied,
+    /// El tipo de inicio se cambió, pero el servicio no se detuvo a tiempo: quedará detenido al reiniciar.
+    AppliedPendingStop(String),
     SkippedNotInstalled,
     SkippedUserModified,
 }
@@ -107,7 +109,9 @@ pub fn apply_service_tweak(spec: &ServiceTweakSpec) -> CoreResult<ServiceOpOutco
     set_service_start_type(spec.service_name, &svc, target_start, false)?;
 
     if spec.action == ServiceTargetAction::DisableAndStop {
-        stop_service_and_wait(spec.service_name, &svc, Duration::from_secs(12))?;
+        if let Err(e) = stop_service_and_wait(spec.service_name, &svc, Duration::from_secs(12)) {
+            return Ok(ServiceOpOutcome::AppliedPendingStop(e.to_string()));
+        }
     }
 
     Ok(ServiceOpOutcome::Applied)
@@ -165,7 +169,7 @@ fn query_service_start_config(service_name: &str, svc: &ScHandle) -> CoreResult<
         });
     }
 
-    let mut buf = vec![0u8; needed as usize];
+    let mut buf = AlignedBuf::zeroed(needed as usize);
     unsafe {
         QueryServiceConfigW(
             svc.raw(),
@@ -198,13 +202,51 @@ fn query_service_start_config(service_name: &str, svc: &ScHandle) -> CoreResult<
                 &mut bytes_out,
             )
         }
-        .is_ok();
-        if ok {
-            delayed = delayed_info.fDelayedAutostart.as_bool();
-        }
+        .map_err(|e| CoreError::SystemTool {
+            message: format!(
+                "No se pudo leer el inicio retrasado de '{}': {}",
+                service_name, e
+            ),
+            source: None,
+        });
+        // Sin este dato, restaurar dejaría «Automático» donde había «Automático (inicio retrasado)».
+        ok?;
+        delayed = delayed_info.fDelayedAutostart.as_bool();
     }
 
     Ok((start_type, delayed))
+}
+
+/// Consulta de solo lectura: `true` si el servicio existe y está detenido (o no existe). No modifica nada,
+/// así que no exige estar en la tabla de servicios que OtterSwiss cambia.
+pub fn is_service_stopped(service_name: &str) -> CoreResult<bool> {
+    let scm_raw = unsafe { OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT) }
+        .map_err(|e| CoreError::Service {
+            service: service_name.to_string(),
+            message: format!("OpenSCManagerW falló: {}", e),
+            source: None,
+        })?;
+    let scm = ScHandle::new(scm_raw).ok_or_else(|| CoreError::Service {
+        service: service_name.to_string(),
+        message: "Handle SCM nulo".into(),
+        source: None,
+    })?;
+    let svc_w = to_wide_null(service_name);
+    let svc = match unsafe { OpenServiceW(scm.raw(), PCWSTR(svc_w.as_ptr()), SERVICE_QUERY_STATUS) } {
+        Ok(raw) => ScHandle::new(raw),
+        Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => return Ok(true),
+        Err(e) => {
+            return Err(CoreError::Service {
+                service: service_name.to_string(),
+                message: format!("OpenServiceW falló: {}", e),
+                source: None,
+            })
+        }
+    };
+    let Some(svc) = svc else {
+        return Ok(true);
+    };
+    Ok(query_service_current_state(service_name, &svc)? == SERVICE_STOPPED.0)
 }
 
 fn query_service_current_state(service_name: &str, svc: &ScHandle) -> CoreResult<u32> {

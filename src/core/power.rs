@@ -30,6 +30,8 @@ const BALANCED_GUID_STRUCT: GUID = GUID {
 
 #[derive(Debug, Clone)]
 pub struct PowerApplyReport {
+    /// `true` si ya había un plan creado por OtterSwiss activo: no se cambió nada.
+    pub already_managed: bool,
     pub snapshot: PowerSnapshot,
     pub used_fallback_scheme: bool,
     pub active_scheme_guid: String,
@@ -157,6 +159,7 @@ pub fn capture_and_prepare_power_scheme(
         .any(|g| g.eq_ignore_ascii_case(&current_str))
     {
         return Ok(PowerApplyReport {
+            already_managed: true,
             snapshot: PowerSnapshot {
                 previous_scheme_guid: current_str.clone(),
                 created_scheme_guid: None,
@@ -182,6 +185,7 @@ pub fn capture_and_prepare_power_scheme(
     let new_guid_str = format_guid(&new_guid);
 
     Ok(PowerApplyReport {
+        already_managed: false,
         snapshot: PowerSnapshot {
             previous_scheme_guid: current_str,
             created_scheme_guid: Some(new_guid_str.clone()),
@@ -228,8 +232,26 @@ pub fn activate_prepared_power_scheme(snap: &PowerSnapshot) -> CoreResult<String
 
 /// Revierte el plan de energía. Si el esquema anterior ya no existe, cae a Equilibrado
 /// y procede igual con la eliminación del esquema creado por OtterSwiss.
-pub fn restore_power_snapshot(snap: &PowerSnapshot) -> CoreResult<()> {
-    let prev_guid = parse_guid_strict(&snap.previous_scheme_guid).unwrap_or(BALANCED_GUID_STRUCT);
+///
+/// Si el usuario eligió otro plan después de optimizar y `force` es `false`, no se le cambia el plan
+/// (se devuelve `Ok(false)`); el esquema creado por OtterSwiss se borra igual si ya no está activo.
+pub fn restore_power_snapshot(snap: &PowerSnapshot, force: bool) -> CoreResult<bool> {
+    let prev_guid = parse_guid_strict(&snap.previous_scheme_guid)?;
+    let active_now = get_active_scheme_guid().map(|g| format_guid(&g)).ok();
+    let user_changed = active_now
+        .as_deref()
+        .is_some_and(|a| !a.eq_ignore_ascii_case(&snap.active_after_apply_guid));
+
+    if user_changed && !force {
+        let created_is_active = match (&snap.created_scheme_guid, &active_now) {
+            (Some(c), Some(a)) => c.eq_ignore_ascii_case(a),
+            _ => false,
+        };
+        if !created_is_active {
+            delete_created_scheme(snap)?;
+        }
+        return Ok(false);
+    }
 
     let restore_target = if scheme_exists(&prev_guid) {
         prev_guid
@@ -248,6 +270,23 @@ pub fn restore_power_snapshot(snap: &PowerSnapshot) -> CoreResult<()> {
         });
     }
 
+    delete_created_scheme(snap)?;
+    Ok(true)
+}
+
+/// Borra un esquema que OtterSwiss duplicó pero no llegó a usar (nunca un esquema integrado).
+pub fn discard_unused_scheme(guid_str: &str) {
+    if BUILTIN_SCHEMES.iter().any(|b| b.eq_ignore_ascii_case(guid_str)) {
+        return;
+    }
+    if let Ok(g) = parse_guid_strict(guid_str) {
+        unsafe {
+            let _ = PowerDeleteScheme(None, &g);
+        }
+    }
+}
+
+fn delete_created_scheme(snap: &PowerSnapshot) -> CoreResult<()> {
     if let Some(ref created_str) = snap.created_scheme_guid {
         if BUILTIN_SCHEMES
             .iter()
