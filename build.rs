@@ -20,6 +20,8 @@ fn main() {
   </compatibility>
 </assembly>"#,
         );
-        let _ = res.compile();
+        // Solo el ejecutable lleva el manifiesto `requireAdministrator`: con `compile()` también lo heredaban
+        // los binarios de `cargo test`, que entonces no arrancaban sin elevación (os error 740).
+        let _ = res.compile_for("otter_swiss");
     }
 }
