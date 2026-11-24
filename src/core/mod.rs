@@ -1,3 +1,5 @@
+// src/core/mod.rs
+
 pub mod app_store;
 pub mod archiver;
 pub mod backup;
@@ -21,4 +23,5 @@ pub mod sys_tools;
 pub mod trust;
 pub mod tweaks_catalog;
 pub mod uninstaller;
+pub mod updater;
 pub mod win_common;

@@ -6,7 +6,7 @@ pub mod theme;
 pub mod views;
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -28,6 +28,9 @@ use views::uninstaller::UninstallerView;
 use crate::core::app_store::AppStoreManager;
 use crate::core::dependencies::DependencyManager;
 use crate::core::error::CoreError;
+use crate::core::updater::{
+    check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveTab {
@@ -257,6 +260,20 @@ pub fn App() -> Element {
         }
     });
 
+    // --- Auto-Actualizador Nativo GitHub ---
+    let mut update_info = use_signal(|| None::<UpdateReleaseInfo>);
+    let mut show_update_modal = use_signal(|| false);
+    let mut is_downloading_update = use_signal(|| false);
+    let mut update_progress = use_signal(|| 0u8);
+    let mut update_error = use_signal(|| None::<String>);
+
+    use_future(move || async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        if let Ok(Ok(Some(info))) = tokio::task::spawn_blocking(check_for_updates).await {
+            update_info.set(Some(info));
+        }
+    });
+
     let logo_data_uri = use_hook(|| {
         format!(
             "data:image/gif;base64,{}",
@@ -292,6 +309,44 @@ pub fn App() -> Element {
         format!("v{}", pkg_ver)
     };
 
+    let on_start_update = move |_| {
+        let Some(info) = update_info.read().clone() else {
+            return;
+        };
+        is_downloading_update.set(true);
+        update_error.set(None);
+        update_progress.set(0);
+
+        let cancel_arc = Arc::new(AtomicBool::new(false));
+        let prog_arc = Arc::new(AtomicU8::new(0));
+
+        let prog_poll = Arc::clone(&prog_arc);
+        spawn(async move {
+            while *is_downloading_update.read() {
+                update_progress.set(prog_poll.load(Ordering::Acquire));
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
+        });
+
+        spawn(async move {
+            let res = tokio::task::spawn_blocking(move || {
+                download_and_install_update(&info, &cancel_arc, &prog_arc)
+            })
+            .await
+            .unwrap_or_else(|e| Err(CoreError::Trust { message: e.to_string(), source: None }));
+
+            match res {
+                Ok(installer_path) => {
+                    let _ = launch_installer_and_exit(&installer_path);
+                }
+                Err(e) => {
+                    update_error.set(Some(e.to_string()));
+                    is_downloading_update.set(false);
+                }
+            }
+        });
+    };
+
     rsx! {
         style { {include_str!("../../assets/main.css")} }
 
@@ -312,6 +367,14 @@ pub fn App() -> Element {
                     }
                     span { class: "top-title", "OtterSwiss" }
                     span { class: "top-version", "{version_badge}" }
+                    if let Some(upd) = update_info.read().as_ref() {
+                        button {
+                            class: "badge badge-warning",
+                            style: "cursor: pointer; margin-left: 6px; padding: 2px 8px; border: 1px solid var(--accent); font-size: 11px; font-weight: bold;",
+                            onclick: move |_| show_update_modal.set(true),
+                            "↑ v{upd.version}"
+                        }
+                    }
                 }
 
                 nav { class: "top-nav",
@@ -403,6 +466,82 @@ pub fn App() -> Element {
                         title: if en { "Close" } else { "Cerrar" },
                         onclick: move |_| { win_close.close(); },
                         "✕"
+                    }
+                }
+            }
+
+            // --- Modal de Actualización Disponible ---
+            if *show_update_modal.read() {
+                if let Some(upd) = update_info.read().as_ref() {
+                    {
+                        let modal_title = if en { format!("Update available: v{}", upd.version) } else { format!("Actualización disponible: v{}", upd.version) };
+                        let modal_sub = if en { format!("Current version: v{} → New version: v{}", pkg_ver, upd.version) } else { format!("Versión actual: v{} → Nueva versión: v{}", pkg_ver, upd.version) };
+                        let update_btn_lbl = if *is_downloading_update.read() {
+                            if en { format!("Downloading {}%...", *update_progress.read()) } else { format!("Descargando {}%...", *update_progress.read()) }
+                        } else if en {
+                            "Download and Install".to_string()
+                        } else {
+                            "Descargar e Instalar".to_string()
+                        };
+                        let close_modal_lbl = if en { "Later" } else { "Más tarde" };
+                        let notes_header = if en { "Release Notes:" } else { "Notas de la versión:" };
+
+                        rsx! {
+                            div {
+                                style: "position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 24px;",
+                                div {
+                                    class: "card",
+                                    style: "max-width: 600px; width: 100%; border: 1px solid var(--accent); display: flex; flex-direction: column; gap: 14px;",
+                                    div { class: "card-header",
+                                        div {
+                                            h3 { class: "card-title", "{modal_title}" }
+                                            p { class: "card-subtitle", "{modal_sub}" }
+                                        }
+                                    }
+
+                                    if !upd.notes.is_empty() {
+                                        div { style: "display: flex; flex-direction: column; gap: 6px;",
+                                            span { style: "font-size: var(--font-size-xs); font-weight: 600; color: var(--text-muted);", "{notes_header}" }
+                                            div {
+                                                style: "max-height: 200px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-size: var(--font-size-xs); white-space: pre-wrap; font-family: monospace;",
+                                                "{upd.notes}"
+                                            }
+                                        }
+                                    }
+
+                                    if *is_downloading_update.read() {
+                                        div { style: "display: flex; flex-direction: column; gap: 6px;",
+                                            div { style: "width: 100%; height: 8px; background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                                                div { style: "height: 100%; width: {update_progress.read()}%; background: var(--accent); transition: width 0.15s ease;" }
+                                            }
+                                            div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
+                                                span { "{update_progress.read()}%" }
+                                                span { "{upd.asset_name}" }
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(err) = update_error.read().as_ref() {
+                                        div { class: "badge badge-danger", style: "padding: 8px; font-size: var(--font-size-xs);", "{err}" }
+                                    }
+
+                                    div { style: "display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: 8px;",
+                                        button {
+                                            class: "btn btn-secondary",
+                                            disabled: *is_downloading_update.read(),
+                                            onclick: move |_| show_update_modal.set(false),
+                                            "{close_modal_lbl}"
+                                        }
+                                        button {
+                                            class: "btn btn-primary",
+                                            disabled: *is_downloading_update.read(),
+                                            onclick: on_start_update,
+                                            "{update_btn_lbl}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

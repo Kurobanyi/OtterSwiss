@@ -1,17 +1,17 @@
-; installer.iss
+; otterswiss.iss
 
 [Setup]
 AppId={{8D4F6A2E-9E3B-4E12-9F54-7A2C1B9E4401}
 AppName=OtterSwiss
-AppVersion=3.5.0
-AppVerName=OtterSwiss v3.5.0
+AppVersion=3.5.1
+AppVerName=OtterSwiss v3.5.1
 AppPublisher=OtterSwiss
-VersionInfoVersion=3.5.0.0
+VersionInfoVersion=3.5.1.0
 DefaultDirName={autopf}\OtterSwiss
 DefaultGroupName=OtterSwiss
 DisableProgramGroupPage=yes
 OutputDir=dist
-OutputBaseFilename=OtterSwiss-Setup-v3.5.0
+OutputBaseFilename=OtterSwiss-Setup-v3.5.1
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\otter_swiss.exe
 Compression=lzma2/ultra64
