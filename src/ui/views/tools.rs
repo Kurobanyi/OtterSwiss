@@ -92,9 +92,17 @@ pub fn ToolsView() -> Element {
                     let next = !currently_active;
                     *context_menu_active.write() = next;
                     tools_state.write().tool_log = Some(if next {
-                        if en { "Context menu installed.".to_string() } else { "Menú contextual instalado.".to_string() }
+                        if en {
+                            "Context menu installed.".to_string()
+                        } else {
+                            "Menú contextual instalado.".to_string()
+                        }
                     } else {
-                        if en { "Context menu removed.".to_string() } else { "Menú contextual desinstalado.".to_string() }
+                        if en {
+                            "Context menu removed.".to_string()
+                        } else {
+                            "Menú contextual desinstalado.".to_string()
+                        }
                     });
                 }
                 Err(CoreError::NotElevated(_)) => {
@@ -126,12 +134,48 @@ pub fn ToolsView() -> Element {
     let state = tools_state.read();
     let any_busy = state.is_working || *local_working.read();
 
-    let ram_title = if en { "RAM Optimizer" } else { "Optimización de RAM" }.to_string();
-    let ram_sub = Some((if en { "Move idle pages to Windows Standby list" } else { "Mueve páginas inactivas a Standby" }).to_string());
-    let ctx_title = if en { "Explorer Context Menu" } else { "Menú Contextual" }.to_string();
-    let ctx_sub = Some((if en { "Right-click Compress (.zip) & Extract" } else { "Comprimir (.zip) y extraer en clic derecho" }).to_string());
-    let runtimes_title = if en { "Gaming Runtimes" } else { "Dependencias Gamer" }.to_string();
-    let runtimes_sub = Some((if en { "Essential official Windows libraries" } else { "Bibliotecas oficiales esenciales" }).to_string());
+    let ram_title = if en {
+        "RAM Optimizer"
+    } else {
+        "Optimización de RAM"
+    }
+    .to_string();
+    let ram_sub = Some(
+        (if en {
+            "Move idle pages to Windows Standby list"
+        } else {
+            "Mueve páginas inactivas a Standby"
+        })
+        .to_string(),
+    );
+    let ctx_title = if en {
+        "Explorer Context Menu"
+    } else {
+        "Menú Contextual"
+    }
+    .to_string();
+    let ctx_sub = Some(
+        (if en {
+            "Right-click Compress (.zip) & Extract"
+        } else {
+            "Comprimir (.zip) y extraer en clic derecho"
+        })
+        .to_string(),
+    );
+    let runtimes_title = if en {
+        "Gaming Runtimes"
+    } else {
+        "Dependencias Gamer"
+    }
+    .to_string();
+    let runtimes_sub = Some(
+        (if en {
+            "Essential official Windows libraries"
+        } else {
+            "Bibliotecas oficiales esenciales"
+        })
+        .to_string(),
+    );
 
     rsx! {
         div { class: "content-body",
@@ -322,8 +366,20 @@ pub fn BatchAppStoreCard() -> Element {
     let state = tools_state.read();
     let is_running = state.is_working;
 
-    let store_title = if en { "Silent App Store" } else { "App Store Silenciosa" }.to_string();
-    let store_sub = Some((if en { "Official vendor downloads • Batch unattended install" } else { "Descarga oficial • Instalación desatendida en lote" }).to_string());
+    let store_title = if en {
+        "Silent App Store"
+    } else {
+        "App Store Silenciosa"
+    }
+    .to_string();
+    let store_sub = Some(
+        (if en {
+            "Official vendor downloads • Batch unattended install"
+        } else {
+            "Descarga oficial • Instalación desatendida en lote"
+        })
+        .to_string(),
+    );
 
     rsx! {
         Card {

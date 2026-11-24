@@ -48,7 +48,8 @@ impl Lang {
     pub fn save_persisted(self) {
         // El proceso corre elevado: se escribe sin seguir junctions (SEC-19).
         if let (Some(root), Ok(json)) = (dirs::config_dir(), serde_json::to_vec_pretty(&self)) {
-            let _ = crate::core::safe_fs::write_file_inside(&root, "OtterSwiss", "lang.json", &json);
+            let _ =
+                crate::core::safe_fs::write_file_inside(&root, "OtterSwiss", "lang.json", &json);
         }
     }
 }

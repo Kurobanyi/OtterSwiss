@@ -57,9 +57,15 @@ fn clean_archive_extract_dir(src: &Path) -> PathBuf {
     let folder = if low.ends_with(".tar.gz") {
         &name[..name.len() - 7]
     } else {
-        src.file_stem().and_then(|s| s.to_str()).unwrap_or("extracted")
+        src.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("extracted")
     };
-    let clean = if folder.is_empty() { "extracted" } else { folder };
+    let clean = if folder.is_empty() {
+        "extracted"
+    } else {
+        folder
+    };
     parent.join(clean)
 }
 
@@ -97,7 +103,14 @@ fn MiniArchiveProgressApp() -> Element {
     use_hook(move || {
         let Some(job) = job_opt else {
             is_running.set(false);
-            error_msg.set(Some(if en { "Invalid job" } else { "Trabajo inválido" }.into()));
+            error_msg.set(Some(
+                if en {
+                    "Invalid job"
+                } else {
+                    "Trabajo inválido"
+                }
+                .into(),
+            ));
             return;
         };
 
@@ -134,9 +147,7 @@ fn MiniArchiveProgressApp() -> Element {
                 tokio::time::sleep(Duration::from_millis(120)).await;
             }
 
-            let res = handle
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
 
             if let Ok(snap) = prog_arc.lock() {
                 progress.set(snap.clone());

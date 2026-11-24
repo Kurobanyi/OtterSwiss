@@ -136,7 +136,9 @@ impl SysTools {
                     format!("PID {}", pid)
                 };
 
-                report.trimmed_processes.push(format!("{} (PID {})", name, pid));
+                report
+                    .trimmed_processes
+                    .push(format!("{} (PID {})", name, pid));
             } else {
                 report.errors_encountered += 1;
             }

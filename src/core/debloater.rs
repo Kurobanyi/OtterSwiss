@@ -521,9 +521,9 @@ struct PsAppxEntry {
 
 fn get_powershell_path() -> CoreResult<PathBuf> {
     let mut buf = [0u16; 260];
-    let len = unsafe {
-        windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf))
-    } as usize;
+    let len =
+        unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
+            as usize;
     if len == 0 || len >= buf.len() {
         return Err(CoreError::SystemTool {
             message: "No se pudo localizar System32 para PowerShell".into(),
@@ -1161,7 +1161,9 @@ mod tests {
 
     #[test]
     fn identificadores_de_paquete_sin_inyeccion() {
-        assert!(is_valid_package_ident("Microsoft.BingNews_4.55.62231.0_x64__8wekyb3d8bbwe"));
+        assert!(is_valid_package_ident(
+            "Microsoft.BingNews_4.55.62231.0_x64__8wekyb3d8bbwe"
+        ));
         assert!(!is_valid_package_ident("x'; Remove-Item C:\\ -Recurse; '"));
         assert!(!is_valid_package_ident(""));
         assert!(!is_valid_package_ident(&"a".repeat(300)));
@@ -1170,8 +1172,16 @@ mod tests {
     /// SYS-20: Outlook, To Do, Enlace Móvil y Teams no vienen preseleccionadas.
     #[test]
     fn apps_de_uso_real_no_vienen_marcadas() {
-        for name in ["Microsoft.OutlookForWindows", "Microsoft.Todos", "Microsoft.YourPhone", "MSTeams"] {
-            let spec = DEBLOAT_APP_CATALOG.iter().find(|a| a.package_name == name).expect(name);
+        for name in [
+            "Microsoft.OutlookForWindows",
+            "Microsoft.Todos",
+            "Microsoft.YourPhone",
+            "MSTeams",
+        ] {
+            let spec = DEBLOAT_APP_CATALOG
+                .iter()
+                .find(|a| a.package_name == name)
+                .expect(name);
             assert!(!spec.default_selected, "{} viene preseleccionada", name);
         }
     }

@@ -232,7 +232,8 @@ pub fn is_service_stopped(service_name: &str) -> CoreResult<bool> {
         source: None,
     })?;
     let svc_w = to_wide_null(service_name);
-    let svc = match unsafe { OpenServiceW(scm.raw(), PCWSTR(svc_w.as_ptr()), SERVICE_QUERY_STATUS) } {
+    let svc = match unsafe { OpenServiceW(scm.raw(), PCWSTR(svc_w.as_ptr()), SERVICE_QUERY_STATUS) }
+    {
         Ok(raw) => ScHandle::new(raw),
         Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => return Ok(true),
         Err(e) => {

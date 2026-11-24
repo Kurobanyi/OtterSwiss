@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
-    CloseHandle, FreeLibrary, HANDLE, HMODULE,
-    INVALID_HANDLE_VALUE, LUID, WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, FreeLibrary, HANDLE, HMODULE, INVALID_HANDLE_VALUE, LUID, WAIT_ABANDONED,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
@@ -177,10 +177,10 @@ impl SafeLibrary {
                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
             )
         }
-            .map_err(|e| CoreError::SystemTool {
-                message: format!("No se pudo cargar DLL '{}': {}", path.display(), e),
-                source: None,
-            })?;
+        .map_err(|e| CoreError::SystemTool {
+            message: format!("No se pudo cargar DLL '{}': {}", path.display(), e),
+            source: None,
+        })?;
         Ok(Self(module))
     }
 
@@ -317,13 +317,15 @@ impl NamedMutex {
         let wide = to_wide_null(name);
         let res = unsafe { CreateMutexW(Some(&sa), false, PCWSTR(wide.as_ptr())) };
         unsafe {
-            let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(psd.0));
+            let _ =
+                windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(psd.0));
         }
         let raw = res.map_err(|e| CoreError::SystemTool {
             message: format!("Error creando mutex '{}': {}", name, e),
             source: None,
         })?;
-        SafeHandle::new(raw).ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))
+        SafeHandle::new(raw)
+            .ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))
     }
 
     /// `WAIT_ABANDONED` significa que el dueño anterior murió sin soltarlo: el mutex ya es nuestro (CON-01).
@@ -517,7 +519,8 @@ fn detect_gpu_names() -> Vec<String> {
     if let Ok(class_key) = hklm.open_subkey_with_flags(base, KEY_READ | KEY_WOW64_64KEY) {
         for idx in 0..16 {
             let sub = format!("{:04}", idx);
-            if let Ok(dev_key) = class_key.open_subkey_with_flags(&sub, KEY_READ | KEY_WOW64_64KEY) {
+            if let Ok(dev_key) = class_key.open_subkey_with_flags(&sub, KEY_READ | KEY_WOW64_64KEY)
+            {
                 if let Ok(desc) = dev_key.get_value::<String, _>("DriverDesc") {
                     let clean = desc.trim().to_string();
                     if !clean.is_empty() && seen.insert(clean.clone()) {
@@ -607,7 +610,11 @@ fn detect_storage_drives() -> Vec<String> {
         };
 
         let model = match (vendor.is_empty(), product.is_empty()) {
-            (false, false) if !product.to_ascii_lowercase().starts_with(&vendor.to_ascii_lowercase()) => {
+            (false, false)
+                if !product
+                    .to_ascii_lowercase()
+                    .starts_with(&vendor.to_ascii_lowercase()) =>
+            {
                 format!("{} {}", vendor, product)
             }
             (_, false) => product,
@@ -648,12 +655,12 @@ pub fn reboot_system_now() -> CoreResult<()> {
         .ok_or_else(|| CoreError::from_win32("Token de proceso inválido"))?;
 
     let mut luid = LUID::default();
-    unsafe { LookupPrivilegeValueW(PCWSTR::null(), SE_SHUTDOWN_NAME, &mut luid) }.map_err(
-        |e| CoreError::SystemTool {
+    unsafe { LookupPrivilegeValueW(PCWSTR::null(), SE_SHUTDOWN_NAME, &mut luid) }.map_err(|e| {
+        CoreError::SystemTool {
             message: format!("LookupPrivilegeValueW(SE_SHUTDOWN_NAME) falló: {}", e),
             source: None,
-        },
-    )?;
+        }
+    })?;
 
     let tp = TOKEN_PRIVILEGES {
         PrivilegeCount: 1,

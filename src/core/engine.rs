@@ -8,8 +8,7 @@ use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::power::{
     activate_prepared_power_scheme, capture_and_prepare_power_scheme, discard_unused_scheme,
-    restore_power_snapshot,
-    GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
+    restore_power_snapshot, GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
 };
 use crate::core::registry::{
     apply_registry_tweak, capture_registry_tweak, restore_registry_snapshot,
@@ -87,7 +86,11 @@ pub struct RollbackReport {
 
 /// Decide si un ajuste entra en el perfil para el nivel de hardware efectivo (una sola regla para el
 /// plan que se muestra y para lo que se aplica).
-pub fn tweak_is_eligible(tier: HardwareTier, min_tier: HardwareTier, applies_to_low_end: bool) -> bool {
+pub fn tweak_is_eligible(
+    tier: HardwareTier,
+    min_tier: HardwareTier,
+    applies_to_low_end: bool,
+) -> bool {
     match tier {
         HardwareTier::LowEnd => applies_to_low_end,
         HardwareTier::MidRange => matches!(min_tier, HardwareTier::LowEnd | HardwareTier::MidRange),
@@ -119,7 +122,8 @@ impl OptimizationEngine {
 
         let mut plan = Vec::new();
         for spec in REGISTRY_TWEAKS {
-            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
+            let eligible =
+                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
                 category: format!("Registro ({})", spec.hive.as_str()),
                 label: spec.label.to_string(),
@@ -129,7 +133,8 @@ impl OptimizationEngine {
         }
 
         for spec in SERVICE_TWEAKS {
-            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
+            let eligible =
+                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
                 category: "Servicio Windows".to_string(),
                 label: spec.label.to_string(),
@@ -234,7 +239,8 @@ impl OptimizationEngine {
             step_idx += 1;
             push_progress(step_idx.saturating_sub(1), spec.label, None);
 
-            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
+            let eligible =
+                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
 
             if !eligible {
                 skipped_count += 1;
@@ -315,7 +321,8 @@ impl OptimizationEngine {
             step_idx += 1;
             push_progress(step_idx.saturating_sub(1), spec.label, None);
 
-            let eligible = tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
+            let eligible =
+                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
 
             if !eligible {
                 skipped_count += 1;
@@ -352,7 +359,10 @@ impl OptimizationEngine {
                 let res = OptimizationStepResult {
                     category: "Servicio Windows".into(),
                     label: spec.label.to_string(),
-                    detail: format!("Servicio '{}' no instalado en este sistema", spec.service_name),
+                    detail: format!(
+                        "Servicio '{}' no instalado en este sistema",
+                        spec.service_name
+                    ),
                     status: OptimizationStepStatus::Skipped,
                 };
                 step_results.push(res.clone());
@@ -360,7 +370,10 @@ impl OptimizationEngine {
                 continue;
             };
 
-            if let Err(e) = self.backup_mgr.record_service_before_apply(&profile_name, snap) {
+            if let Err(e) = self
+                .backup_mgr
+                .record_service_before_apply(&profile_name, snap)
+            {
                 failed_items.push(format!(
                     "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
                     e
@@ -375,7 +388,10 @@ impl OptimizationEngine {
                     let res = OptimizationStepResult {
                         category: "Servicio Windows".into(),
                         label: spec.label.to_string(),
-                        detail: format!("Servicio '{}' detenido y deshabilitado", spec.service_name),
+                        detail: format!(
+                            "Servicio '{}' detenido y deshabilitado",
+                            spec.service_name
+                        ),
                         status: OptimizationStepStatus::Applied,
                     };
                     step_results.push(res.clone());
@@ -426,7 +442,11 @@ impl OptimizationEngine {
         }
 
         step_idx += 1;
-        push_progress(step_idx.saturating_sub(1), "Configurando Plan de Energía", None);
+        push_progress(
+            step_idx.saturating_sub(1),
+            "Configurando Plan de Energía",
+            None,
+        );
 
         let (target_guid, fallback_guid) = match effective_tier {
             HardwareTier::LowEnd => (GUID_BALANCED, None),
@@ -674,10 +694,30 @@ mod tests {
 
     #[test]
     fn elegibilidad_por_nivel() {
-        assert!(tweak_is_eligible(HardwareTier::LowEnd, HardwareTier::LowEnd, true));
-        assert!(!tweak_is_eligible(HardwareTier::LowEnd, HardwareTier::LowEnd, false));
-        assert!(tweak_is_eligible(HardwareTier::MidRange, HardwareTier::MidRange, false));
-        assert!(!tweak_is_eligible(HardwareTier::MidRange, HardwareTier::HighEnd, false));
-        assert!(tweak_is_eligible(HardwareTier::HighEnd, HardwareTier::HighEnd, false));
+        assert!(tweak_is_eligible(
+            HardwareTier::LowEnd,
+            HardwareTier::LowEnd,
+            true
+        ));
+        assert!(!tweak_is_eligible(
+            HardwareTier::LowEnd,
+            HardwareTier::LowEnd,
+            false
+        ));
+        assert!(tweak_is_eligible(
+            HardwareTier::MidRange,
+            HardwareTier::MidRange,
+            false
+        ));
+        assert!(!tweak_is_eligible(
+            HardwareTier::MidRange,
+            HardwareTier::HighEnd,
+            false
+        ));
+        assert!(tweak_is_eligible(
+            HardwareTier::HighEnd,
+            HardwareTier::HighEnd,
+            false
+        ));
     }
 }

@@ -26,12 +26,12 @@ use views::tools::ToolsView;
 use views::uninstaller::UninstallerView;
 
 use crate::core::app_store::AppStoreManager;
-use crate::ui::components::{Modal, StatusBanner, Tone};
 use crate::core::dependencies::DependencyManager;
 use crate::core::error::CoreError;
 use crate::core::updater::{
     check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
 };
+use crate::ui::components::{Modal, StatusBanner, Tone};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveTab {
@@ -140,7 +140,15 @@ fn run_installer_worker(
                         s.is_working = true;
                         s.progress_percent = 30;
                         s.progress_label = Some(format!("{}...", dep_id));
-                        s.tool_log = Some(format!("{} '{}'...", if lang_is_en() { "Installing" } else { "Instalando" }, dep_id));
+                        s.tool_log = Some(format!(
+                            "{} '{}'...",
+                            if lang_is_en() {
+                                "Installing"
+                            } else {
+                                "Instalando"
+                            },
+                            dep_id
+                        ));
                     }
 
                     let res = tokio::task::spawn_blocking(move || {
@@ -237,7 +245,12 @@ fn run_installer_worker(
                                 s.app_statuses.insert(
                                     pkg_id,
                                     InstallStatus::Failed(
-                                        if lang_is_en() { "Cancelled" } else { "Cancelado" }.into(),
+                                        if lang_is_en() {
+                                            "Cancelled"
+                                        } else {
+                                            "Cancelado"
+                                        }
+                                        .into(),
                                     ),
                                 );
                                 break;
@@ -263,12 +276,23 @@ fn run_installer_worker(
                     // UI-02: el resumen dice qué falló o si se canceló, no un «OK» genérico.
                     let en = lang_is_en();
                     s.summary_msg = Some(match (cancelled, err_count, en) {
-                        (true, _, true) => format!("Cancelled: {} installed, {} failed.", ok_count, err_count),
-                        (true, _, false) => format!("Cancelado: {} instaladas, {} con error.", ok_count, err_count),
+                        (true, _, true) => {
+                            format!("Cancelled: {} installed, {} failed.", ok_count, err_count)
+                        }
+                        (true, _, false) => format!(
+                            "Cancelado: {} instaladas, {} con error.",
+                            ok_count, err_count
+                        ),
                         (false, 0, true) => format!("{} app(s) installed.", ok_count),
                         (false, 0, false) => format!("{} app(s) instalada(s).", ok_count),
-                        (false, _, true) => format!("{} installed, {} failed: see each app's status.", ok_count, err_count),
-                        (false, _, false) => format!("{} instaladas, {} con error: mira el estado de cada app.", ok_count, err_count),
+                        (false, _, true) => format!(
+                            "{} installed, {} failed: see each app's status.",
+                            ok_count, err_count
+                        ),
+                        (false, _, false) => format!(
+                            "{} instaladas, {} con error: mira el estado de cada app.",
+                            ok_count, err_count
+                        ),
                     });
                 }
             }
@@ -380,7 +404,12 @@ pub fn App() -> Element {
                 launch_installer_and_exit(&installer_path, &info)
             })
             .await
-            .unwrap_or_else(|e| Err(CoreError::Trust { message: e.to_string(), source: None }));
+            .unwrap_or_else(|e| {
+                Err(CoreError::Trust {
+                    message: e.to_string(),
+                    source: None,
+                })
+            });
 
             if let Err(e) = res {
                 update_error.set(Some(e.to_string()));

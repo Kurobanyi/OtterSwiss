@@ -5,16 +5,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 use windows::core::GUID;
 use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HANDLE, NO_ERROR};
+#[cfg(target_pointer_width = "32")]
+use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY as EchoReplyStruct;
+#[cfg(target_pointer_width = "64")]
+use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY32 as EchoReplyStruct;
 use windows::Win32::NetworkManagement::IpHelper::{
     GetAdaptersAddresses, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho, SetInterfaceDnsSettings,
     DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
     DNS_SETTING_NAMESERVER, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST,
     IP_ADAPTER_ADDRESSES_LH,
 };
-#[cfg(target_pointer_width = "32")]
-use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY as EchoReplyStruct;
-#[cfg(target_pointer_width = "64")]
-use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY32 as EchoReplyStruct;
 use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
 use windows::Win32::Networking::WinSock::AF_UNSPEC;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
@@ -173,10 +173,7 @@ pub fn benchmark_dns_presets() -> Vec<DnsBenchmarkResult> {
         })
         .collect();
 
-    handles
-        .into_iter()
-        .filter_map(|h| h.join().ok())
-        .collect()
+    handles.into_iter().filter_map(|h| h.join().ok()).collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -305,7 +302,10 @@ fn read_nameserver_value(path: &str) -> CoreResult<String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
         Err(e) => {
             return Err(CoreError::Dns {
-                message: format!("No se pudo leer la configuración DNS actual ({}): {}", path, e),
+                message: format!(
+                    "No se pudo leer la configuración DNS actual ({}): {}",
+                    path, e
+                ),
                 source: None,
             })
         }
@@ -702,18 +702,43 @@ mod tests {
     #[test]
     fn presets_son_validos() {
         for p in DNS_PRESETS {
-            assert!(validate_dns_input(Some(p.ipv4_primary), Some(p.ipv4_secondary), Some(p.ipv6_primary), Some(p.ipv6_secondary)).is_ok(), "{}", p.id);
+            assert!(
+                validate_dns_input(
+                    Some(p.ipv4_primary),
+                    Some(p.ipv4_secondary),
+                    Some(p.ipv6_primary),
+                    Some(p.ipv6_secondary)
+                )
+                .is_ok(),
+                "{}",
+                p.id
+            );
         }
     }
 
     /// SEC-09: lo que no es un servidor DNS válido no se aplica.
     #[test]
     fn rechaza_direcciones_invalidas() {
-        for bad in ["127.0.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "1.1.1", "evil"] {
-            assert!(validate_dns_input(Some(bad), None, None, None).is_err(), "{}", bad);
+        for bad in [
+            "127.0.0.1",
+            "0.0.0.0",
+            "255.255.255.255",
+            "224.0.0.1",
+            "1.1.1",
+            "evil",
+        ] {
+            assert!(
+                validate_dns_input(Some(bad), None, None, None).is_err(),
+                "{}",
+                bad
+            );
         }
         for bad in ["::1", "::", "ff02::1"] {
-            assert!(validate_dns_input(None, None, Some(bad), None).is_err(), "{}", bad);
+            assert!(
+                validate_dns_input(None, None, Some(bad), None).is_err(),
+                "{}",
+                bad
+            );
         }
         assert!(validate_dns_input(None, Some("1.1.1.1"), None, None).is_err());
         assert!(validate_dns_input(None, None, None, None).is_err());

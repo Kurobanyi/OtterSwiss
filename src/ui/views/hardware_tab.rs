@@ -1,7 +1,7 @@
-use dioxus::prelude::*;
 use crate::core::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
+use dioxus::prelude::*;
 
 #[derive(Props, Clone, PartialEq)]
 pub struct HardwareTabProps {
@@ -42,8 +42,14 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
     let specs_for_export = specs.clone();
 
     let cores_label = match (specs.cpu.p_cores, specs.cpu.e_cores) {
-        (Some(p), Some(e)) => format!("{}C ({}P+{}E) / {}T", specs.cpu.physical_cores, p, e, specs.cpu.logical_threads),
-        _ => format!("{}C / {}T", specs.cpu.physical_cores, specs.cpu.logical_threads),
+        (Some(p), Some(e)) => format!(
+            "{}C ({}P+{}E) / {}T",
+            specs.cpu.physical_cores, p, e, specs.cpu.logical_threads
+        ),
+        _ => format!(
+            "{}C / {}T",
+            specs.cpu.physical_cores, specs.cpu.logical_threads
+        ),
     };
 
     let ram_gb = specs.memory.total_mb as f64 / 1024.0;

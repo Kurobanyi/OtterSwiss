@@ -60,7 +60,11 @@ fn report_banner(rep: &DebloatReport, en: bool) -> (String, Tone) {
         };
         (text, Tone::Danger)
     } else {
-        let text = if en { format!("Done: {}.", counts) } else { format!("Listo: {}.", counts) };
+        let text = if en {
+            format!("Done: {}.", counts)
+        } else {
+            format!("Listo: {}.", counts)
+        };
         (text, Tone::Success)
     }
 }
@@ -163,15 +167,15 @@ pub fn DebloaterView() -> Element {
                 tokio::time::sleep(Duration::from_millis(150)).await;
             }
 
-            let res = handle
-                .await
-                .unwrap_or_else(|e| Err(e.to_string()));
+            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
 
             match res {
                 Ok(rep) => {
                     status_banner.set(Some(report_banner(&rep, en)));
                     last_report.set(Some(rep));
-                    if let Ok(Ok(fresh)) = tokio::task::spawn_blocking(DebloaterManager::scan_system).await {
+                    if let Ok(Ok(fresh)) =
+                        tokio::task::spawn_blocking(DebloaterManager::scan_system).await
+                    {
                         apply_recommended_defaults(&fresh, selected_apps, selected_regs);
                         scan_result.set(fresh);
                     }
@@ -201,7 +205,9 @@ pub fn DebloaterView() -> Element {
                         },
                         Tone::Success,
                     )));
-                    if let Ok(Ok(fresh)) = tokio::task::spawn_blocking(DebloaterManager::scan_system).await {
+                    if let Ok(Ok(fresh)) =
+                        tokio::task::spawn_blocking(DebloaterManager::scan_system).await
+                    {
                         scan_result.set(fresh);
                     }
                 }
@@ -224,11 +230,28 @@ pub fn DebloaterView() -> Element {
         DebloatCategory::XboxGaming,
     ];
 
-    let debloat_title = if en { "Windows Debloater" } else { "Debloater de Windows" }.to_string();
-    let debloat_sub = Some((if en { "Remove preinstalled apps and ads (Store and Winget stay protected)" } else { "Quita apps preinstaladas y anuncios (la Store y Winget quedan protegidas)" }).to_string());
+    let debloat_title = if en {
+        "Windows Debloater"
+    } else {
+        "Debloater de Windows"
+    }
+    .to_string();
+    let debloat_sub = Some(
+        (if en {
+            "Remove preinstalled apps and ads (Store and Winget stay protected)"
+        } else {
+            "Quita apps preinstaladas y anuncios (la Store y Winget quedan protegidas)"
+        })
+        .to_string(),
+    );
     let prog_title = if en { "Debloat Progress" } else { "Progreso" }.to_string();
     let rep_title = if en { "Summary" } else { "Resumen" }.to_string();
-    let tweaks_title = if en { "Privacy & Ad-Block Registry Tweaks" } else { "Ajustes Anti-Publicidad (Reversibles)" }.to_string();
+    let tweaks_title = if en {
+        "Privacy & Ad-Block Registry Tweaks"
+    } else {
+        "Ajustes Anti-Publicidad (Reversibles)"
+    }
+    .to_string();
 
     // SYS-20: la confirmación muestra la lista concreta y qué significa quitar para todos los usuarios.
     let confirm_apps: Vec<&'static str> = scan

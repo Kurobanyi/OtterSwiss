@@ -53,23 +53,57 @@ pub fn SensorsView() -> Element {
         || !snap.gpu_temperatures.is_empty()
         || !snap.storage_temperatures.is_empty();
 
-    let thermal_title = if en { "Thermal Monitor" } else { "Monitor Térmico" }.to_string();
-    let thermal_sub = Some(if en { "Live GPU, NVMe & ACPI readings" } else { "Lecturas en vivo de GPU, NVMe y ACPI" }.to_string());
+    let thermal_title = if en {
+        "Thermal Monitor"
+    } else {
+        "Monitor Térmico"
+    }
+    .to_string();
+    let thermal_sub = Some(
+        if en {
+            "Live GPU, NVMe & ACPI readings"
+        } else {
+            "Lecturas en vivo de GPU, NVMe y ACPI"
+        }
+        .to_string(),
+    );
     let reset_peaks_lbl = if en { "Reset Peaks" } else { "Reiniciar Picos" };
     let pause_lbl = if *paused.read() {
-        if en { "Resume" } else { "Reanudar" }
+        if en {
+            "Resume"
+        } else {
+            "Reanudar"
+        }
     } else if en {
         "Pause"
     } else {
         "Pausar"
     };
 
-    let empty_title = if en { "Waiting for sensors..." } else { "Esperando sensores..." }.to_string();
-    let empty_desc = if en { "Checking NVML, ADL2, WMI & NVMe." } else { "Comprobando NVML, ADL2, WMI y NVMe." }.to_string();
+    let empty_title = if en {
+        "Waiting for sensors..."
+    } else {
+        "Esperando sensores..."
+    }
+    .to_string();
+    let empty_desc = if en {
+        "Checking NVML, ADL2, WMI & NVMe."
+    } else {
+        "Comprobando NVML, ADL2, WMI y NVMe."
+    }
+    .to_string();
 
     // UI-14: son zonas térmicas ACPI; no siempre miden la CPU.
-    let cpu_section_lbl = if en { "ACPI thermal zones" } else { "Zonas térmicas ACPI" };
-    let storage_section_lbl = if en { "Storage (NVMe / SSD)" } else { "Almacenamiento (NVMe / SSD)" };
+    let cpu_section_lbl = if en {
+        "ACPI thermal zones"
+    } else {
+        "Zonas térmicas ACPI"
+    };
+    let storage_section_lbl = if en {
+        "Storage (NVMe / SSD)"
+    } else {
+        "Almacenamiento (NVMe / SSD)"
+    };
     let diagnostics_title = if en { "Diagnostics" } else { "Diagnóstico" }.to_string();
 
     rsx! {

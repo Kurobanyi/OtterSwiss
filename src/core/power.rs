@@ -276,7 +276,10 @@ pub fn restore_power_snapshot(snap: &PowerSnapshot, force: bool) -> CoreResult<b
 
 /// Borra un esquema que OtterSwiss duplicó pero no llegó a usar (nunca un esquema integrado).
 pub fn discard_unused_scheme(guid_str: &str) {
-    if BUILTIN_SCHEMES.iter().any(|b| b.eq_ignore_ascii_case(guid_str)) {
+    if BUILTIN_SCHEMES
+        .iter()
+        .any(|b| b.eq_ignore_ascii_case(guid_str))
+    {
         return;
     }
     if let Ok(g) = parse_guid_strict(guid_str) {

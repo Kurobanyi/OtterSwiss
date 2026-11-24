@@ -80,7 +80,11 @@ impl Tone {
 #[component]
 pub fn StatusBanner(text: String, tone: Tone) -> Element {
     let class = format!("status-banner {}", tone.badge_class());
-    let role = if tone == Tone::Danger { "alert" } else { "status" };
+    let role = if tone == Tone::Danger {
+        "alert"
+    } else {
+        "status"
+    };
     rsx! {
         div { class: "{class}", role: "{role}", "{text}" }
     }
@@ -147,7 +151,11 @@ pub fn ConfirmDialog(
     on_cancel: EventHandler<()>,
     children: Element,
 ) -> Element {
-    let confirm_class = if tone == Tone::Danger { "btn btn-danger" } else { "btn btn-primary" };
+    let confirm_class = if tone == Tone::Danger {
+        "btn btn-danger"
+    } else {
+        "btn btn-primary"
+    };
     rsx! {
         Modal {
             title,

@@ -11,7 +11,9 @@ use crate::core::uninstaller::{
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
-use crate::ui::{refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState};
+use crate::ui::{
+    refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SortMode {
@@ -31,7 +33,11 @@ fn uninstall_exit_is_success(code: u32) -> bool {
 
 /// Solo se preseleccionan los restos que el core marca como seguros (SYS-03).
 fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
-    items.iter().filter(|i| i.recommended).map(|i| i.id.clone()).collect()
+    items
+        .iter()
+        .filter(|i| i.recommended)
+        .map(|i| i.id.clone())
+        .collect()
 }
 
 fn format_size_mb(bytes: u64) -> String {
@@ -48,7 +54,10 @@ fn format_size_mb(bytes: u64) -> String {
     }
 }
 
-fn spawn_fill_missing_sizes(apps_list: Vec<InstalledApp>, mut extra_sizes: Signal<HashMap<String, u64>>) {
+fn spawn_fill_missing_sizes(
+    apps_list: Vec<InstalledApp>,
+    mut extra_sizes: Signal<HashMap<String, u64>>,
+) {
     spawn(async move {
         let computed = tokio::task::spawn_blocking(move || {
             UninstallerManager::estimate_missing_sizes(apps_list)
@@ -81,10 +90,11 @@ fn start_scan(
 
     spawn(async move {
         let app_clone = app.clone();
-        let res = tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_clone))
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r.map_err(|e| e.to_string()));
+        let res =
+            tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_clone))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()));
 
         match res {
             Err(err) => status_msg.set(Some((
@@ -107,9 +117,17 @@ fn start_scan(
                 selected_leftovers.set(recommended_ids(&found));
                 status_msg.set(Some((
                     if en {
-                        format!("Found {} leftover(s) for '{}'.", found.len(), app.display_name)
+                        format!(
+                            "Found {} leftover(s) for '{}'.",
+                            found.len(),
+                            app.display_name
+                        )
                     } else {
-                        format!("{} rastro(s) detectados de '{}'.", found.len(), app.display_name)
+                        format!(
+                            "{} rastro(s) detectados de '{}'.",
+                            found.len(),
+                            app.display_name
+                        )
                     },
                     Tone::Info,
                 )));
@@ -164,14 +182,16 @@ fn start_uninstall_and_scan(
                 Tone::Danger,
             ),
             // SYS-02: un código de fallo no cuenta como desinstalación y no se buscan restos.
-            Ok(code) if !uninstall_exit_is_success(code) => (
-                if en {
-                    format!("The uninstaller of '{}' ended with code {}; leftovers were not scanned.", name, code)
-                } else {
-                    format!("El desinstalador de '{}' terminó con el código {}; no se buscaron restos.", name, code)
-                },
-                Tone::Danger,
-            ),
+            Ok(code) if !uninstall_exit_is_success(code) => {
+                (
+                    if en {
+                        format!("The uninstaller of '{}' ended with code {}; leftovers were not scanned.", name, code)
+                    } else {
+                        format!("El desinstalador de '{}' terminó con el código {}; no se buscaron restos.", name, code)
+                    },
+                    Tone::Danger,
+                )
+            }
             Ok(code) => {
                 let app_check = app.clone();
                 let still = tokio::task::spawn_blocking(move || {
@@ -196,24 +216,34 @@ fn start_uninstall_and_scan(
                     )
                 } else {
                     let app_scan = app.clone();
-                    let scan = tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_scan))
-                        .await
-                        .map_err(|e| e.to_string())
-                        .and_then(|r| r.map_err(|e| e.to_string()));
+                    let scan = tokio::task::spawn_blocking(move || {
+                        UninstallerManager::scan_leftovers(&app_scan)
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r.map_err(|e| e.to_string()));
                     match scan {
-                        Err(err) => (
-                            if en {
-                                format!("'{}' uninstalled, but its leftovers could not be scanned: {}", name, err)
-                            } else {
-                                format!("'{}' desinstalada, pero no se pudieron buscar sus restos: {}", name, err)
-                            },
-                            Tone::Warning,
-                        ),
+                        Err(err) => {
+                            (
+                                if en {
+                                    format!("'{}' uninstalled, but its leftovers could not be scanned: {}", name, err)
+                                } else {
+                                    format!("'{}' desinstalada, pero no se pudieron buscar sus restos: {}", name, err)
+                                },
+                                Tone::Warning,
+                            )
+                        }
                         Ok(found) if found.is_empty() => (
                             if en {
-                                format!("'{}' uninstalled; no leftovers found.{}", name, reboot_note)
+                                format!(
+                                    "'{}' uninstalled; no leftovers found.{}",
+                                    name, reboot_note
+                                )
                             } else {
-                                format!("'{}' desinstalada; no se encontraron restos.{}", name, reboot_note)
+                                format!(
+                                    "'{}' desinstalada; no se encontraron restos.{}",
+                                    name, reboot_note
+                                )
                             },
                             Tone::Success,
                         ),
@@ -222,9 +252,15 @@ fn start_uninstall_and_scan(
                             leftovers_modal.set(Some((app, found)));
                             (
                                 if en {
-                                    format!("'{}' uninstalled; review its leftovers.{}", name, reboot_note)
+                                    format!(
+                                        "'{}' uninstalled; review its leftovers.{}",
+                                        name, reboot_note
+                                    )
                                 } else {
-                                    format!("'{}' desinstalada; revisa sus restos.{}", name, reboot_note)
+                                    format!(
+                                        "'{}' desinstalada; revisa sus restos.{}",
+                                        name, reboot_note
+                                    )
                                 },
                                 Tone::Success,
                             )
@@ -336,7 +372,11 @@ pub fn UninstallerView() -> Element {
 
             reload_apps(apps, extra_sizes, tools_state).await;
 
-            let tone = if report.failed_count > 0 { Tone::Warning } else { Tone::Success };
+            let tone = if report.failed_count > 0 {
+                Tone::Warning
+            } else {
+                Tone::Success
+            };
             status_msg.set(Some((
                 if en {
                     format!(
@@ -364,7 +404,8 @@ pub fn UninstallerView() -> Element {
 
     let extra_map = extra_sizes.read();
     let effective_kb = |a: &InstalledApp| -> Option<u64> {
-        a.estimated_size_kb.or_else(|| extra_map.get(&a.id).copied())
+        a.estimated_size_kb
+            .or_else(|| extra_map.get(&a.id).copied())
     };
 
     let q = search_query.read().trim().to_ascii_lowercase();
@@ -391,7 +432,10 @@ pub fn UninstallerView() -> Element {
                 (Some(sa), Some(sb)) => sb.cmp(&sa),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()),
+                (None, None) => a
+                    .display_name
+                    .to_lowercase()
+                    .cmp(&b.display_name.to_lowercase()),
             });
         }
         SortMode::SizeAsc => {
@@ -399,23 +443,64 @@ pub fn UninstallerView() -> Element {
                 (Some(sa), Some(sb)) => sa.cmp(&sb),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.display_name.to_lowercase().cmp(&b.display_name.to_lowercase()),
+                (None, None) => a
+                    .display_name
+                    .to_lowercase()
+                    .cmp(&b.display_name.to_lowercase()),
             });
         }
     }
 
-    let locked_title = if en { "Locked items" } else { "Elementos en uso" }.to_string();
-    let uninstaller_title = if en { "Deep Uninstaller" } else { "Desinstalador Profundo" }.to_string();
-    let uninstaller_sub = Some((if en { "Uninstall apps and purge leftover files & registry" } else { "Desinstala y purga archivos y registro residual" }).to_string());
-    let installed_title = if en { "Installed Applications" } else { "Aplicaciones Instaladas" }.to_string();
+    let locked_title = if en {
+        "Locked items"
+    } else {
+        "Elementos en uso"
+    }
+    .to_string();
+    let uninstaller_title = if en {
+        "Deep Uninstaller"
+    } else {
+        "Desinstalador Profundo"
+    }
+    .to_string();
+    let uninstaller_sub = Some(
+        (if en {
+            "Uninstall apps and purge leftover files & registry"
+        } else {
+            "Desinstala y purga archivos y registro residual"
+        })
+        .to_string(),
+    );
+    let installed_title = if en {
+        "Installed Applications"
+    } else {
+        "Aplicaciones Instaladas"
+    }
+    .to_string();
 
-    let search_placeholder = if en { "Search app or publisher..." } else { "Buscar aplicación o fabricante..." };
+    let search_placeholder = if en {
+        "Search app or publisher..."
+    } else {
+        "Buscar aplicación o fabricante..."
+    };
     let refresh_lbl = if en { "Refresh" } else { "Actualizar" };
     let sort_lbl = if en { "Sort:" } else { "Orden:" };
-    let sort_largest_lbl = if en { "Size (Largest)" } else { "Tamaño (Mayor)" };
-    let sort_smallest_lbl = if en { "Size (Smallest)" } else { "Tamaño (Menor)" };
+    let sort_largest_lbl = if en {
+        "Size (Largest)"
+    } else {
+        "Tamaño (Mayor)"
+    };
+    let sort_smallest_lbl = if en {
+        "Size (Smallest)"
+    } else {
+        "Tamaño (Menor)"
+    };
     let update_lbl = if en { "Update" } else { "Actualizar" };
-    let scan_lbl = if en { "Scan Leftovers" } else { "Escanear Rastros" };
+    let scan_lbl = if en {
+        "Scan Leftovers"
+    } else {
+        "Escanear Rastros"
+    };
     let uninst_lbl = if en { "Uninstall" } else { "Desinstalar" };
 
     rsx! {

@@ -11,11 +11,11 @@ use windows::Win32::UI::Shell::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::services::is_service_stopped;
 use crate::core::safe_fs::{
     canonical_dos_path, delete_verified_empty_dir_under, delete_verified_file_under,
     is_safe_non_root_dir,
 };
+use crate::core::services::is_service_stopped;
 use crate::core::win_common::wide_ptr_to_string_and_free;
 
 #[derive(Debug, Clone, Default)]
@@ -225,7 +225,8 @@ impl SystemCleaner {
         }
 
         // Lo liberado es lo que de verdad desapareció, no lo que había antes de intentar.
-        let (bytes_after, items_after) = query(&mut rb_info).unwrap_or((bytes_before, items_before));
+        let (bytes_after, items_after) =
+            query(&mut rb_info).unwrap_or((bytes_before, items_before));
         result.bytes_freed = bytes_before.saturating_sub(bytes_after);
         result.files_removed = items_before.saturating_sub(items_after);
         result
@@ -274,7 +275,8 @@ impl SystemCleaner {
                     files_removed: 0,
                     skipped_recent_or_locked: 0,
                     error: Some(
-                        "Omitido: Windows Update está activo; se limpiará cuando esté detenido".into(),
+                        "Omitido: Windows Update está activo; se limpiará cuando esté detenido"
+                            .into(),
                     ),
                 });
             }
@@ -301,12 +303,7 @@ impl SystemCleaner {
             }
             update_step(idx, cat_name);
             results.push(Self::clean_temp_directory_with_depth(
-                cat_name,
-                &path,
-                min_age,
-                min_comp,
-                cancel,
-                progress,
+                cat_name, &path, min_age, min_comp, cancel, progress,
             ));
         }
 

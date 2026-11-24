@@ -39,9 +39,9 @@ use crate::core::win_common::{to_wide_null, JobObject, SafeHandle};
 /// Carpeta `System32` real, sin depender de variables de entorno.
 pub fn system32_dir() -> CoreResult<PathBuf> {
     let mut buf = [0u16; 260];
-    let len = unsafe {
-        windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf))
-    } as usize;
+    let len =
+        unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
+            as usize;
     if len == 0 || len >= buf.len() {
         return Err(CoreError::SystemTool {
             message: "No se pudo localizar System32".into(),
@@ -249,7 +249,11 @@ pub fn run_in_job(
             )
         }
         .map_err(|e| CoreError::SystemTool {
-            message: format!("No se pudo ejecutar '{}': {}", launch.application.display(), e),
+            message: format!(
+                "No se pudo ejecutar '{}': {}",
+                launch.application.display(),
+                e
+            ),
             source: None,
         })?;
     }

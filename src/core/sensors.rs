@@ -110,7 +110,8 @@ impl NvmlSession {
                 let handle = windows::Win32::Foundation::HANDLE(
                     std::os::windows::io::AsRawHandle::as_raw_handle(&file) as _,
                 );
-                verify_authenticode_on_handle(&fallback, handle, "NVIDIA Corporation", None).ok()?;
+                verify_authenticode_on_handle(&fallback, handle, "NVIDIA Corporation", None)
+                    .ok()?;
                 // `file` sigue abierto (solo lectura compartida) hasta después de cargar la DLL.
                 let lib = SafeLibrary::load_from_verified_path(&fallback).ok()?;
                 drop(file);
@@ -290,7 +291,8 @@ type AdlMallocFn = unsafe extern "system" fn(c_int) -> *mut c_void;
 type Adl2CreateFn = unsafe extern "system" fn(AdlMallocFn, c_int, *mut *mut c_void) -> c_int;
 type Adl2DestroyFn = unsafe extern "system" fn(*mut c_void) -> c_int;
 type Adl2NumAdaptersFn = unsafe extern "system" fn(*mut c_void, *mut c_int) -> c_int;
-type Adl2AdapterInfoFn = unsafe extern "system" fn(*mut c_void, *mut AdlAdapterInfo, c_int) -> c_int;
+type Adl2AdapterInfoFn =
+    unsafe extern "system" fn(*mut c_void, *mut AdlAdapterInfo, c_int) -> c_int;
 type Adl2PmLogGetFn =
     unsafe extern "system" fn(*mut c_void, c_int, *mut AdlPmLogDataOutput) -> c_int;
 type Adl2OdnTempFn = unsafe extern "system" fn(*mut c_void, c_int, c_int, *mut c_int) -> c_int;
@@ -388,7 +390,10 @@ impl AdlSession {
         if info_rc != ADL_OK {
             return (
                 out,
-                Some(format!("ADL2_Adapter_AdapterInfo_Get falló (código {})", info_rc)),
+                Some(format!(
+                    "ADL2_Adapter_AdapterInfo_Get falló (código {})",
+                    info_rc
+                )),
             );
         }
 
@@ -402,7 +407,11 @@ impl AdlSession {
             if info.i_exist == 0 {
                 continue;
             }
-            let pci_key = (info.i_bus_number, info.i_device_number, info.i_function_number);
+            let pci_key = (
+                info.i_bus_number,
+                info.i_device_number,
+                info.i_function_number,
+            );
             if seen_pci.contains(&pci_key) {
                 continue;
             }
@@ -465,8 +474,14 @@ impl AdlSession {
             if !found_for_this_gpu {
                 if let Some(odn) = self.odn_temp {
                     let mut milli_c: c_int = 0;
-                    let rc_edge =
-                        unsafe { odn(self.ctx, info.i_adapter_index, ADL_ODN_TEMP_EDGE, &mut milli_c) };
+                    let rc_edge = unsafe {
+                        odn(
+                            self.ctx,
+                            info.i_adapter_index,
+                            ADL_ODN_TEMP_EDGE,
+                            &mut milli_c,
+                        )
+                    };
                     if rc_edge == ADL_OK {
                         let c = milli_c as f32 / 1000.0;
                         if c > 0.0 && c < 135.0 {
@@ -892,7 +907,10 @@ impl SensorSession {
 unsafe fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
     let w = to_wide_null(prop);
     let mut var = VARIANT::default();
-    if obj.Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None).is_err() {
+    if obj
+        .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+        .is_err()
+    {
         return None;
     }
     let val = VariantToInt32(&var).ok();
@@ -903,7 +921,10 @@ unsafe fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
 unsafe fn read_wmi_string(obj: &IWbemClassObject, prop: &str) -> Option<String> {
     let w = to_wide_null(prop);
     let mut var = VARIANT::default();
-    if obj.Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None).is_err() {
+    if obj
+        .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+        .is_err()
+    {
         return None;
     }
     let res = VariantToStringAlloc(&var).ok().map(|pw| {

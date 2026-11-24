@@ -4,8 +4,6 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use winreg::enums::HKEY_LOCAL_MACHINE;
-use winreg::RegKey;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE,
@@ -13,15 +11,17 @@ use windows::Win32::Graphics::Dxgi::{
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
-use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_ID,
     STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
 };
 use windows::Win32::System::SystemInformation::{
-    GetLogicalProcessorInformationEx, GetSystemFirmwareTable, RelationCache,
-    RelationProcessorCore, FIRMWARE_TABLE_PROVIDER, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
+    GetLogicalProcessorInformationEx, GetSystemFirmwareTable, RelationCache, RelationProcessorCore,
+    FIRMWARE_TABLE_PROVIDER, SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX,
 };
+use windows::Win32::System::IO::DeviceIoControl;
+use winreg::enums::HKEY_LOCAL_MACHINE;
+use winreg::RegKey;
 
 use crate::core::error::CoreError;
 use crate::core::safe_fs;
@@ -204,7 +204,9 @@ fn read_os_specs() -> OsSpecs {
         };
     };
 
-    let mut edition: String = key.get_value("ProductName").unwrap_or_else(|_| "Windows".into());
+    let mut edition: String = key
+        .get_value("ProductName")
+        .unwrap_or_else(|_| "Windows".into());
     let display_version: String = key.get_value("DisplayVersion").unwrap_or_default();
     let current_build: String = key.get_value("CurrentBuild").unwrap_or_default();
     let ubr: u32 = key.get_value("UBR").unwrap_or(0);
@@ -258,20 +260,42 @@ fn read_cpu_specs() -> Result<CpuSpecs, CoreError> {
         };
 
         let mut isa = Vec::new();
-        if (leaf1.edx & (1 << 25)) != 0 { isa.push("SSE".into()); }
-        if (leaf1.edx & (1 << 26)) != 0 { isa.push("SSE2".into()); }
-        if (leaf1.ecx & (1 << 0)) != 0 { isa.push("SSE3".into()); }
-        if (leaf1.ecx & (1 << 9)) != 0 { isa.push("SSSE3".into()); }
-        if (leaf1.ecx & (1 << 19)) != 0 { isa.push("SSE4.1".into()); }
-        if (leaf1.ecx & (1 << 20)) != 0 { isa.push("SSE4.2".into()); }
-        if (leaf1.ecx & (1 << 25)) != 0 { isa.push("AES-NI".into()); }
-        if (leaf1.ecx & (1 << 28)) != 0 { isa.push("AVX".into()); }
+        if (leaf1.edx & (1 << 25)) != 0 {
+            isa.push("SSE".into());
+        }
+        if (leaf1.edx & (1 << 26)) != 0 {
+            isa.push("SSE2".into());
+        }
+        if (leaf1.ecx & (1 << 0)) != 0 {
+            isa.push("SSE3".into());
+        }
+        if (leaf1.ecx & (1 << 9)) != 0 {
+            isa.push("SSSE3".into());
+        }
+        if (leaf1.ecx & (1 << 19)) != 0 {
+            isa.push("SSE4.1".into());
+        }
+        if (leaf1.ecx & (1 << 20)) != 0 {
+            isa.push("SSE4.2".into());
+        }
+        if (leaf1.ecx & (1 << 25)) != 0 {
+            isa.push("AES-NI".into());
+        }
+        if (leaf1.ecx & (1 << 28)) != 0 {
+            isa.push("AVX".into());
+        }
 
         if max_basic_leaf >= 7 {
             let leaf7 = __cpuid_count(7, 0);
-            if (leaf7.ebx & (1 << 5)) != 0 { isa.push("AVX2".into()); }
-            if (leaf7.ebx & (1 << 16)) != 0 { isa.push("AVX-512F".into()); }
-            if (leaf7.ebx & (1 << 29)) != 0 { isa.push("SHA".into()); }
+            if (leaf7.ebx & (1 << 5)) != 0 {
+                isa.push("AVX2".into());
+            }
+            if (leaf7.ebx & (1 << 16)) != 0 {
+                isa.push("AVX-512F".into());
+            }
+            if (leaf7.ebx & (1 << 29)) != 0 {
+                isa.push("SHA".into());
+            }
         }
 
         (eff_family, eff_model, step, isa)
@@ -338,7 +362,10 @@ fn read_core_topology() -> Result<(usize, Option<usize>, Option<usize>, usize), 
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationProcessorCore,
-            Some(buf.as_mut_ptr().cast::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>()),
+            Some(
+                buf.as_mut_ptr()
+                    .cast::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(),
+            ),
             &mut len,
         )
         .map_err(|e| CoreError::SystemTool {
@@ -397,7 +424,10 @@ fn read_cache_sizes() -> Result<(u32, u32, u32), CoreError> {
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationCache,
-            Some(buf.as_mut_ptr().cast::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>()),
+            Some(
+                buf.as_mut_ptr()
+                    .cast::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(),
+            ),
             &mut len,
         )
         .map_err(|e| CoreError::SystemTool {
@@ -556,10 +586,7 @@ fn parse_smbios_string_set(data: &[u8], start: usize) -> (Vec<String>, usize) {
 
 fn get_smbios_str(strings: &[String], index: Option<u8>) -> String {
     match index {
-        Some(idx) if idx > 0 => strings
-            .get((idx - 1) as usize)
-            .cloned()
-            .unwrap_or_default(),
+        Some(idx) if idx > 0 => strings.get((idx - 1) as usize).cloned().unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -580,7 +607,11 @@ fn parse_smbios_type17(formatted: &[u8], strings: &[String]) -> Option<MemoryMod
 
     if raw_size == 0 || raw_size == 0xFFFF {
         return Some(MemoryModuleSpec {
-            slot: if slot.is_empty() { "Slot vacío".into() } else { slot },
+            slot: if slot.is_empty() {
+                "Slot vacío".into()
+            } else {
+                slot
+            },
             populated: false,
             ..Default::default()
         });
@@ -652,12 +683,11 @@ fn keep_gpu_adapter(seen: &mut std::collections::HashSet<GpuKey>, key: GpuKey) -
 }
 
 fn read_dxgi_gpus() -> Result<Vec<GpuSpecs>, CoreError> {
-    let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.map_err(|e| {
-        CoreError::SystemTool {
+    let factory: IDXGIFactory1 =
+        unsafe { CreateDXGIFactory1() }.map_err(|e| CoreError::SystemTool {
             message: format!("Error inicializando DXGI: {e}"),
             source: None,
-        }
-    })?;
+        })?;
 
     let mut gpus = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -864,7 +894,10 @@ mod tests {
         assert!(keep_gpu_adapter(&mut seen, rx));
         assert!(!keep_gpu_adapter(&mut seen, rx));
         assert!(!keep_gpu_adapter(&mut seen, (0x1414, 0x8C, 0, 0, 0)));
-        assert!(keep_gpu_adapter(&mut seen, (0x10DE, 0x2684, 1, 0, 24 << 30)));
+        assert!(keep_gpu_adapter(
+            &mut seen,
+            (0x10DE, 0x2684, 1, 0, 24 << 30)
+        ));
     }
 
     /// ERR-12: una estructura truncada no provoca pánico.

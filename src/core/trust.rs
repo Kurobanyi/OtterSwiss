@@ -7,6 +7,7 @@ use std::ptr;
 
 use sha2::{Digest, Sha256};
 use windows::core::{PCWSTR, PWSTR};
+use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 use windows::Win32::Foundation::{HANDLE, HLOCAL};
 use windows::Win32::Networking::WinInet::{
     HttpQueryInfoW, InternetCloseHandle, InternetOpenUrlW, InternetOpenW, InternetQueryOptionW,
@@ -15,7 +16,6 @@ use windows::Win32::Networking::WinInet::{
     INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT,
     INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
 };
-use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
 use windows::Win32::Security::Authorization::{
     ConvertStringSecurityDescriptorToSecurityDescriptorW, GetNamedSecurityInfoW, SetEntriesInAclW,
     SetNamedSecurityInfoW, EXPLICIT_ACCESS_W, GRANT_ACCESS, SDDL_REVISION_1, SE_FILE_OBJECT,
@@ -29,15 +29,13 @@ use windows::Win32::Security::WinTrust::{
     WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData,
     WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
     WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
-    WTD_REVOKE_WHOLECHAIN, WTD_STATEACTION_CLOSE,
-    WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+    WTD_REVOKE_WHOLECHAIN, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
 };
 use windows::Win32::Security::{
     CreateWellKnownSid, IsWellKnownSid, WinBuiltinAdministratorsSid, WinLocalSystemSid, ACL,
     DACL_SECURITY_INFORMATION, OWNER_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-    UNPROTECTED_DACL_SECURITY_INFORMATION,
     PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_MAX_SID_SIZE,
-    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT, UNPROTECTED_DACL_SECURITY_INFORMATION,
 };
 use windows::Win32::Storage::FileSystem::{
     CreateDirectoryW, FILE_ALL_ACCESS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_NONE,
@@ -272,7 +270,10 @@ fn verify_tree_owned_by_admins(root: &Path, max_depth: usize) -> CoreResult<()> 
             if ft.is_dir() {
                 if depth + 1 > max_depth {
                     return Err(CoreError::Trust {
-                        message: format!("Carpeta de datos demasiado profunda en '{}'", path.display()),
+                        message: format!(
+                            "Carpeta de datos demasiado profunda en '{}'",
+                            path.display()
+                        ),
                         source: None,
                     });
                 }
@@ -611,7 +612,10 @@ pub fn secure_download_and_verify_with_progress(
         hasher.update(slice);
         file.write_all(slice)?;
         if let Some(p) = progress {
-            p.store(((total_read * 100) / expected_total.max(1)).min(99) as u8, Ordering::Release);
+            p.store(
+                ((total_read * 100) / expected_total.max(1)).min(99) as u8,
+                Ordering::Release,
+            );
         }
     }
 

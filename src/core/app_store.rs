@@ -479,9 +479,11 @@ fn stage_copy_for_user(
 ) -> CoreResult<UserStagedCopy> {
     let profile = user_profile_dir(token)?;
     let profile_canon = canonical_dos_path(&profile)?;
-    let dir = profile
-        .join(r"AppData\Local\Temp")
-        .join(format!("OtterSwiss_{}_{}", std::process::id(), nonce));
+    let dir = profile.join(r"AppData\Local\Temp").join(format!(
+        "OtterSwiss_{}_{}",
+        std::process::id(),
+        nonce
+    ));
     std::fs::create_dir(&dir)?;
     let dir_canon = canonical_dos_path(&dir)?;
     if !path_is_strictly_under(&dir_canon, &profile_canon) {
@@ -555,8 +557,7 @@ fn display_name_matches(display_name: &str, prefix: &str) -> bool {
         _ => return false,
     }
     let after = chars.as_str().trim_start_matches(['v', 'V']);
-    after.chars().next().is_some_and(|c| c.is_ascii_digit())
-        || after.starts_with('(')
+    after.chars().next().is_some_and(|c| c.is_ascii_digit()) || after.starts_with('(')
 }
 
 /// `"25.01"` → `[25, 1]`; `"2.47.1.windows.1"` → `[2, 47, 1]`. `None` si no empieza con un número.
@@ -732,7 +733,9 @@ impl AppStoreManager {
             Some(tok) => Some(stage_copy_for_user(tok, installer_path, file_name, nonce)?),
             None => None,
         };
-        let run_path: &Path = user_copy.as_ref().map_or(installer_path, |c| c.path.as_path());
+        let run_path: &Path = user_copy
+            .as_ref()
+            .map_or(installer_path, |c| c.path.as_path());
 
         // Mientras este handle viva nadie puede reemplazar el instalador (SEC-05).
         let _exec_lock = reopen_verified_for_exec(run_path, policy)?;
@@ -799,7 +802,9 @@ mod tests {
         assert_eq!(parse_numeric_version("8.7"), parse_numeric_version("8.7.0"));
         assert_eq!(parse_numeric_version("Evergreen"), None);
         // ERR-09: con una versión instalada más nueva que la del catálogo no hay «Actualizar».
-        assert!(AppStoreManager::find_newer_curated_version("7-Zip 99.00 (x64)", "99.00").is_none());
+        assert!(
+            AppStoreManager::find_newer_curated_version("7-Zip 99.00 (x64)", "99.00").is_none()
+        );
     }
 
     /// UI-15: con Windows en otro idioma, Firefox y Battle.net se piden en inglés.
@@ -808,7 +813,9 @@ mod tests {
         let url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=es-ES";
         assert_eq!(localize_catalog_text(url, true), url);
         assert!(localize_catalog_text(url, false).ends_with("lang=en-US"));
-        assert!(localize_catalog_text("--lang=esES --installpath=x", false).starts_with("--lang=enUS"));
+        assert!(
+            localize_catalog_text("--lang=esES --installpath=x", false).starts_with("--lang=enUS")
+        );
         assert_eq!(localize_catalog_text("/S", false), "/S");
     }
 }

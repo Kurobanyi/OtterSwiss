@@ -26,8 +26,8 @@ use windows::Win32::Networking::WinInet::{
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::safe_fs::delete_verified_file;
 use crate::core::trust::{
-    ensure_admin_only_data_dir, reopen_verified_for_exec,
-    secure_download_and_verify_with_progress, DownloadPolicy,
+    ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify_with_progress,
+    DownloadPolicy,
 };
 use crate::core::win_common::to_wide_null;
 
@@ -291,7 +291,12 @@ pub fn check_for_updates() -> CoreResult<Option<UpdateReleaseInfo>> {
         return Ok(None);
     }
 
-    let candidates = || release.assets.iter().filter(|a| is_safe_asset_name(&a.name));
+    let candidates = || {
+        release
+            .assets
+            .iter()
+            .filter(|a| is_safe_asset_name(&a.name))
+    };
     let asset = candidates()
         .find(|a| {
             let n = a.name.to_ascii_lowercase();
@@ -314,7 +319,10 @@ pub fn check_for_updates() -> CoreResult<Option<UpdateReleaseInfo>> {
     Ok(Some(UpdateReleaseInfo {
         version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),
         tag_name: release.tag_name.clone(),
-        title: release.name.clone().unwrap_or_else(|| "OtterSwiss Update".into()),
+        title: release
+            .name
+            .clone()
+            .unwrap_or_else(|| "OtterSwiss Update".into()),
         notes: release.body.clone().unwrap_or_default(),
         download_url: asset.browser_download_url.clone(),
         asset_name: asset.name.clone(),

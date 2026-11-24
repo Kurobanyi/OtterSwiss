@@ -15,22 +15,21 @@ use windows::Win32::UI::Shell::{
     SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 
-use crate::core::elevation::ElevationManager;
 use crate::core::debloater::DebloaterManager;
 use crate::core::dns::DnsManager;
+use crate::core::elevation::ElevationManager;
 use crate::core::engine::{OptimizationEngine, RollbackReport};
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::process::{
+    duplicate_desktop_shell_primary_token, run_in_job, system32_dir, Launch,
+};
 use crate::core::safe_fs::{
     canonical_dos_path, delete_tree_verified, delete_verified_file_under, is_safe_non_root_dir,
     path_is_strictly_under,
 };
 use crate::core::trust::{ensure_admin_only_data_dir, get_program_data_dir};
-use crate::core::process::{
-    duplicate_desktop_shell_primary_token, run_in_job, system32_dir, Launch,
-};
 use crate::core::win_common::{
-    program_files_dir, program_files_x86_dir, to_wide_null, wide_ptr_to_string_and_free,
-    SafeHandle,
+    program_files_dir, program_files_x86_dir, to_wide_null, wide_ptr_to_string_and_free, SafeHandle,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,7 +137,6 @@ fn known_folder(id: &windows::core::GUID) -> Option<PathBuf> {
     }
 }
 
-
 fn dir_size_bounded(dir: &Path, max_depth: usize) -> u64 {
     let mut total = 0u64;
     let mut stack = vec![(dir.to_path_buf(), 0usize)];
@@ -234,12 +232,28 @@ fn matches_any_token(candidate: &str, tokens: &[String]) -> bool {
 
 /// Nombres de carpeta demasiado genéricos para atribuirlos a una sola app.
 const GENERIC_FOLDER_TOKENS: &[&str] = &[
-    "games", "apps", "app", "programs", "software", "tools", "bin", "data", "files", "steam",
-    "steamapps", "common", "launcher", "client",
+    "games",
+    "apps",
+    "app",
+    "programs",
+    "software",
+    "tools",
+    "bin",
+    "data",
+    "files",
+    "steam",
+    "steamapps",
+    "common",
+    "launcher",
+    "client",
 ];
 
 /// Qué se marca por defecto en el modal de rastros.
-fn is_recommended_leftover(item: &LeftoverItem, app_tokens: &[String], publisher: Option<&str>) -> bool {
+fn is_recommended_leftover(
+    item: &LeftoverItem,
+    app_tokens: &[String],
+    publisher: Option<&str>,
+) -> bool {
     // Datos y ajustes del usuario: se muestran, pero el usuario decide.
     if item.category.starts_with("AppData") || item.category == "Registro HKCU\\Software" {
         return false;
@@ -281,7 +295,13 @@ fn export_registry_key(is_hkcu: bool, wow64_32: bool, subkey: &str) -> CoreResul
         .next()
         .unwrap_or("clave")
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(60)
         .collect();
     let file = dir.join(format!("{}_{}.reg", stamp, leaf));
@@ -446,8 +466,7 @@ impl UninstallerManager {
 
                         let display_version: String =
                             app_key.get_value("DisplayVersion").unwrap_or_default();
-                        let publisher: String =
-                            app_key.get_value("Publisher").unwrap_or_default();
+                        let publisher: String = app_key.get_value("Publisher").unwrap_or_default();
                         let loc_str: String =
                             app_key.get_value("InstallLocation").unwrap_or_default();
                         let install_location = if !loc_str.trim().is_empty() {
@@ -456,8 +475,7 @@ impl UninstallerManager {
                             None
                         };
 
-                        let icon_str: String =
-                            app_key.get_value("DisplayIcon").unwrap_or_default();
+                        let icon_str: String = app_key.get_value("DisplayIcon").unwrap_or_default();
                         let icon_clean = icon_str
                             .trim()
                             .split(',')
@@ -537,7 +555,8 @@ impl UninstallerManager {
                         .map(Path::to_path_buf)
                 })
                 .or_else(|| {
-                    let expanded = Self::expand_environment_string(&app.uninstall_string, None).ok()?;
+                    let expanded =
+                        Self::expand_environment_string(&app.uninstall_string, None).ok()?;
                     let (exe, _) = parse_cmd_exe_and_args(expanded.trim());
                     let exe_path = Path::new(exe);
                     let parent = exe_path.parent()?;
@@ -639,7 +658,10 @@ impl UninstallerManager {
         let working_dir = if is_msi {
             sys32.clone()
         } else {
-            application.parent().map(Path::to_path_buf).unwrap_or_else(|| sys32.clone())
+            application
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| sys32.clone())
         };
 
         let exit = run_in_job(
@@ -880,7 +902,8 @@ impl UninstallerManager {
 
                     let sub_path = format!(r"Software\{}", key_name);
                     if matches_any_token(&key_name, &tokens) {
-                        let uid = format!("{}:{}:{}", is_hkcu, wow32, sub_path.to_ascii_lowercase());
+                        let uid =
+                            format!("{}:{}:{}", is_hkcu, wow32, sub_path.to_ascii_lowercase());
                         if seen_reg.insert(uid) {
                             items.push(LeftoverItem {
                                 id: format!("reg:{}:{}:{}", is_hkcu, wow32, sub_path),
@@ -928,7 +951,8 @@ impl UninstallerManager {
                                         recommended: true,
                                     });
                                 }
-                            } else if let Ok(pub_key) = sw.open_subkey_with_flags(&key_name, flags) {
+                            } else if let Ok(pub_key) = sw.open_subkey_with_flags(&key_name, flags)
+                            {
                                 for sub_name in pub_key.enum_keys().flatten() {
                                     if matches_any_token(&sub_name, &tokens) {
                                         let full_sub = format!(r"{}\{}", sub_path, sub_name);
@@ -1017,7 +1041,8 @@ impl UninstallerManager {
         let app_tokens_low: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
         let publisher_low = publisher_tok.as_ref().map(|p| p.to_ascii_lowercase());
         for item in &mut items {
-            item.recommended = is_recommended_leftover(item, &app_tokens_low, publisher_low.as_deref());
+            item.recommended =
+                is_recommended_leftover(item, &app_tokens_low, publisher_low.as_deref());
         }
         Ok(items)
     }
@@ -1098,7 +1123,9 @@ impl UninstallerManager {
                         Ok(false) => {}
                         Err(e) => {
                             report.failed_count += 1;
-                            report.errors.push(format!("{}: {}", item.target_display, e));
+                            report
+                                .errors
+                                .push(format!("{}: {}", item.target_display, e));
                         }
                     }
                 }
@@ -1129,7 +1156,9 @@ impl UninstallerManager {
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                         Err(e) => {
                             report.failed_count += 1;
-                            report.errors.push(format!("{}: {}", item.target_display, e));
+                            report
+                                .errors
+                                .push(format!("{}: {}", item.target_display, e));
                         }
                     }
                 }
@@ -1155,16 +1184,19 @@ impl UninstallerManager {
             KEY_WOW64_64KEY
         };
         let root = RegKey::predef(hive);
-        let (parent_path, leaf) = subkey.rsplit_once('\\').ok_or_else(|| {
-            CoreError::Validation(format!("Clave sin padre: {}", subkey))
-        })?;
+        let (parent_path, leaf) = subkey
+            .rsplit_once('\\')
+            .ok_or_else(|| CoreError::Validation(format!("Clave sin padre: {}", subkey)))?;
         // RegDeleteTree necesita DELETE, KEY_ENUMERATE_SUB_KEYS y KEY_QUERY_VALUE sobre el padre (SYS-21).
         let parent = match root.open_subkey_with_flags(parent_path, KEY_ALL_ACCESS | view) {
             Ok(k) => k,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e.into()),
         };
-        if parent.open_subkey_with_flags(leaf, KEY_READ | view).is_err() {
+        if parent
+            .open_subkey_with_flags(leaf, KEY_READ | view)
+            .is_err()
+        {
             return Ok(false);
         }
 
@@ -1195,8 +1227,14 @@ impl UninstallerManager {
 
         let target_canon = canonical_dos_path(target)?;
         // Si la ruta canónica difiere de la pedida, algún componente es una junction o symlink.
-        let lexical = target.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
-        let canon = target_canon.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
+        let lexical = target
+            .to_string_lossy()
+            .trim_end_matches('\\')
+            .to_ascii_lowercase();
+        let canon = target_canon
+            .to_string_lossy()
+            .trim_end_matches('\\')
+            .to_ascii_lowercase();
         if lexical != canon {
             return Err(CoreError::Validation(format!(
                 "La ruta pasa por un enlace o junction ('{}' → '{}'); no se borra",
@@ -1244,9 +1282,11 @@ impl UninstallerManager {
         if engine.has_backup() {
             match engine.rollback(false) {
                 Ok(rb) => {
-                    report
-                        .failures
-                        .extend(rb.failed_items.iter().map(|f| format!("[Optimización] {}", f)));
+                    report.failures.extend(
+                        rb.failed_items
+                            .iter()
+                            .map(|f| format!("[Optimización] {}", f)),
+                    );
                     report.engine = Some(rb);
                 }
                 Err(e) => report.failures.push(format!("[Optimización] {}", e)),
@@ -1353,7 +1393,11 @@ mod tests {
 
     #[test]
     fn tokens_quitan_version_y_carpetas_genericas() {
-        let (tokens, publisher) = build_app_tokens(&app("Foo Editor 2.1 (x64)", "Foo Inc.", Some(r"C:\Program Files\Games")));
+        let (tokens, publisher) = build_app_tokens(&app(
+            "Foo Editor 2.1 (x64)",
+            "Foo Inc.",
+            Some(r"C:\Program Files\Games"),
+        ));
         assert!(tokens.iter().any(|t| t == "Foo Editor"));
         assert!(!tokens.iter().any(|t| t.eq_ignore_ascii_case("games")));
         assert_eq!(publisher.as_deref(), Some("Foo Inc."));
@@ -1376,7 +1420,10 @@ mod tests {
             parse_cmd_exe_and_args(r"C:\Program Files\App\uninst.exe /S"),
             (r"C:\Program Files\App\uninst.exe", "/S")
         );
-        assert_eq!(parse_cmd_exe_and_args("MsiExec.exe /X{ABC}"), ("MsiExec.exe", "/X{ABC}"));
+        assert_eq!(
+            parse_cmd_exe_and_args("MsiExec.exe /X{ABC}"),
+            ("MsiExec.exe", "/X{ABC}")
+        );
     }
 
     #[test]
@@ -1384,11 +1431,21 @@ mod tests {
         assert!(!is_safe_registry_subkey_to_delete("Software"));
         assert!(!is_safe_registry_subkey_to_delete(r"Software\Microsoft"));
         assert!(!is_safe_registry_subkey_to_delete(r"Software\Classes"));
-        assert!(!is_safe_registry_subkey_to_delete(r"Software\Microsoft\Windows\CurrentVersion\Uninstall"));
-        assert!(!is_safe_registry_subkey_to_delete(r"Software\Microsoft\Windows\Shell"));
-        assert!(!is_safe_registry_subkey_to_delete(r"System\CurrentControlSet\Services\x"));
-        assert!(is_safe_registry_subkey_to_delete(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\FooApp"));
-        assert!(is_safe_registry_subkey_to_delete(r"Software\Foo Inc\Foo Editor"));
+        assert!(!is_safe_registry_subkey_to_delete(
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
+        ));
+        assert!(!is_safe_registry_subkey_to_delete(
+            r"Software\Microsoft\Windows\Shell"
+        ));
+        assert!(!is_safe_registry_subkey_to_delete(
+            r"System\CurrentControlSet\Services\x"
+        ));
+        assert!(is_safe_registry_subkey_to_delete(
+            r"Software\Microsoft\Windows\CurrentVersion\Uninstall\FooApp"
+        ));
+        assert!(is_safe_registry_subkey_to_delete(
+            r"Software\Foo Inc\Foo Editor"
+        ));
     }
 
     fn leftover(category: &str, path: &str) -> LeftoverItem {
@@ -1413,8 +1470,20 @@ mod tests {
         // El llamador pasa tokens y fabricante en minúsculas.
         let tokens = vec!["foo editor".to_string()];
         let publisher = Some("foo inc");
-        assert!(!is_recommended_leftover(&leftover("AppData Roaming", r"C:\Users\u\AppData\Roaming\Foo Editor"), &tokens, publisher));
-        assert!(!is_recommended_leftover(&leftover("Program Files", r"C:\Program Files\Foo Inc"), &tokens, publisher));
-        assert!(is_recommended_leftover(&leftover("Program Files", r"C:\Program Files\Foo Editor"), &tokens, publisher));
+        assert!(!is_recommended_leftover(
+            &leftover("AppData Roaming", r"C:\Users\u\AppData\Roaming\Foo Editor"),
+            &tokens,
+            publisher
+        ));
+        assert!(!is_recommended_leftover(
+            &leftover("Program Files", r"C:\Program Files\Foo Inc"),
+            &tokens,
+            publisher
+        ));
+        assert!(is_recommended_leftover(
+            &leftover("Program Files", r"C:\Program Files\Foo Editor"),
+            &tokens,
+            publisher
+        ));
     }
 }

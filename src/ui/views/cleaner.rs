@@ -89,11 +89,33 @@ pub fn CleanerView() -> Element {
     let prog = progress_state.read();
     let cancel_for_btn = Arc::clone(&cancel_flag);
 
-    let cleaner_title = if en { "System Cleaner" } else { "Limpiador de Sistema" }.to_string();
-    let cleaner_sub = Some((if en { "Safe temp & cache purge" } else { "Purga segura de temporales y caché" }).to_string());
+    let cleaner_title = if en {
+        "System Cleaner"
+    } else {
+        "Limpiador de Sistema"
+    }
+    .to_string();
+    let cleaner_sub = Some(
+        (if en {
+            "Safe temp & cache purge"
+        } else {
+            "Purga segura de temporales y caché"
+        })
+        .to_string(),
+    );
     let prog_title = if en { "Cleanup Progress" } else { "Progreso" }.to_string();
-    let freed_title = if en { "Space Freed" } else { "Espacio Liberado" }.to_string();
-    let files_title = if en { "Files Removed" } else { "Archivos Borrados" }.to_string();
+    let freed_title = if en {
+        "Space Freed"
+    } else {
+        "Espacio Liberado"
+    }
+    .to_string();
+    let files_title = if en {
+        "Files Removed"
+    } else {
+        "Archivos Borrados"
+    }
+    .to_string();
     let details_title = if en { "Details" } else { "Detalle" }.to_string();
 
     rsx! {

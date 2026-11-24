@@ -448,8 +448,14 @@ pub fn write_file_inside(
     std::fs::create_dir_all(&dir)?;
     let root_canon = canonical_dos_path(root)?;
     let dir_canon = canonical_dos_path(&dir)?;
-    let lexical = dir.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
-    let canon = dir_canon.to_string_lossy().trim_end_matches('\\').to_ascii_lowercase();
+    let lexical = dir
+        .to_string_lossy()
+        .trim_end_matches('\\')
+        .to_ascii_lowercase();
+    let canon = dir_canon
+        .to_string_lossy()
+        .trim_end_matches('\\')
+        .to_ascii_lowercase();
     let inside = relative_dir.is_empty() || path_is_strictly_under(&dir_canon, &root_canon);
     if lexical != canon || !inside {
         return Err(CoreError::Validation(format!(
@@ -487,10 +493,22 @@ mod tests {
 
     #[test]
     fn dentro_de_raiz_por_componentes() {
-        assert!(path_is_strictly_under(Path::new(r"C:\Datos\App\x.txt"), Path::new(r"c:\datos")));
-        assert!(!path_is_strictly_under(Path::new(r"C:\DatosMal\x.txt"), Path::new(r"C:\Datos")));
-        assert!(!path_is_strictly_under(Path::new(r"C:\Datos"), Path::new(r"C:\Datos")));
-        assert!(!path_is_strictly_under(Path::new(r"D:\Datos\x"), Path::new(r"C:\Datos")));
+        assert!(path_is_strictly_under(
+            Path::new(r"C:\Datos\App\x.txt"),
+            Path::new(r"c:\datos")
+        ));
+        assert!(!path_is_strictly_under(
+            Path::new(r"C:\DatosMal\x.txt"),
+            Path::new(r"C:\Datos")
+        ));
+        assert!(!path_is_strictly_under(
+            Path::new(r"C:\Datos"),
+            Path::new(r"C:\Datos")
+        ));
+        assert!(!path_is_strictly_under(
+            Path::new(r"D:\Datos\x"),
+            Path::new(r"C:\Datos")
+        ));
     }
 
     /// SEC-01: si la validación de raíz falla, el archivo queda intacto.
@@ -500,7 +518,8 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let base = std::env::temp_dir().join(format!("otter_sec01_{}_{}", std::process::id(), nonce));
+        let base =
+            std::env::temp_dir().join(format!("otter_sec01_{}_{}", std::process::id(), nonce));
         let root = base.join("raiz");
         std::fs::create_dir_all(&root).unwrap();
         let inside = root.join("dentro.txt");
@@ -509,7 +528,10 @@ mod tests {
         std::fs::write(&outside, b"x").unwrap();
 
         assert!(delete_verified_file_under(&outside, Some(&root)).is_err());
-        assert!(outside.is_file(), "SEC-01: borró un archivo fuera de la raíz");
+        assert!(
+            outside.is_file(),
+            "SEC-01: borró un archivo fuera de la raíz"
+        );
 
         delete_verified_file_under(&inside, Some(&root)).unwrap();
         assert!(!inside.exists());

@@ -89,15 +89,13 @@ pub fn ArchiverView() -> Element {
                 tokio::time::sleep(Duration::from_millis(120)).await;
             }
 
-            let res = handle
-                .await
-                .unwrap_or_else(|e| {
-                    Err(if en {
-                        format!("Internal error: {}", e)
-                    } else {
-                        format!("Error interno: {}", e)
-                    })
-                });
+            let res = handle.await.unwrap_or_else(|e| {
+                Err(if en {
+                    format!("Internal error: {}", e)
+                } else {
+                    format!("Error interno: {}", e)
+                })
+            });
 
             match res {
                 Ok(bytes) => {
@@ -127,8 +125,20 @@ pub fn ArchiverView() -> Element {
         .map(|s| format!("~{}s", s))
         .unwrap_or_else(|| "—".to_string());
 
-    let card_title = if en { "Secure Archiver (ZIP / 7Z / TAR.GZ)" } else { "Archivador Seguro (ZIP / 7Z / TAR.GZ)" }.to_string();
-    let card_sub = Some((if en { "100% open-source Rust compression & extraction" } else { "Compresión y extracción libre 100% Rust" }).to_string());
+    let card_title = if en {
+        "Secure Archiver (ZIP / 7Z / TAR.GZ)"
+    } else {
+        "Archivador Seguro (ZIP / 7Z / TAR.GZ)"
+    }
+    .to_string();
+    let card_sub = Some(
+        (if en {
+            "100% open-source Rust compression & extraction"
+        } else {
+            "Compresión y extracción libre 100% Rust"
+        })
+        .to_string(),
+    );
 
     rsx! {
         div { class: "content-body",

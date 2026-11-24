@@ -22,8 +22,8 @@ use crate::core::trust::{create_admin_only_dir, reset_to_inherited_acl};
 
 const RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5",
-    "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7",
-    "LPT8", "LPT9",
+    "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8",
+    "LPT9",
 ];
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -124,7 +124,9 @@ fn sanitize_archive_rel_path(raw: &str) -> CoreResult<PathBuf> {
     }
 
     if clean.as_os_str().is_empty() {
-        return Err(CoreError::Validation("Entrada de archivo con ruta vacía".into()));
+        return Err(CoreError::Validation(
+            "Entrada de archivo con ruta vacía".into(),
+        ));
     }
     if clean.components().count() > MAX_ARCHIVE_DEPTH {
         return Err(CoreError::Validation(format!(
@@ -290,7 +292,13 @@ impl<'a> TelemetryCtx<'a> {
         }
     }
 
-    fn tick(&mut self, current_file: Option<&str>, bytes_processed: u64, files_done: usize, force: bool) {
+    fn tick(
+        &mut self,
+        current_file: Option<&str>,
+        bytes_processed: u64,
+        files_done: usize,
+        force: bool,
+    ) {
         let Some(p_arc) = self.progress else {
             return;
         };
@@ -505,12 +513,11 @@ impl ArchiveManager {
     ) -> CoreResult<u64> {
         let zone = read_zone_identifier(archive_path);
         let file = File::open(archive_path)?;
-        let mut reader = ArchiveReader::new(file, Password::empty()).map_err(|e| {
-            CoreError::Archive {
+        let mut reader =
+            ArchiveReader::new(file, Password::empty()).map_err(|e| CoreError::Archive {
                 message: format!("Error abriendo archivo 7Z: {}", e),
                 source: None,
-            }
-        })?;
+            })?;
 
         let total_files = reader.archive().files.len();
         let total_uncompressed: u64 = reader.archive().files.iter().map(|f| f.size).sum();
@@ -773,7 +780,8 @@ impl ArchiveManager {
                             stack.push(entry.path());
                         } else if ft.is_file() {
                             count += 1;
-                            bytes = bytes.saturating_add(entry.metadata().map(|m| m.len()).unwrap_or(0));
+                            bytes = bytes
+                                .saturating_add(entry.metadata().map(|m| m.len()).unwrap_or(0));
                         }
                     }
                 }
@@ -810,12 +818,12 @@ impl ArchiveManager {
                     .strip_prefix(src_path.parent().unwrap_or(src_path))
                     .unwrap_or(&current);
                 let rel_str = rel.to_string_lossy().replace('\\', "/");
-                zip_writer.start_file(&rel_str, options).map_err(|e| {
-                    CoreError::Archive {
+                zip_writer
+                    .start_file(&rel_str, options)
+                    .map_err(|e| CoreError::Archive {
                         message: format!("Error iniciando archivo ZIP: {}", e),
                         source: None,
-                    }
-                })?;
+                    })?;
                 let (mut f, _) = open_verified_file_read(&current, false, None)?;
                 let mut buf = [0u8; 64 * 1024];
                 loop {
@@ -936,15 +944,17 @@ impl ArchiveManager {
             let name = src_path
                 .file_name()
                 .ok_or_else(|| CoreError::Validation("Nombre de archivo inválido".into()))?;
-            tar.append_file(name, &mut f).map_err(|e| CoreError::Archive {
-                message: format!("Error agregando archivo a TAR: {}", e),
-                source: None,
-            })?;
+            tar.append_file(name, &mut f)
+                .map_err(|e| CoreError::Archive {
+                    message: format!("Error agregando archivo a TAR: {}", e),
+                    source: None,
+                })?;
         } else if src_path.is_dir() {
-            tar.append_dir_all(".", src_path).map_err(|e| CoreError::Archive {
-                message: format!("Error empaquetando directorio TAR: {}", e),
-                source: None,
-            })?;
+            tar.append_dir_all(".", src_path)
+                .map_err(|e| CoreError::Archive {
+                    message: format!("Error empaquetando directorio TAR: {}", e),
+                    source: None,
+                })?;
         }
 
         tar.finish().map_err(|e| CoreError::Archive {
@@ -968,14 +978,27 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
             .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!("otter_test_{}_{}_{}", tag, std::process::id(), nonce));
+        let dir = std::env::temp_dir().join(format!(
+            "otter_test_{}_{}_{}",
+            tag,
+            std::process::id(),
+            nonce
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     #[test]
     fn saneo_rechaza_traversal_unidades_y_ads() {
-        for bad in ["../x", "a/../../x", "C:/Windows/x", "/abs", "\\\\srv\\share\\x", "a/b:stream", "c:x"] {
+        for bad in [
+            "../x",
+            "a/../../x",
+            "C:/Windows/x",
+            "/abs",
+            "\\\\srv\\share\\x",
+            "a/b:stream",
+            "c:x",
+        ] {
             assert!(sanitize_archive_rel_path(bad).is_err(), "aceptó '{}'", bad);
         }
     }
@@ -1024,7 +1047,10 @@ mod tests {
         assert!(sentinel.is_file());
 
         std::fs::create_dir_all(&resolved).unwrap();
-        assert_eq!(resolve_extract_destination(&dest), root.join("proyecto (3)"));
+        assert_eq!(
+            resolve_extract_destination(&dest),
+            root.join("proyecto (3)")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

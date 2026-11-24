@@ -58,7 +58,12 @@ pub fn DnsView() -> Element {
     let on_benchmark = move |_| {
         is_benchmarking.set(true);
         status_msg.set(Some((
-            if en { "Measuring ping..." } else { "Midiendo el ping..." }.to_string(),
+            if en {
+                "Measuring ping..."
+            } else {
+                "Midiendo el ping..."
+            }
+            .to_string(),
             Tone::Info,
         )));
 
@@ -98,7 +103,12 @@ pub fn DnsView() -> Element {
             } else {
                 best_preset_id.set(None);
                 status_msg.set(Some((
-                    if en { "No server answered the ping." } else { "Ningún servidor respondió al ping." }.to_string(),
+                    if en {
+                        "No server answered the ping."
+                    } else {
+                        "Ningún servidor respondió al ping."
+                    }
+                    .to_string(),
                     Tone::Danger,
                 )));
             }
@@ -147,7 +157,12 @@ pub fn DnsView() -> Element {
                     Tone::Success,
                 ),
                 Err(e) if e.is_empty() => (
-                    if en { "There are no active physical adapters." } else { "No hay adaptadores físicos activos." }.to_string(),
+                    if en {
+                        "There are no active physical adapters."
+                    } else {
+                        "No hay adaptadores físicos activos."
+                    }
+                    .to_string(),
                     Tone::Danger,
                 ),
                 Err(e) => (format!("Error: {}", e), Tone::Danger),
@@ -162,7 +177,9 @@ pub fn DnsView() -> Element {
         spawn(async move {
             let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
                 let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
-                DnsManager::new(&data_dir).restore_dns().map_err(|e| e.to_string())
+                DnsManager::new(&data_dir)
+                    .restore_dns()
+                    .map_err(|e| e.to_string())
             })
             .await
             .unwrap_or_else(|e| Err(e.to_string()));
@@ -197,12 +214,33 @@ pub fn DnsView() -> Element {
         _ => Vec::new(),
     };
 
-    let optimizer_card_title = if en { "DNS Optimizer" } else { "Optimizador DNS" }.to_string();
-    let optimizer_card_sub = Some(if en { "Public DNS servers and ping test" } else { "Servidores DNS públicos y prueba de ping" }.to_string());
-    let adapters_card_title = if en { "Network Adapters" } else { "Adaptadores de Red" }.to_string();
+    let optimizer_card_title = if en {
+        "DNS Optimizer"
+    } else {
+        "Optimizador DNS"
+    }
+    .to_string();
+    let optimizer_card_sub = Some(
+        if en {
+            "Public DNS servers and ping test"
+        } else {
+            "Servidores DNS públicos y prueba de ping"
+        }
+        .to_string(),
+    );
+    let adapters_card_title = if en {
+        "Network Adapters"
+    } else {
+        "Adaptadores de Red"
+    }
+    .to_string();
 
     let ping_btn_text = if *is_benchmarking.read() {
-        if en { "Pinging..." } else { "Midiendo..." }
+        if en {
+            "Pinging..."
+        } else {
+            "Midiendo..."
+        }
     } else if en {
         "Test Ping"
     } else {
@@ -210,7 +248,11 @@ pub fn DnsView() -> Element {
     };
 
     let apply_dns_lbl = if en { "Apply DNS" } else { "Aplicar DNS" };
-    let restore_dns_lbl = if en { "Restore Previous" } else { "Restaurar DNS" };
+    let restore_dns_lbl = if en {
+        "Restore Previous"
+    } else {
+        "Restaurar DNS"
+    };
     let physical_lbl = if en { "Physical" } else { "Físico" };
 
     rsx! {

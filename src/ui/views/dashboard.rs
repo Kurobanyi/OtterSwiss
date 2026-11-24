@@ -56,7 +56,12 @@ pub fn DashboardView() -> Element {
         progress_state.set(EngineProgress {
             current_step: 0,
             total_steps: 13,
-            current_label: if en { "Creating backup..." } else { "Creando respaldo..." }.to_string(),
+            current_label: if en {
+                "Creating backup..."
+            } else {
+                "Creando respaldo..."
+            }
+            .to_string(),
             percent: 5,
             completed_steps: Vec::new(),
         });
@@ -120,7 +125,12 @@ pub fn DashboardView() -> Element {
         progress_state.set(EngineProgress {
             current_step: 0,
             total_steps: 13,
-            current_label: if en { "Reading backup..." } else { "Leyendo respaldo..." }.to_string(),
+            current_label: if en {
+                "Reading backup..."
+            } else {
+                "Leyendo respaldo..."
+            }
+            .to_string(),
             percent: 5,
             completed_steps: Vec::new(),
         });
@@ -184,18 +194,64 @@ pub fn DashboardView() -> Element {
         };
     };
     let planned_items = OptimizationEngine::preview_plan(OptimizationProfile::AutoDetected, hw);
-    let eligible_items: Vec<_> = planned_items.iter().filter(|i| i.eligible).cloned().collect();
+    let eligible_items: Vec<_> = planned_items
+        .iter()
+        .filter(|i| i.eligible)
+        .cloned()
+        .collect();
     let prog = progress_state.read();
 
-    let overview_title = if en { "System Overview" } else { "Resumen del Equipo" }.to_string();
-    let overview_sub = Some((if en { "Native Win32 detection" } else { "Detección nativa Win32" }).to_string());
-    let power_title = if en { "Active Power Plan" } else { "Plan de Energía" }.to_string();
-    let power_sub = Some((if en { "Current Windows scheme" } else { "Esquema activo Win32" }).to_string());
+    let overview_title = if en {
+        "System Overview"
+    } else {
+        "Resumen del Equipo"
+    }
+    .to_string();
+    let overview_sub = Some(
+        (if en {
+            "Native Win32 detection"
+        } else {
+            "Detección nativa Win32"
+        })
+        .to_string(),
+    );
+    let power_title = if en {
+        "Active Power Plan"
+    } else {
+        "Plan de Energía"
+    }
+    .to_string();
+    let power_sub = Some(
+        (if en {
+            "Current Windows scheme"
+        } else {
+            "Esquema activo Win32"
+        })
+        .to_string(),
+    );
     let opt_title = if en { "Optimizer" } else { "Optimizador" }.to_string();
     // UI-01: sin «transaccional»; el respaldo permite revertir, pero no garantiza todo o nada.
-    let opt_sub = Some((if en { "Backs up each value before changing it, so it can be reverted" } else { "Respalda cada valor antes de cambiarlo para poder revertirlo" }).to_string());
-    let planned_title = if en { format!("Planned Tweaks ({:?})", hw.tier) } else { format!("Ajustes del Perfil ({:?})", hw.tier) };
-    let planned_sub = Some((if en { "Backed up before applying" } else { "Respaldo previo automático" }).to_string());
+    let opt_sub = Some(
+        (if en {
+            "Backs up each value before changing it, so it can be reverted"
+        } else {
+            "Respalda cada valor antes de cambiarlo para poder revertirlo"
+        })
+        .to_string(),
+    );
+    let planned_title = if en {
+        format!("Planned Tweaks ({:?})", hw.tier)
+    } else {
+        format!("Ajustes del Perfil ({:?})", hw.tier)
+    };
+    let planned_sub = Some(
+        (if en {
+            "Backed up before applying"
+        } else {
+            "Respaldo previo automático"
+        })
+        .to_string(),
+    );
 
     rsx! {
         div { class: "content-body",
