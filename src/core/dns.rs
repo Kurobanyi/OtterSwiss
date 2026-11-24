@@ -24,7 +24,7 @@ use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::power::parse_guid_strict;
 use crate::core::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::win_common::{to_wide_null, NamedMutex, SafeLibrary};
+use crate::core::win_common::{to_wide_null, AlignedBuf, NamedMutex, SafeLibrary};
 
 const DNS_BACKUP_MUTEX: &str = r"Global\OtterSwiss_DnsBackup_Lock";
 const MAX_DNS_BACKUP_BYTES: u64 = 512 * 1024;
@@ -38,6 +38,7 @@ pub struct DnsPreset {
     pub ipv6_primary: &'static str,
     pub ipv6_secondary: &'static str,
     pub privacy_notice: &'static str,
+    pub privacy_notice_en: &'static str,
 }
 
 pub const DNS_PRESETS: &[DnsPreset] = &[
@@ -49,6 +50,7 @@ pub const DNS_PRESETS: &[DnsPreset] = &[
         ipv6_primary: "2606:4700:4700::1111",
         ipv6_secondary: "2606:4700:4700::1001",
         privacy_notice: "Las consultas DNS se envían a Cloudflare (DNS plano UDP/TCP 53).",
+        privacy_notice_en: "DNS queries are sent to Cloudflare (plain DNS over UDP/TCP 53).",
     },
     DnsPreset {
         id: "quad9",
@@ -59,6 +61,7 @@ pub const DNS_PRESETS: &[DnsPreset] = &[
         ipv6_secondary: "2620:fe::9",
         privacy_notice:
             "Las consultas DNS se envían a Quad9 (filtrado de dominios maliciosos en resolver).",
+        privacy_notice_en: "DNS queries are sent to Quad9 (the resolver blocks malicious domains).",
     },
     DnsPreset {
         id: "google",
@@ -68,6 +71,7 @@ pub const DNS_PRESETS: &[DnsPreset] = &[
         ipv6_primary: "2001:4860:4860::8888",
         ipv6_secondary: "2001:4860:4860::8844",
         privacy_notice: "Las consultas DNS se envían a Google Public DNS.",
+        privacy_notice_en: "DNS queries are sent to Google Public DNS.",
     },
 ];
 
@@ -95,7 +99,7 @@ fn ping_ipv4_once(ip: Ipv4Addr, timeout_ms: u32) -> Option<(u32, &'static str)> 
         let dest_addr = u32::from_ne_bytes(ip.octets());
         let payload = [0x4F_u8; 32];
         let reply_size = std::mem::size_of::<EchoReplyStruct>() + payload.len() + 16;
-        let mut reply_buf = vec![0u8; reply_size];
+        let mut reply_buf = AlignedBuf::zeroed(reply_size);
 
         let count = unsafe {
             IcmpSendEcho(
@@ -202,7 +206,7 @@ pub struct DnsBackupDocument {
 
 pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
     let mut size: u32 = 16 * 1024;
-    let mut buf = vec![0u8; size as usize];
+    let mut buf = AlignedBuf::zeroed(size as usize);
 
     loop {
         let ret = unsafe {
@@ -218,7 +222,7 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
             break;
         }
         if ret == ERROR_BUFFER_OVERFLOW.0 {
-            buf.resize(size as usize, 0);
+            buf = AlignedBuf::zeroed(size as usize);
             continue;
         }
         return Err(CoreError::Dns {
@@ -276,32 +280,68 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
 }
 
 fn read_adapter_nameservers_from_registry(guid_no_braces: &str) -> (String, String) {
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let braced = format!("{{{}}}", guid_no_braces);
+    read_adapter_nameservers_strict(guid_no_braces).unwrap_or_default()
+}
 
-    let v4_path = format!(
+/// Lee el `NameServer` estático de IPv4 e IPv6. Una clave o valor ausente es «automático» (cadena vacía);
+/// cualquier otro error se propaga, para no guardar en el respaldo un «DHCP» que no era tal.
+fn read_adapter_nameservers_strict(guid_no_braces: &str) -> CoreResult<(String, String)> {
+    let braced = format!("{{{}}}", guid_no_braces);
+    let v4 = read_nameserver_value(&format!(
         r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{}",
         braced
-    );
-    let v4 = hklm
-        .open_subkey_with_flags(&v4_path, KEY_READ)
-        .ok()
-        .and_then(|k| k.get_value::<String, _>("NameServer").ok())
-        .map(|s| normalize_dns_list(&s))
-        .unwrap_or_default();
-
-    let v6_path = format!(
+    ))?;
+    let v6 = read_nameserver_value(&format!(
         r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{}",
         braced
-    );
-    let v6 = hklm
-        .open_subkey_with_flags(&v6_path, KEY_READ)
-        .ok()
-        .and_then(|k| k.get_value::<String, _>("NameServer").ok())
-        .map(|s| normalize_dns_list(&s))
-        .unwrap_or_default();
+    ))?;
+    Ok((v4, v6))
+}
 
-    (v4, v6)
+fn read_nameserver_value(path: &str) -> CoreResult<String> {
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = match hklm.open_subkey_with_flags(path, KEY_READ) {
+        Ok(k) => k,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(String::new()),
+        Err(e) => {
+            return Err(CoreError::Dns {
+                message: format!("No se pudo leer la configuración DNS actual ({}): {}", path, e),
+                source: None,
+            })
+        }
+    };
+    match key.get_value::<String, _>("NameServer") {
+        Ok(v) => Ok(normalize_dns_list(&v)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(CoreError::Dns {
+            message: format!("No se pudo leer NameServer ({}): {}", path, e),
+            source: None,
+        }),
+    }
+}
+
+fn interface_exists(guid_no_braces: &str) -> bool {
+    RegKey::predef(HKEY_LOCAL_MACHINE)
+        .open_subkey_with_flags(
+            format!(
+                r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{}}}",
+                guid_no_braces
+            ),
+            KEY_READ,
+        )
+        .is_ok()
+}
+
+/// Valida una lista `a,b` de servidores guardada en el respaldo. Vacía = automático.
+fn validate_dns_csv(csv: &str, ipv6: bool) -> CoreResult<()> {
+    for ip in csv.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+        if ipv6 {
+            validate_ipv6_dns(ip)?;
+        } else {
+            validate_ipv4_dns(ip)?;
+        }
+    }
+    Ok(())
 }
 
 fn normalize_dns_list(raw: &str) -> String {
@@ -427,11 +467,12 @@ impl DnsManager {
                     ))
                 })?;
 
+            let (prev_v4, prev_v6) = read_adapter_nameservers_strict(&adapter.interface_guid)?;
             self.record_adapter_before_apply(DnsAdapterSnapshot {
                 interface_guid: adapter.interface_guid.clone(),
                 friendly_name: adapter.friendly_name.clone(),
-                previous_ipv4_nameserver: adapter.current_ipv4_dns.clone(),
-                previous_ipv6_nameserver: adapter.current_ipv6_dns.clone(),
+                previous_ipv4_nameserver: prev_v4,
+                previous_ipv6_nameserver: prev_v6,
             })?;
 
             apply_interface_dns_typed(guid_struct, ipv4_csv, ipv6_csv)?;
@@ -442,6 +483,14 @@ impl DnsManager {
         Ok(modified_count)
     }
 
+    /// `true` si hay un respaldo de DNS pendiente de restaurar.
+    pub fn has_backup(&self) -> bool {
+        self.dns_backup_path.exists()
+    }
+
+    /// Restaura el DNS previo de cada adaptador del respaldo, IPv4 **e** IPv6 (vacío = automático).
+    /// Los adaptadores que ya no existen se omiten; si alguno falla, el respaldo conserva solo los
+    /// pendientes y se devuelve el error.
     pub fn restore_dns(&self) -> CoreResult<usize> {
         ElevationManager::require_elevated("Restaurar servidores DNS previos")?;
         let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
@@ -453,46 +502,93 @@ impl DnsManager {
             });
         }
 
-        let bytes = read_bounded_bytes(&self.dns_backup_path, MAX_DNS_BACKUP_BYTES)?;
-        let doc: DnsBackupDocument =
-            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
-                message: format!("Error leyendo dns_backup.json: {}", e),
-                source: Some(Box::new(e)),
-            })?;
+        let doc = self.load_doc_unlocked()?;
 
         let mut restored = 0usize;
+        let mut pending: Vec<DnsAdapterSnapshot> = Vec::new();
+        let mut failures: Vec<String> = Vec::new();
         for snap in &doc.adapters {
-            let guid_struct = parse_guid_strict(&snap.interface_guid)?;
-            apply_interface_dns_typed(
-                guid_struct,
-                &snap.previous_ipv4_nameserver,
-                &snap.previous_ipv6_nameserver,
-            )?;
-            restored += 1;
+            let clean = snap.interface_guid.trim_matches(|c| c == '{' || c == '}');
+            if !interface_exists(clean) {
+                // El adaptador se quitó (USB, VPN desinstalada): no queda nada que restaurar.
+                continue;
+            }
+            let res = parse_guid_strict(clean).and_then(|g| {
+                restore_interface_dns(
+                    g,
+                    &snap.previous_ipv4_nameserver,
+                    &snap.previous_ipv6_nameserver,
+                )
+            });
+            match res {
+                Ok(()) => restored += 1,
+                Err(e) => {
+                    failures.push(format!("{}: {}", snap.friendly_name, e));
+                    pending.push(snap.clone());
+                }
+            }
         }
 
         flush_dns_cache();
-        delete_verified_file(&self.dns_backup_path)?;
-        Ok(restored)
+        if failures.is_empty() {
+            delete_verified_file(&self.dns_backup_path)?;
+            return Ok(restored);
+        }
+
+        self.save_doc_unlocked(&DnsBackupDocument {
+            version: doc.version,
+            adapters: pending,
+        })?;
+        Err(CoreError::Dns {
+            message: format!(
+                "Se restauraron {} adaptadores, pero {} fallaron y siguen en el respaldo: {}",
+                restored,
+                failures.len(),
+                failures.join("; ")
+            ),
+            source: None,
+        })
+    }
+
+    /// Lee y valida el respaldo. Si existe y no se puede leer, falla; si trae servidores que no son
+    /// direcciones válidas, falla (archivo manipulado).
+    fn load_doc_unlocked(&self) -> CoreResult<DnsBackupDocument> {
+        if !self.dns_backup_path.exists() {
+            return Ok(DnsBackupDocument {
+                version: 1,
+                adapters: Vec::new(),
+            });
+        }
+        let bytes = read_bounded_bytes(&self.dns_backup_path, MAX_DNS_BACKUP_BYTES)?;
+        let doc: DnsBackupDocument =
+            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
+                message: format!(
+                    "dns_backup.json está dañado ({}); no se tocará el DNS para no perder la configuración original",
+                    e
+                ),
+                source: Some(Box::new(e)),
+            })?;
+        for a in &doc.adapters {
+            parse_guid_strict(a.interface_guid.trim_matches(|c| c == '{' || c == '}'))?;
+            validate_dns_csv(&a.previous_ipv4_nameserver, false)?;
+            validate_dns_csv(&a.previous_ipv6_nameserver, true)?;
+        }
+        Ok(doc)
+    }
+
+    fn save_doc_unlocked(&self, doc: &DnsBackupDocument) -> CoreResult<()> {
+        let json = serde_json::to_vec_pretty(doc).map_err(|e| CoreError::Backup {
+            message: format!("Error serializando dns_backup.json: {}", e),
+            source: Some(Box::new(e)),
+        })?;
+        atomic_write_new(&self.dns_backup_path, &json)
     }
 
     fn record_adapter_before_apply(&self, snap: DnsAdapterSnapshot) -> CoreResult<()> {
         let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
-        let mut doc = if self.dns_backup_path.exists() {
-            read_bounded_bytes(&self.dns_backup_path, MAX_DNS_BACKUP_BYTES)
-                .ok()
-                .and_then(|b| serde_json::from_slice::<DnsBackupDocument>(&b).ok())
-                .unwrap_or(DnsBackupDocument {
-                    version: 1,
-                    adapters: Vec::new(),
-                })
-        } else {
-            DnsBackupDocument {
-                version: 1,
-                adapters: Vec::new(),
-            }
-        };
+        let mut doc = self.load_doc_unlocked()?;
 
+        // Si el adaptador ya está en el respaldo, se conserva su estado original (el primero).
         if !doc
             .adapters
             .iter()
@@ -500,15 +596,43 @@ impl DnsManager {
         {
             doc.adapters.push(snap);
         }
+        self.save_doc_unlocked(&doc)
+    }
+}
 
-        if let Some(parent) = self.dns_backup_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_vec_pretty(&doc).map_err(|e| CoreError::Backup {
-            message: format!("Error serializando dns_backup.json: {}", e),
-            source: Some(Box::new(e)),
-        })?;
-        atomic_write_new(&self.dns_backup_path, &json)
+/// Fija IPv4 e IPv6 de forma explícita, aunque estén vacíos (= volver a automático).
+/// Si IPv6 está deshabilitado en el adaptador (87 / 1168), se omite.
+fn restore_interface_dns(interface_guid: GUID, ipv4_csv: &str, ipv6_csv: &str) -> CoreResult<()> {
+    set_family_dns(interface_guid, ipv4_csv, false).map_err(|code| CoreError::Dns {
+        message: format!("SetInterfaceDnsSettings(IPv4) falló (código {})", code),
+        source: None,
+    })?;
+    match set_family_dns(interface_guid, ipv6_csv, true) {
+        Ok(()) | Err(87) | Err(1168) => Ok(()),
+        Err(code) => Err(CoreError::Dns {
+            message: format!("SetInterfaceDnsSettings(IPv6) falló (código {})", code),
+            source: None,
+        }),
+    }
+}
+
+fn set_family_dns(interface_guid: GUID, csv: &str, ipv6: bool) -> Result<(), u32> {
+    let w = to_wide_null(csv);
+    let mut flags = DNS_SETTING_NAMESERVER as u64;
+    if ipv6 {
+        flags |= DNS_SETTING_IPV6 as u64;
+    }
+    let settings = DNS_INTERFACE_SETTINGS {
+        Version: DNS_INTERFACE_SETTINGS_VERSION1,
+        Flags: flags,
+        NameServer: windows::core::PWSTR(w.as_ptr() as *mut _),
+        ..Default::default()
+    };
+    let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings) };
+    if err.0 != 0 {
+        Err(err.0)
+    } else {
+        Ok(())
     }
 }
 
@@ -568,5 +692,32 @@ fn flush_dns_cache() {
                 let _ = func();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn presets_son_validos() {
+        for p in DNS_PRESETS {
+            assert!(validate_dns_input(Some(p.ipv4_primary), Some(p.ipv4_secondary), Some(p.ipv6_primary), Some(p.ipv6_secondary)).is_ok(), "{}", p.id);
+        }
+    }
+
+    /// SEC-09: lo que no es un servidor DNS válido no se aplica.
+    #[test]
+    fn rechaza_direcciones_invalidas() {
+        for bad in ["127.0.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "1.1.1", "evil"] {
+            assert!(validate_dns_input(Some(bad), None, None, None).is_err(), "{}", bad);
+        }
+        for bad in ["::1", "::", "ff02::1"] {
+            assert!(validate_dns_input(None, None, Some(bad), None).is_err(), "{}", bad);
+        }
+        assert!(validate_dns_input(None, Some("1.1.1.1"), None, None).is_err());
+        assert!(validate_dns_input(None, None, None, None).is_err());
+        assert!(validate_dns_csv("1.1.1.1, 8.8.8.8", false).is_ok());
+        assert!(validate_dns_csv("1.1.1.1,127.0.0.1", false).is_err());
     }
 }

@@ -5,30 +5,62 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 
 use crate::core::dns::{
-    benchmark_dns_presets, list_active_adapters, DnsBenchmarkResult, DnsManager, DNS_PRESETS,
+    benchmark_dns_presets, list_active_adapters, DnsBenchmarkResult, DnsManager,
+    NetworkAdapterInfo, DNS_PRESETS,
 };
-use crate::core::trust::get_program_data_dir;
-use crate::ui::components::Card;
+use crate::core::trust::ensure_admin_only_data_dir;
+use crate::ui::components::{
+    Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
+};
 use crate::ui::i18n::Lang;
+
+/// Estado de la lista de adaptadores: `None` mientras se lee (UI-07).
+type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, String>>;
+
+/// Relee adaptadores y si hay respaldo de DNS, fuera del hilo de UI (UI-05).
+fn spawn_refresh(mut adapters: Signal<AdaptersState>, mut has_backup: Signal<bool>) {
+    spawn(async move {
+        let res = tokio::task::spawn_blocking(|| {
+            let list = list_active_adapters().map_err(|e| e.to_string());
+            let backup = ensure_admin_only_data_dir()
+                .map(|dir| DnsManager::new(&dir).has_backup())
+                .unwrap_or(false);
+            (list, backup)
+        })
+        .await;
+        match res {
+            Ok((list, backup)) => {
+                adapters.set(Some(list));
+                has_backup.set(backup);
+            }
+            Err(e) => adapters.set(Some(Err(e.to_string()))),
+        }
+    });
+}
 
 #[component]
 pub fn DnsView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
 
-    let mut adapters = use_signal(|| list_active_adapters().unwrap_or_default());
+    let adapters = use_signal(|| AdaptersState::None);
+    let has_backup = use_signal(|| false);
     let mut selected_preset = use_signal(|| "cloudflare");
-    let mut status_msg = use_signal(|| Option::<String>::None);
-    let mut is_error = use_signal(|| false);
+    let mut status_msg = use_signal(|| Option::<(String, Tone)>::None);
     let mut is_working = use_signal(|| false);
     let mut is_benchmarking = use_signal(|| false);
+    let mut confirm_apply = use_signal(|| false);
     let mut benchmarks = use_signal(HashMap::<&'static str, DnsBenchmarkResult>::new);
     let mut best_preset_id = use_signal(|| Option::<&'static str>::None);
 
+    use_hook(move || spawn_refresh(adapters, has_backup));
+
     let on_benchmark = move |_| {
         is_benchmarking.set(true);
-        status_msg.set(Some(if en { "Testing DNS latency..." } else { "Midiendo latencia..." }.to_string()));
-        is_error.set(false);
+        status_msg.set(Some((
+            if en { "Measuring ping..." } else { "Midiendo el ping..." }.to_string(),
+            Tone::Info,
+        )));
 
         spawn(async move {
             let results = tokio::task::spawn_blocking(benchmark_dns_presets)
@@ -53,22 +85,28 @@ pub fn DnsView() -> Element {
                 best_preset_id.set(Some(best_id));
                 selected_preset.set(best_id);
                 if let Some(p) = DNS_PRESETS.iter().find(|x| x.id == best_id) {
-                    status_msg.set(Some(if en {
-                        format!("Fastest: {} ({} ms)", p.name, best_ms)
-                    } else {
-                        format!("Mejor: {} ({} ms)", p.name, best_ms)
-                    }));
+                    // UI-15: es ping ICMP al servidor, no tiempo de resolución DNS.
+                    status_msg.set(Some((
+                        if en {
+                            format!("Lowest ping: {} ({} ms)", p.name, best_ms)
+                        } else {
+                            format!("Menor ping: {} ({} ms)", p.name, best_ms)
+                        },
+                        Tone::Success,
+                    )));
                 }
             } else {
                 best_preset_id.set(None);
-                status_msg.set(Some(if en { "No ping reply." } else { "Sin respuesta." }.to_string()));
-                is_error.set(true);
+                status_msg.set(Some((
+                    if en { "No server answered the ping." } else { "Ningún servidor respondió al ping." }.to_string(),
+                    Tone::Danger,
+                )));
             }
             is_benchmarking.set(false);
         });
     };
 
-    let on_apply_dns = move |_| {
+    let mut start_apply = move || {
         let preset_id = *selected_preset.read();
         let Some(p) = DNS_PRESETS.iter().find(|p| p.id == preset_id) else {
             return;
@@ -80,45 +118,41 @@ pub fn DnsView() -> Element {
 
         is_working.set(true);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(move || -> Result<String, String> {
-                let data_dir = get_program_data_dir()
-                    .map_err(|e| e.to_string())?
-                    .join("OtterSwiss");
-                std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-
+            let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
                 let dns_mgr = DnsManager::new(&data_dir);
                 let active = list_active_adapters().map_err(|e| e.to_string())?;
-
                 let guids: Vec<String> = active
                     .iter()
                     .filter(|a| !a.is_virtual_or_vpn)
                     .map(|a| a.interface_guid.clone())
                     .collect();
-
                 if guids.is_empty() {
-                    return Err("No active physical adapters".to_string());
+                    return Err(String::new());
                 }
-
-                let count = dns_mgr
+                dns_mgr
                     .apply_dns_to_selected(&guids, &v4_csv, &v6_csv)
-                    .map_err(|e| e.to_string())?;
-
-                Ok(format!("{} OK ({} NICs)", p_name, count))
+                    .map_err(|e| e.to_string())
             })
             .await
-            .unwrap_or_else(|e| Err(format!("Thread error: {}", e)));
+            .unwrap_or_else(|e| Err(e.to_string()));
 
-            match res {
-                Ok(msg) => {
-                    adapters.set(list_active_adapters().unwrap_or_default());
-                    status_msg.set(Some(msg));
-                    is_error.set(false);
-                }
-                Err(e) => {
-                    status_msg.set(Some(format!("Error: {}", e)));
-                    is_error.set(true);
-                }
-            }
+            status_msg.set(Some(match res {
+                Ok(count) => (
+                    if en {
+                        format!("{} applied to {} adapter(s).", p_name, count)
+                    } else {
+                        format!("{} aplicado a {} adaptador(es).", p_name, count)
+                    },
+                    Tone::Success,
+                ),
+                Err(e) if e.is_empty() => (
+                    if en { "There are no active physical adapters." } else { "No hay adaptadores físicos activos." }.to_string(),
+                    Tone::Danger,
+                ),
+                Err(e) => (format!("Error: {}", e), Tone::Danger),
+            }));
+            spawn_refresh(adapters, has_backup);
             is_working.set(false);
         });
     };
@@ -126,38 +160,45 @@ pub fn DnsView() -> Element {
     let on_restore_dns = move |_| {
         is_working.set(true);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(move || -> Result<String, String> {
-                let data_dir = get_program_data_dir()
-                    .map_err(|e| e.to_string())?
-                    .join("OtterSwiss");
-
-                let dns_mgr = DnsManager::new(&data_dir);
-                let count = dns_mgr.restore_dns().map_err(|e| e.to_string())?;
-                Ok(format!("Restored {} NIC(s)", count))
+            let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
+                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
+                DnsManager::new(&data_dir).restore_dns().map_err(|e| e.to_string())
             })
             .await
-            .unwrap_or_else(|e| Err(format!("Thread error: {}", e)));
+            .unwrap_or_else(|e| Err(e.to_string()));
 
-            match res {
-                Ok(msg) => {
-                    adapters.set(list_active_adapters().unwrap_or_default());
-                    status_msg.set(Some(msg));
-                    is_error.set(false);
-                }
-                Err(e) => {
-                    status_msg.set(Some(format!("Error: {}", e)));
-                    is_error.set(true);
-                }
-            }
+            // El core conserva en el respaldo los adaptadores pendientes y devuelve Err (SYS-08).
+            status_msg.set(Some(match res {
+                Ok(count) => (
+                    if en {
+                        format!("Previous DNS restored on {} adapter(s).", count)
+                    } else {
+                        format!("DNS anterior restaurado en {} adaptador(es).", count)
+                    },
+                    Tone::Success,
+                ),
+                Err(e) => (format!("Error: {}", e), Tone::Danger),
+            }));
+            spawn_refresh(adapters, has_backup);
             is_working.set(false);
         });
     };
 
     let bench_map = benchmarks.read();
     let best_id = *best_preset_id.read();
+    let active_preset = DNS_PRESETS.iter().find(|p| p.id == *selected_preset.read());
+    let adapters_state = adapters.read();
+    let physical: Vec<String> = match adapters_state.as_ref() {
+        Some(Ok(list)) => list
+            .iter()
+            .filter(|a| !a.is_virtual_or_vpn)
+            .map(|a| a.friendly_name.clone())
+            .collect(),
+        _ => Vec::new(),
+    };
 
     let optimizer_card_title = if en { "DNS Optimizer" } else { "Optimizador DNS" }.to_string();
-    let optimizer_card_sub = Some(if en { "Fast resolution & latency benchmark" } else { "Resolución rápida y test de latencia" }.to_string());
+    let optimizer_card_sub = Some(if en { "Public DNS servers and ping test" } else { "Servidores DNS públicos y prueba de ping" }.to_string());
     let adapters_card_title = if en { "Network Adapters" } else { "Adaptadores de Red" }.to_string();
 
     let ping_btn_text = if *is_benchmarking.read() {
@@ -174,6 +215,36 @@ pub fn DnsView() -> Element {
 
     rsx! {
         div { class: "content-body",
+            // UX-04: confirmar con los adaptadores afectados y el aviso de privacidad.
+            if *confirm_apply.read() {
+                if let Some(p) = active_preset {
+                    ConfirmDialog {
+                        title: if en { format!("Apply {}?", p.name) } else { format!("¿Aplicar {}?", p.name) },
+                        subtitle: Some(if en { p.privacy_notice_en.to_string() } else { p.privacy_notice.to_string() }),
+                        confirm_label: apply_dns_lbl.to_string(),
+                        cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                        tone: Tone::Warning,
+                        on_cancel: move |_| confirm_apply.set(false),
+                        on_confirm: move |_| {
+                            confirm_apply.set(false);
+                            start_apply();
+                        },
+                        p { class: "text-xs",
+                            if en {
+                                "It replaces the DNS of these adapters. On a company network or with your own DNS (Pi-hole, router) some names may stop resolving; «Restore DNS» brings back the previous one."
+                            } else {
+                                "Reemplaza el DNS de estos adaptadores. En una red de empresa o con un DNS propio (Pi-hole, router) algunos nombres pueden dejar de resolverse; «Restaurar DNS» vuelve al anterior."
+                            }
+                        }
+                        div { class: "modal-list",
+                            for name in physical.iter() {
+                                div { key: "{name}", "• {name}" }
+                            }
+                        }
+                    }
+                }
+            }
+
             Card {
                 title: optimizer_card_title,
                 subtitle: optimizer_card_sub,
@@ -210,33 +281,33 @@ pub fn DnsView() -> Element {
                         }
                     }
 
-                    if let Some(active_p) = DNS_PRESETS.iter().find(|p| p.id == *selected_preset.read()) {
+                    if let Some(active_p) = active_preset {
                         div { style: "background: var(--bg); padding: var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); font-size: var(--font-size-xs);",
                             p { strong { "IPv4: " } "{active_p.ipv4_primary}, {active_p.ipv4_secondary}   |   " strong { "IPv6: " } "{active_p.ipv6_primary}, {active_p.ipv6_secondary}" }
+                            p { class: "text-muted", if en { "{active_p.privacy_notice_en}" } else { "{active_p.privacy_notice}" } }
                         }
                     }
 
                     div { style: "display: flex; gap: var(--space-3);",
                         button {
                             class: "btn btn-primary",
-                            disabled: *is_working.read(),
-                            onclick: on_apply_dns,
+                            disabled: *is_working.read() || physical.is_empty(),
+                            onclick: move |_| confirm_apply.set(true),
                             "{apply_dns_lbl}"
                         }
-                        button {
-                            class: "btn btn-secondary",
-                            disabled: *is_working.read(),
-                            onclick: on_restore_dns,
-                            "{restore_dns_lbl}"
+                        // UI-07: «Restaurar» solo existe si hay un respaldo que restaurar.
+                        if *has_backup.read() {
+                            button {
+                                class: "btn btn-secondary",
+                                disabled: *is_working.read(),
+                                onclick: on_restore_dns,
+                                "{restore_dns_lbl}"
+                            }
                         }
                     }
 
-                    if let Some(msg) = status_msg.read().as_ref() {
-                        div {
-                            class: if *is_error.read() { "badge badge-danger" } else { "badge badge-success" },
-                            style: "padding: var(--space-2) var(--space-3);",
-                            "{msg}"
-                        }
+                    if let Some((msg, tone)) = status_msg.read().clone() {
+                        StatusBanner { text: msg, tone }
                     }
                 }
             }
@@ -245,26 +316,45 @@ pub fn DnsView() -> Element {
                 title: adapters_card_title,
                 subtitle: None,
                 div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                    for adapter in adapters.read().iter() {
-                        div {
-                            key: "{adapter.interface_guid}",
-                            style: "padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); display: flex; justify-content: space-between; align-items: center;",
-                            div {
-                                div { style: "font-weight: 600; font-size: var(--font-size-sm);", "{adapter.friendly_name}" }
-                                div { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
-                                    "IPv4: "
-                                    {if adapter.current_ipv4_dns.is_empty() { "DHCP" } else { adapter.current_ipv4_dns.as_str() }}
-                                    if !adapter.current_ipv6_dns.is_empty() {
-                                        " | IPv6: {adapter.current_ipv6_dns}"
+                    match adapters_state.as_ref() {
+                        None => rsx! {
+                            LoadingState { message: if en { "Reading network adapters...".to_string() } else { "Leyendo los adaptadores de red...".to_string() } }
+                        },
+                        Some(Err(err)) => rsx! {
+                            ErrorState {
+                                title: if en { "Could not read the adapters".to_string() } else { "No se pudieron leer los adaptadores".to_string() },
+                                error_msg: err.clone(),
+                            }
+                        },
+                        Some(Ok(list)) if list.is_empty() => rsx! {
+                            EmptyState {
+                                title: if en { "No active adapters".to_string() } else { "Sin adaptadores activos".to_string() },
+                                description: if en { "Connect to a network and refresh this tab.".to_string() } else { "Conéctate a una red y vuelve a abrir esta pestaña.".to_string() },
+                            }
+                        },
+                        Some(Ok(list)) => rsx! {
+                            for adapter in list.iter() {
+                                div {
+                                    key: "{adapter.interface_guid}",
+                                    style: "padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); display: flex; justify-content: space-between; align-items: center;",
+                                    div {
+                                        div { style: "font-weight: 600; font-size: var(--font-size-sm);", "{adapter.friendly_name}" }
+                                        div { class: "text-xs text-muted",
+                                            "IPv4: "
+                                            {if adapter.current_ipv4_dns.is_empty() { if en { "automatic (DHCP)" } else { "automático (DHCP)" } } else { adapter.current_ipv4_dns.as_str() }}
+                                            if !adapter.current_ipv6_dns.is_empty() {
+                                                " | IPv6: {adapter.current_ipv6_dns}"
+                                            }
+                                        }
+                                    }
+                                    if adapter.is_virtual_or_vpn {
+                                        span { class: "badge badge-warning", "Virtual / VPN" }
+                                    } else {
+                                        span { class: "badge badge-success", "{physical_lbl}" }
                                     }
                                 }
                             }
-                            if adapter.is_virtual_or_vpn {
-                                span { class: "badge badge-warning", "Virtual / VPN" }
-                            } else {
-                                span { class: "badge badge-success", "{physical_lbl}" }
-                            }
-                        }
+                        },
                     }
                 }
             }
