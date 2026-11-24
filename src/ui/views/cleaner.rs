@@ -5,7 +5,7 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
-use crate::ui::components::Card;
+use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 
 fn format_mb(bytes: u64) -> String {
@@ -25,7 +25,8 @@ pub fn CleanerView() -> Element {
     let mut is_cleaning = use_signal(|| false);
     let mut results = use_signal(Vec::<CategoryCleanResult>::new);
     let mut clean_all_temps = use_signal(|| false);
-    let mut clean_recycle = use_signal(|| true);
+    // ERR-07: vaciar la Papelera es irreversible; viene desmarcado.
+    let mut clean_recycle = use_signal(|| false);
     let mut show_confirm_modal = use_signal(|| false);
     let mut progress_state = use_signal(CleanProgress::default);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
@@ -67,7 +68,13 @@ pub fn CleanerView() -> Element {
                 tokio::time::sleep(Duration::from_millis(150)).await;
             }
 
-            let res = handle.await.unwrap_or_default();
+            let res = handle.await.unwrap_or_else(|e| {
+                vec![CategoryCleanResult {
+                    category: if en { "Cleanup" } else { "Limpieza" }.to_string(),
+                    error: Some(e.to_string()),
+                    ..Default::default()
+                }]
+            });
             if let Ok(snap) = prog_arc.lock() {
                 progress_state.set(snap.clone());
             }
@@ -78,6 +85,7 @@ pub fn CleanerView() -> Element {
 
     let total_freed: u64 = results.read().iter().map(|r| r.bytes_freed).sum();
     let total_files: usize = results.read().iter().map(|r| r.files_removed).sum();
+    let error_count = results.read().iter().filter(|r| r.error.is_some()).count();
     let prog = progress_state.read();
     let cancel_for_btn = Arc::clone(&cancel_flag);
 
@@ -91,31 +99,29 @@ pub fn CleanerView() -> Element {
     rsx! {
         div { class: "content-body",
             if *show_confirm_modal.read() {
-                div {
-                    style: "position: fixed; inset: 0; background: rgba(0, 0, 0, 0.72); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 24px;",
-                    div {
-                        class: "card",
-                        style: "max-width: 460px; width: 100%; border: 1px solid var(--warning);",
-                        div { class: "card-header",
-                            div {
-                                h3 { class: "card-title", if en { "Before Cleaning" } else { "Antes de Limpiar" } }
-                                p { class: "card-subtitle", if en { "Close open apps except OtterSwiss to avoid locked files." } else { "Cierra las apps en uso excepto OtterSwiss." } }
-                            }
-                        }
-                        div { style: "display: flex; justify-content: flex-end; gap: var(--space-3);",
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| show_confirm_modal.set(false),
-                                if en { "Cancel" } else { "Cancelar" }
-                            }
-                            button {
-                                class: "btn btn-primary",
-                                onclick: move |_| {
-                                    show_confirm_modal.set(false);
-                                    start_cleanup();
-                                },
-                                if en { "Clean Now" } else { "Limpiar Ahora" }
-                            }
+                ConfirmDialog {
+                    title: if en { "Before cleaning".to_string() } else { "Antes de limpiar".to_string() },
+                    subtitle: Some(if en {
+                        "Close open apps except OtterSwiss to avoid locked files.".to_string()
+                    } else {
+                        "Cierra las apps abiertas, menos OtterSwiss, para evitar archivos en uso.".to_string()
+                    }),
+                    confirm_label: if en { "Clean now".to_string() } else { "Limpiar ahora".to_string() },
+                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    tone: if *clean_recycle.read() { Tone::Danger } else { Tone::Warning },
+                    on_cancel: move |_| show_confirm_modal.set(false),
+                    on_confirm: move |_| {
+                        show_confirm_modal.set(false);
+                        start_cleanup();
+                    },
+                    if *clean_recycle.read() {
+                        StatusBanner {
+                            text: if en {
+                                "The Recycle Bin will be emptied: its files cannot be recovered afterwards.".to_string()
+                            } else {
+                                "Se vaciará la Papelera: sus archivos no se podrán recuperar después.".to_string()
+                            },
+                            tone: Tone::Warning,
                         }
                     }
                 }
@@ -133,7 +139,7 @@ pub fn CleanerView() -> Element {
                                 disabled: *is_cleaning.read(),
                                 onchange: move |evt| clean_recycle.set(evt.checked()),
                             }
-                            span { if en { "Empty Recycle Bin" } else { "Vaciar Papelera" } }
+                            span { if en { "Empty Recycle Bin (permanent)" } else { "Vaciar Papelera (permanente)" } }
                         }
 
                         label { style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer;",
@@ -198,10 +204,21 @@ pub fn CleanerView() -> Element {
                             {if en { "files" } else { "archivos" }}
                         }
                         div {
-                            style: "width: 100%; height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
                             div { style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.2s ease;" }
                         }
                     }
+                }
+            }
+
+            if !results.read().is_empty() && error_count > 0 {
+                StatusBanner {
+                    text: if en {
+                        format!("{} categories could not be cleaned. See the details.", error_count)
+                    } else {
+                        format!("{} categorías no se pudieron limpiar. Mira el detalle.", error_count)
+                    },
+                    tone: Tone::Warning,
                 }
             }
 
@@ -226,18 +243,22 @@ pub fn CleanerView() -> Element {
                         for item in results.read().iter() {
                             div {
                                 key: "{item.category}",
-                                style: "display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border);",
+                                style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
                                 div {
                                     div { style: "font-weight: 600;", "{item.category}" }
-                                    div { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                                    div { class: "text-xs text-muted",
                                         if en {
                                             "Removed: {item.files_removed} | Skipped: {item.skipped_recent_or_locked}"
                                         } else {
                                             "Borrados: {item.files_removed} | Omitidos: {item.skipped_recent_or_locked}"
                                         }
                                     }
+                                    // ERR-07 / SYS-23: lo omitido o fallido se dice (p. ej. Windows Update activo).
+                                    if let Some(err) = item.error.as_ref() {
+                                        div { class: "text-xs", style: "color: var(--warning-text);", "{err}" }
+                                    }
                                 }
-                                div { style: "font-weight: 600; color: var(--success);", "{format_mb(item.bytes_freed)}" }
+                                div { style: "font-weight: 600; color: var(--success-text);", "{format_mb(item.bytes_freed)}" }
                             }
                         }
                     }

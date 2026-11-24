@@ -11,13 +11,14 @@ use windows::Win32::UI::Shell::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::services::is_service_stopped;
 use crate::core::safe_fs::{
     canonical_dos_path, delete_verified_empty_dir_under, delete_verified_file_under,
     is_safe_non_root_dir,
 };
 use crate::core::win_common::wide_ptr_to_string_and_free;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CategoryCleanResult {
     pub category: String,
     pub bytes_freed: u64,
@@ -202,24 +203,31 @@ impl SystemCleaner {
             ..Default::default()
         };
 
-        unsafe {
-            if SHQueryRecycleBinW(PCWSTR::null(), &mut rb_info).is_ok() {
-                result.bytes_freed = rb_info.i64Size.max(0) as u64;
-                result.files_removed = rb_info.i64NumItems.max(0) as usize;
-            }
+        let query = |info: &mut SHQUERYRBINFO| -> Option<(u64, usize)> {
+            unsafe { SHQueryRecycleBinW(PCWSTR::null(), info) }
+                .ok()
+                .map(|()| (info.i64Size.max(0) as u64, info.i64NumItems.max(0) as usize))
+        };
 
-            // Si la papelera ya está vacía, SHEmptyRecycleBinW devuelve E_UNEXPECTED (0x8000FFFF)
-            if result.files_removed == 0 && result.bytes_freed == 0 {
-                return result;
-            }
-
-            let flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND;
-            let hr = SHEmptyRecycleBinW(None, PCWSTR::null(), flags);
-            if hr.is_err() {
-                result.error = Some(format!("Error vaciando papelera: {:?}", hr));
-            }
+        let Some((bytes_before, items_before)) = query(&mut rb_info) else {
+            result.error = Some("No se pudo consultar la papelera".into());
+            return result;
+        };
+        // Si la papelera ya está vacía, SHEmptyRecycleBinW devuelve E_UNEXPECTED (0x8000FFFF)
+        if items_before == 0 && bytes_before == 0 {
+            return result;
         }
 
+        let flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND;
+        let hr = unsafe { SHEmptyRecycleBinW(None, PCWSTR::null(), flags) };
+        if hr.is_err() {
+            result.error = Some(format!("Error vaciando papelera: {:?}", hr));
+        }
+
+        // Lo liberado es lo que de verdad desapareció, no lo que había antes de intentar.
+        let (bytes_after, items_after) = query(&mut rb_info).unwrap_or((bytes_before, items_before));
+        result.bytes_freed = bytes_before.saturating_sub(bytes_after);
+        result.files_removed = items_before.saturating_sub(items_after);
         result
     }
 
@@ -238,6 +246,7 @@ impl SystemCleaner {
         progress: Option<&Arc<Mutex<CleanProgress>>>,
     ) -> Vec<CategoryCleanResult> {
         let mut results = Vec::new();
+        let mut skipped_notes: Vec<CategoryCleanResult> = Vec::new();
         let min_age = Duration::from_secs(min_age_hours.saturating_mul(3600));
 
         // (nombre, ruta, profundidad mínima segura)
@@ -247,12 +256,28 @@ impl SystemCleaner {
         }
         if let Ok(win_dir) = Self::get_known_folder(&FOLDERID_Windows) {
             targets.push(("Temporales de Windows", win_dir.join("Temp"), 2));
-            targets.push(("Prefetch de Windows", win_dir.join("Prefetch"), 2));
-            targets.push((
-                "Descargas de Windows Update",
-                win_dir.join("SoftwareDistribution").join("Download"),
-                3,
-            ));
+            // Prefetch no se toca: Windows lo mantiene solo y vaciarlo hace más lentos los próximos arranques.
+            // La caché de Windows Update solo se limpia con el servicio y BITS detenidos, para no romper una
+            // actualización en curso.
+            let wu_idle = is_service_stopped("wuauserv").unwrap_or(false)
+                && is_service_stopped("BITS").unwrap_or(false);
+            if wu_idle {
+                targets.push((
+                    "Descargas de Windows Update",
+                    win_dir.join("SoftwareDistribution").join("Download"),
+                    3,
+                ));
+            } else {
+                skipped_notes.push(CategoryCleanResult {
+                    category: "Descargas de Windows Update".into(),
+                    bytes_freed: 0,
+                    files_removed: 0,
+                    skipped_recent_or_locked: 0,
+                    error: Some(
+                        "Omitido: Windows Update está activo; se limpiará cuando esté detenido".into(),
+                    ),
+                });
+            }
         }
         if let Ok(inet_cache) = Self::get_known_folder(&FOLDERID_InternetCache) {
             targets.push(("Caché de Internet", inet_cache, 3));
@@ -296,6 +321,8 @@ impl SystemCleaner {
             }
             results.push(rb_res);
         }
+
+        results.extend(skipped_notes);
 
         if let Some(p_arc) = progress {
             if let Ok(mut p) = p_arc.lock() {
