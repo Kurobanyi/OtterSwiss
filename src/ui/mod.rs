@@ -26,13 +26,14 @@ use views::tools::ToolsView;
 use views::uninstaller::UninstallerView;
 
 use crate::core::app_store::AppStoreManager;
+use crate::ui::components::{Modal, StatusBanner, Tone};
 use crate::core::dependencies::DependencyManager;
 use crate::core::error::CoreError;
 use crate::core::updater::{
     check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveTab {
     Dashboard,
     Cleaner,
@@ -357,19 +358,16 @@ pub fn App() -> Element {
 
         spawn(async move {
             let res = tokio::task::spawn_blocking(move || {
-                download_and_install_update(&info, &cancel_arc, &prog_arc)
+                let installer_path = download_and_install_update(&info, &cancel_arc, &prog_arc)?;
+                // Solo vuelve si no pudo lanzar el instalador; si lo lanza, la app se cierra.
+                launch_installer_and_exit(&installer_path, &info)
             })
             .await
             .unwrap_or_else(|e| Err(CoreError::Trust { message: e.to_string(), source: None }));
 
-            match res {
-                Ok(installer_path) => {
-                    let _ = launch_installer_and_exit(&installer_path);
-                }
-                Err(e) => {
-                    update_error.set(Some(e.to_string()));
-                    is_downloading_update.set(false);
-                }
+            if let Err(e) = res {
+                update_error.set(Some(e.to_string()));
+                is_downloading_update.set(false);
             }
         });
     };
@@ -397,7 +395,7 @@ pub fn App() -> Element {
                     if let Some(upd) = update_info.read().as_ref() {
                         button {
                             class: "badge badge-warning",
-                            style: "cursor: pointer; margin-left: 6px; padding: 2px 8px; border: 1px solid var(--accent); font-size: 11px; font-weight: bold;",
+                            style: "cursor: pointer; margin-left: var(--space-2); padding: var(--space-1) var(--space-2); border: 1px solid var(--accent); font-size: var(--font-size-xs); font-weight: bold;",
                             onclick: move |_| show_update_modal.set(true),
                             "↑ v{upd.version}"
                         }
@@ -497,9 +495,9 @@ pub fn App() -> Element {
                 }
             }
 
-            // --- Modal de Actualización Disponible ---
+            // --- Modal de Actualización Disponible (UI-09) ---
             if *show_update_modal.read() {
-                if let Some(upd) = update_info.read().as_ref() {
+                if let Some(upd) = update_info.read().clone() {
                     {
                         let modal_title = if en { format!("Update available: v{}", upd.version) } else { format!("Actualización disponible: v{}", upd.version) };
                         let modal_sub = if en { format!("Current version: v{} → New version: v{}", pkg_ver, upd.version) } else { format!("Versión actual: v{} → Nueva versión: v{}", pkg_ver, upd.version) };
@@ -514,57 +512,54 @@ pub fn App() -> Element {
                         let notes_header = if en { "Release Notes:" } else { "Notas de la versión:" };
 
                         rsx! {
-                            div {
-                                style: "position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; z-index: 99999; padding: 24px;",
-                                div {
-                                    class: "card",
-                                    style: "max-width: 600px; width: 100%; border: 1px solid var(--accent); display: flex; flex-direction: column; gap: 14px;",
-                                    div { class: "card-header",
+                            Modal {
+                                title: modal_title,
+                                subtitle: Some(modal_sub),
+                                wide: true,
+                                on_close: move |_| {
+                                    if !*is_downloading_update.peek() {
+                                        show_update_modal.set(false);
+                                    }
+                                },
+                                if !upd.notes.is_empty() {
+                                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                                        span { class: "text-xs text-muted", style: "font-weight: 600;", "{notes_header}" }
                                         div {
-                                            h3 { class: "card-title", "{modal_title}" }
-                                            p { class: "card-subtitle", "{modal_sub}" }
+                                            class: "modal-list",
+                                            style: "white-space: pre-wrap; font-family: monospace;",
+                                            "{upd.notes}"
                                         }
                                     }
+                                }
 
-                                    if !upd.notes.is_empty() {
-                                        div { style: "display: flex; flex-direction: column; gap: 6px;",
-                                            span { style: "font-size: var(--font-size-xs); font-weight: 600; color: var(--text-muted);", "{notes_header}" }
-                                            div {
-                                                style: "max-height: 200px; overflow-y: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; font-size: var(--font-size-xs); white-space: pre-wrap; font-family: monospace;",
-                                                "{upd.notes}"
-                                            }
+                                if *is_downloading_update.read() {
+                                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                                        div { style: "width: 100%; height: var(--space-2); background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
+                                            div { style: "height: 100%; width: {update_progress.read()}%; background: var(--accent); transition: width 0.15s ease;" }
+                                        }
+                                        div { class: "text-xs text-muted", style: "display: flex; justify-content: space-between;",
+                                            span { "{update_progress.read()}%" }
+                                            span { "{upd.asset_name}" }
                                         }
                                     }
+                                }
 
-                                    if *is_downloading_update.read() {
-                                        div { style: "display: flex; flex-direction: column; gap: 6px;",
-                                            div { style: "width: 100%; height: 8px; background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                                                div { style: "height: 100%; width: {update_progress.read()}%; background: var(--accent); transition: width 0.15s ease;" }
-                                            }
-                                            div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
-                                                span { "{update_progress.read()}%" }
-                                                span { "{upd.asset_name}" }
-                                            }
-                                        }
+                                if let Some(err) = update_error.read().clone() {
+                                    StatusBanner { text: err, tone: Tone::Danger }
+                                }
+
+                                div { class: "modal-actions",
+                                    button {
+                                        class: "btn btn-secondary",
+                                        disabled: *is_downloading_update.read(),
+                                        onclick: move |_| show_update_modal.set(false),
+                                        "{close_modal_lbl}"
                                     }
-
-                                    if let Some(err) = update_error.read().as_ref() {
-                                        div { class: "badge badge-danger", style: "padding: 8px; font-size: var(--font-size-xs);", "{err}" }
-                                    }
-
-                                    div { style: "display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: 8px;",
-                                        button {
-                                            class: "btn btn-secondary",
-                                            disabled: *is_downloading_update.read(),
-                                            onclick: move |_| show_update_modal.set(false),
-                                            "{close_modal_lbl}"
-                                        }
-                                        button {
-                                            class: "btn btn-primary",
-                                            disabled: *is_downloading_update.read(),
-                                            onclick: on_start_update,
-                                            "{update_btn_lbl}"
-                                        }
+                                    button {
+                                        class: "btn btn-primary",
+                                        disabled: *is_downloading_update.read(),
+                                        onclick: on_start_update,
+                                        "{update_btn_lbl}"
                                     }
                                 }
                             }
