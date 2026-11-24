@@ -6,16 +6,16 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-24
 
-**Tarea en curso:** arreglos de la auditoría del 24/11 en la rama local **`fix/auditoria`** (sale de `main` en `11cb659`,
-v3.5.1). **Código terminado y comprobado**: 83 de 90 hallazgos resueltos (incluye `UI-16`, hallado al recorrer la app),
+**Estado:** arreglos de la auditoría del 24/11 commiteados en **`fix/auditoria`** (15 commits sobre `11cb659`, cada árbol
+compilado por separado) y en revisión en el PR https://github.com/Kurobanyi/OtterSwiss/pull/1. 83 de 90 hallazgos resueltos;
 2 parciales (`TST-01`, `UI-11`), 4 diferidos (`SEC-17`, `SYS-24`, `ARQ-03`, `UX-02`) y 1 pendiente de decisión (`UX-03`).
-**Nada commiteado todavía.**
+El repo no tiene CI.
 
-**Siguiente paso:** el usuario tiene que aprobar la partición en 15 commits que propuso `commit-writer` (se le mostró el
-24/11; agregar `build.rs` y `Cargo.toml` `test = false` al commit que corresponda, `UI-16` va con Hardware). Con su visto
-bueno: commitear en `fix/auditoria` comprobando que cada árbol compile, `cargo fmt` como commit `Estilo` aparte, push y **un**
-PR en `Kurobanyi/OtterSwiss`. Trailer: `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; el cuerpo del PR termina
-con `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+**Siguiente paso:** probar la app completa **como administrador en una máquina virtual** antes de fusionar: optimizar y
+revertir, Debloater y revertir, aplicar y restaurar DNS, desinstalar y purgar, limpiar, extraer y comprimir, menú contextual,
+y desinstalar OtterSwiss con `--rollback`. Lo más simple es Windows Sandbox (el usuario tiene que activar la característica,
+pide admin y reinicio); dentro de la VM sí se puede hacer clic aunque la app esté elevada. Lo que falle se registra en
+`docs/BUGS.md` antes de arreglarlo, en esta misma rama.
 
 **Después de los bugs (pedido del usuario):** auditoría de buenas prácticas: arquitectura y orden del código, código limpio y
 reutilizable, temas claro/oscuro y tokens bien hechos, i18n, linters y similares. Va en una tarea propia, no en este PR.
