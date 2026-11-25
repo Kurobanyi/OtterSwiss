@@ -6,13 +6,13 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-25
 
-**Rama:** `auditoria/buenas-practicas`, unos 100 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
+**Rama:** `auditoria/buenas-practicas`, unos 105 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
 `origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
 viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro y se puede borrar. Árbol limpio.
 
 **Hecho en esta rama:**
 - Buenas prácticas: core por capas (`platform` → `security` → funciones), UI ordenada, catálogo de textos, edición 2024, CI y lints,
-  SAFETY en todo `unsafe` salvo `drivers.rs`, un solo cliente HTTPS y un solo camino de descarga e instalación.
+  SAFETY en todo `unsafe`, un solo cliente HTTPS y un solo camino de descarga e instalación.
 - Fusión de v4.2.0 portada a esa arquitectura (tienda de 50 apps con restaurador UWP, pestaña Drivers, 4 temas ajustados a AA,
   puente de LibreHardwareMonitor, dependencias nuevas).
 - Auditoría del código de v4.2.0 en tres pasadas (seguridad, bugs, buenas prácticas): 28 defectos (`SEC-30`…`TST-02`) y 27 mejoras
@@ -22,17 +22,21 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   el parser buscaba comillas dobles; probado en vivo con `catalogo_en_vivo`), historial de paquetes instalados y «Quitar».
 - Tienda: winget solo como el usuario, códigos de salida con nombre, SHA-256 de VSCodium y BleachBit, fuera LibreWolf y Rufus, hosts
   de GitHub compartidos, test de invariantes del catálogo, detección de apps de la Store por paquete, IDs de la Store corregidos.
-- **Último resultado:** `cargo test` 68 (más 2 ignorados de red y 7 de VM), `clippy --all-targets -- -D warnings` y `fmt --check` en
-  verde. Diálogos de drivers recorridos en la app sin elevar con datos ficticios.
+- Sesión del 25/11 (tarde): `CL-19` (fuera el `#[allow]`, 57 → 16 `unsafe` en drivers, todos con SAFETY; guardianes a
+  `platform/handles.rs`), regresiones de la fusión (`TE-25`, `TE-27`, `TE-28`, `IN-08`: clases `.item-row`/`.grow-wide`, filtros
+  con `aria-pressed`, catálogo `ui/i18n/drivers.rs`), `OR-06` (`core/drivers/` en 10 archivos), `CON-03` (botón Cancelar en la
+  búsqueda) y `HE-14` (`tests/indicadores.rs` y `too_many_lines` en core). De paso `AR-23` hecha y `AR-24` parcial.
+- **Último resultado:** `cargo test` 70 + 2 de indicadores (más 2 ignorados de red y 7 de VM), `clippy --all-targets -- -D warnings`
+  y `fmt --check` en verde. Drivers y Tienda recorridas sin elevar (oscuro y ventana chica; claro, inglés y maximizada; cancelar).
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
 - Decisiones del autor: `SEC-32` (WinInet usa el proxy del usuario; quitarlo rompe redes con proxy obligatorio), `SEC-35` (fijar
   SHA-256 en las apps con versión obliga a actualizarlos), `AR-17`/`AR-26` con `UI-11` (textos en core), `AR-19`, `IN-03`, `UX-02`,
   `UX-03`, `SEC-17` (con `SYS-24`), y si instalar `dioxus-cli` para `HE-11`.
-- Sin decisión, en el código: `SYS-27` (JSON de Intel; falta ver el formato real), resto de `CON-03` (botón de cancelar la búsqueda),
-  `TST-02` (Intel), `CL-19` (65 `unsafe` sin SAFETY en `drivers.rs`, hoy tapados por un `#[allow]` con motivo obsoleto), `OR-06`
-  (partir `drivers.rs` en `core/drivers/`), `TE-25`/`TE-27`/`TE-28`/`IN-08` (regresiones de estilos, contraste e idioma que trajo la
-  fusión), `HE-14` (freno a esas regresiones), `TE-29` (paletas nuevas), y las mejoras mecánicas grandes (`IN-02`, `TE-02`, `OR-04`).
+- Sin decisión, en el código: `SYS-27` (JSON de Intel; la búsqueda real muestra «Respuesta inesperada del servicio de drivers»),
+  `TST-02` (Intel), `CL-22` (tests de `strip_html_tags`, `url_encode`), resto de `AR-24` (tabla PCI compartida), `TE-29` (paletas
+  nuevas), y las mejoras mecánicas grandes (`IN-02`, `TE-02`, `OR-04`, `AR-06`/`CL-20`). Al bajar un indicador, bajar su techo en
+  `tests/indicadores.rs`.
 - Con una VM o Windows Sandbox, como administrador: `tests/vm_sistema.rs`, instalar y quitar un driver de cada camino, quitar una app
   Appx, `ERR-24` (Moonlight `/quiet`, versión de GOG), confirmar que los CAB del Catálogo traen firma Authenticode.
 - Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32` (v4.2.0 ya está etiquetada en
@@ -45,8 +49,8 @@ Pegar en una sesión nueva, en la carpeta del repo:
 > Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
 > (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
 > `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente que no depende de mí (en este orden:
-> `CL-19`, `TE-27`/`TE-28`/`TE-25`/`IN-08`, `OR-06`, `CON-03`, `HE-14`), sin tocar lo diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`,
-> `UI-11`) ni las decisiones abiertas (`SEC-32`, `SEC-35`). Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
+> `CL-22`, resto de `AR-24`, `TE-29`, luego las mecánicas de a un archivo: `AR-06`/`CL-20`, `TE-02`, `IN-02`, `OR-04`), sin tocar lo
+> diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`, `UI-11`) ni las decisiones abiertas (`SEC-32`, `SEC-35`, `IN-03`). Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
 > cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida. Español neutro, respuestas breves.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
@@ -59,8 +63,8 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 68
-tests y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 70
+tests + 2 de indicadores y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
 Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila
 una copia con `asInvoker` en `$env:TEMP\otter-ui-target` (cambiando `build.rs` solo para esa compilación y restaurándolo) y se
