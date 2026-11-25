@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use crate::core::error::CoreResult;
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
+use crate::core::progress::step_percent;
 use appx::{get_powershell_path, is_valid_package_ident, run_ps};
 
 pub(crate) const DEBLOAT_MUTEX: &str = r"Global\OtterSwiss_Debloat_Lock";
@@ -86,7 +87,7 @@ impl DebloaterManager {
                     p.current_step = idx;
                     p.total_steps = total_steps;
                     p.current_label = label.to_string();
-                    p.percent = ((idx * 100) / total_steps).min(100) as u8;
+                    p.percent = step_percent(idx, total_steps);
                 }
             }
         };

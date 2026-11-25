@@ -56,148 +56,116 @@ pub(super) fn read_wmi_string(obj: &IWbemClassObject, prop: &str) -> Option<Stri
     }
 }
 
+/// CL-09: décimas de kelvin (como las da WMI) a grados Celsius.
+fn decikelvin_to_c(tenths_k: i32) -> f32 {
+    (tenths_k as f32 / 10.0) - 273.15
+}
+
+/// Ejecuta `query` en el espacio de nombres `namespace` y devuelve hasta 16 objetos. Vacío si WMI falla.
+fn wmi_query(locator: &IWbemLocator, namespace: &str, query: &str) -> Vec<IWbemClassObject> {
+    let mut out = Vec::new();
+    let ns = BSTR::from(namespace);
+    let empty = BSTR::default();
+    // SAFETY: llamadas COM sobre interfaces válidas; las BSTR viven hasta el final de la función.
+    unsafe {
+        let Ok(services) = locator.ConnectServer(&ns, &empty, &empty, &empty, 0, &empty, None)
+        else {
+            return out;
+        };
+        let _ = CoSetProxyBlanket(
+            &services,
+            RPC_C_AUTHN_WINNT,
+            RPC_C_AUTHZ_NONE,
+            None,
+            RPC_C_AUTHN_LEVEL_CALL,
+            RPC_C_IMP_LEVEL_IMPERSONATE,
+            None,
+            EOAC_NONE,
+        );
+        let Ok(enumerator) = services.ExecQuery(
+            &BSTR::from("WQL"),
+            &BSTR::from(query),
+            WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+            None,
+        ) else {
+            return out;
+        };
+        for _ in 0..16 {
+            let mut objs: [Option<IWbemClassObject>; 1] = [None];
+            let mut returned = 0u32;
+            if enumerator.Next(1200, &mut objs, &mut returned).is_err() || returned == 0 {
+                break;
+            }
+            match objs[0].take() {
+                Some(obj) => out.push(obj),
+                None => break,
+            }
+        }
+    }
+    out
+}
+
 impl SensorSession {
     pub fn poll_wmi_acpi(&self) -> (Vec<SensorReading>, Option<String>) {
         let mut readings = Vec::new();
+        // SAFETY: crea el localizador WMI; COM ya está inicializado en el hilo de sondeo (ComGuard).
         let locator: IWbemLocator =
             match unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER) } {
                 Ok(l) => l,
                 Err(e) => return (readings, Some(format!("WMI locator no disponible: {}", e))),
             };
 
-        let ns = BSTR::from(r"root\WMI");
-        let empty = BSTR::default();
-        if let Ok(services) =
-            unsafe { locator.ConnectServer(&ns, &empty, &empty, &empty, 0, &empty, None) }
-        {
-            let _ = unsafe {
-                CoSetProxyBlanket(
-                    &services,
-                    RPC_C_AUTHN_WINNT,
-                    RPC_C_AUTHZ_NONE,
-                    None,
-                    RPC_C_AUTHN_LEVEL_CALL,
-                    RPC_C_IMP_LEVEL_IMPERSONATE,
-                    None,
-                    EOAC_NONE,
-                )
+        let zones = wmi_query(
+            &locator,
+            r"root\WMI",
+            "SELECT InstanceName, CurrentTemperature, CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
+        );
+        for (idx, obj) in zones.iter().enumerate() {
+            let Some(c) = read_wmi_i32(obj, "CurrentTemperature").map(decikelvin_to_c) else {
+                continue;
             };
-
-            let wql = BSTR::from("WQL");
-            let query = BSTR::from(
-                "SELECT InstanceName, CurrentTemperature, CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
-            );
-            if let Ok(enumerator) = unsafe {
-                services.ExecQuery(
-                    &wql,
-                    &query,
-                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-                    None,
-                )
-            } {
-                for idx in 0..16 {
-                    let mut objs: [Option<IWbemClassObject>; 1] = [None];
-                    let mut returned = 0u32;
-                    let hr = unsafe { enumerator.Next(1200, &mut objs, &mut returned) };
-                    if hr.is_err() || returned == 0 {
-                        break;
-                    }
-                    let Some(obj) = objs[0].take() else {
-                        break;
-                    };
-
-                    let temp_c = read_wmi_i32(&obj, "CurrentTemperature")
-                        .map(|tenths_k| (tenths_k as f32 / 10.0) - 273.15);
-
-                    let Some(c) = temp_c else {
-                        continue;
-                    };
-                    if c <= 1.0 || c >= 125.0 {
-                        continue;
-                    }
-
-                    let crit_c = read_wmi_i32(&obj, "CriticalTripPoint")
-                        .map(|tenths_k| (tenths_k as f32 / 10.0) - 273.15)
-                        .filter(|&v| v > 20.0 && v < 150.0);
-
-                    let instance_name = read_wmi_string(&obj, "InstanceName")
-                        .unwrap_or_else(|| format!("Zona ACPI {}", idx));
-
-                    readings.push(SensorReading {
-                        name: format!("ACPI ({})", instance_name),
-                        // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
-                        sensor_type: "Zona térmica ACPI (WMI)".into(),
-                        current_celsius: c,
-                        max_celsius: crit_c,
-                    });
-                }
+            if c <= 1.0 || c >= 125.0 {
+                continue;
             }
+            let crit_c = read_wmi_i32(obj, "CriticalTripPoint")
+                .map(decikelvin_to_c)
+                .filter(|&v| v > 20.0 && v < 150.0);
+            let instance_name = read_wmi_string(obj, "InstanceName")
+                .unwrap_or_else(|| format!("Zona ACPI {}", idx));
+            readings.push(SensorReading {
+                name: format!("ACPI ({})", instance_name),
+                // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
+                sensor_type: "Zona térmica ACPI (WMI)".into(),
+                current_celsius: c,
+                max_celsius: crit_c,
+            });
         }
 
-        // Fallback en root\CIMV2 -> Win32_PerfFormattedData_Counters_ThermalZoneInformation
+        // Respaldo en root\CIMV2 -> Win32_PerfFormattedData_Counters_ThermalZoneInformation
         if readings.is_empty() {
-            let cimv2 = BSTR::from(r"root\CIMV2");
-            if let Ok(services) =
-                unsafe { locator.ConnectServer(&cimv2, &empty, &empty, &empty, 0, &empty, None) }
-            {
-                let _ = unsafe {
-                    CoSetProxyBlanket(
-                        &services,
-                        RPC_C_AUTHN_WINNT,
-                        RPC_C_AUTHZ_NONE,
-                        None,
-                        RPC_C_AUTHN_LEVEL_CALL,
-                        RPC_C_IMP_LEVEL_IMPERSONATE,
-                        None,
-                        EOAC_NONE,
-                    )
+            let zones = wmi_query(
+                &locator,
+                r"root\CIMV2",
+                "SELECT Name, Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
+            );
+            for (idx, obj) in zones.iter().enumerate() {
+                let hp = read_wmi_i32(obj, "HighPrecisionTemperature")
+                    .map(decikelvin_to_c)
+                    .filter(|&c| c > 1.0 && c < 125.0);
+                let std_k = read_wmi_i32(obj, "Temperature")
+                    .map(|k| k as f32 - 273.15)
+                    .filter(|&c| c > 1.0 && c < 125.0);
+                let Some(c) = hp.or(std_k) else {
+                    continue;
                 };
-                let wql = BSTR::from("WQL");
-                let query = BSTR::from(
-                    "SELECT Name, Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
-                );
-                if let Ok(enumerator) = unsafe {
-                    services.ExecQuery(
-                        &wql,
-                        &query,
-                        WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
-                        None,
-                    )
-                } {
-                    for idx in 0..16 {
-                        let mut objs: [Option<IWbemClassObject>; 1] = [None];
-                        let mut returned = 0u32;
-                        let hr = unsafe { enumerator.Next(1200, &mut objs, &mut returned) };
-                        if hr.is_err() || returned == 0 {
-                            break;
-                        }
-                        let Some(obj) = objs[0].take() else {
-                            break;
-                        };
-
-                        let hp = read_wmi_i32(&obj, "HighPrecisionTemperature")
-                            .map(|tk| (tk as f32 / 10.0) - 273.15)
-                            .filter(|&c| c > 1.0 && c < 125.0);
-
-                        let std_k = read_wmi_i32(&obj, "Temperature")
-                            .map(|k| k as f32 - 273.15)
-                            .filter(|&c| c > 1.0 && c < 125.0);
-
-                        let Some(c) = hp.or(std_k) else {
-                            continue;
-                        };
-
-                        let zone_name = read_wmi_string(&obj, "Name")
-                            .unwrap_or_else(|| format!("ThermalZone {}", idx));
-
-                        readings.push(SensorReading {
-                            name: format!("ACPI ({})", zone_name),
-                            sensor_type: "Zona térmica ACPI (PerfCounter)".into(),
-                            current_celsius: c,
-                            max_celsius: None,
-                        });
-                    }
-                }
+                let zone_name =
+                    read_wmi_string(obj, "Name").unwrap_or_else(|| format!("ThermalZone {}", idx));
+                readings.push(SensorReading {
+                    name: format!("ACPI ({})", zone_name),
+                    sensor_type: "Zona térmica ACPI (PerfCounter)".into(),
+                    current_celsius: c,
+                    max_celsius: None,
+                });
             }
         }
 

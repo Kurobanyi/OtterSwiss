@@ -41,6 +41,12 @@ fn open_allowed_service(service_name: &str, access: u32) -> CoreResult<Option<Sc
         )));
     }
 
+    open_service(service_name, access)
+}
+
+/// CL-08: abre un servicio por nombre sin pasar por la tabla. `Ok(None)` si no existe. Solo para lecturas o para
+/// `open_allowed_service`, que valida antes.
+fn open_service(service_name: &str, access: u32) -> CoreResult<Option<ScHandle>> {
     let scm_raw = unsafe { OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT) }
         .map_err(|e| CoreError::Service {
             service: service_name.to_string(),
@@ -222,30 +228,7 @@ fn query_service_start_config(service_name: &str, svc: &ScHandle) -> CoreResult<
 /// Consulta de solo lectura: `true` si el servicio existe y está detenido (o no existe). No modifica nada,
 /// así que no exige estar en la tabla de servicios que OtterSwiss cambia.
 pub fn is_service_stopped(service_name: &str) -> CoreResult<bool> {
-    let scm_raw = unsafe { OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT) }
-        .map_err(|e| CoreError::Service {
-            service: service_name.to_string(),
-            message: format!("OpenSCManagerW falló: {}", e),
-            source: None,
-        })?;
-    let scm = ScHandle::new(scm_raw).ok_or_else(|| CoreError::Service {
-        service: service_name.to_string(),
-        message: "Handle SCM nulo".into(),
-        source: None,
-    })?;
-    let svc_w = to_wide_null(service_name);
-    let svc = match unsafe { OpenServiceW(scm.raw(), PCWSTR(svc_w.as_ptr()), SERVICE_QUERY_STATUS) }
-    {
-        Ok(raw) => ScHandle::new(raw),
-        Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => return Ok(true),
-        Err(e) => {
-            return Err(CoreError::Service {
-                service: service_name.to_string(),
-                message: format!("OpenServiceW falló: {}", e),
-                source: None,
-            })
-        }
-    };
+    let svc = open_service(service_name, SERVICE_QUERY_STATUS)?;
     let Some(svc) = svc else {
         return Ok(true);
     };

@@ -19,6 +19,7 @@ use crate::core::platform::registry::{
 use crate::core::platform::services::{
     apply_service_tweak, capture_service_tweak, restore_service_snapshot, ServiceOpOutcome,
 };
+use crate::core::progress::step_percent;
 
 const ENGINE_MUTEX_NAME: &str = r"Global\OtterSwiss_Engine_Execution";
 
@@ -225,7 +226,7 @@ impl OptimizationEngine {
                     p.current_step = idx;
                     p.total_steps = total_steps;
                     p.current_label = label.to_string();
-                    p.percent = ((idx * 100) / total_steps).min(100) as u8;
+                    p.percent = step_percent(idx, total_steps);
                     if let Some(item) = pushed {
                         p.completed_steps.push(item);
                     }
@@ -621,7 +622,7 @@ impl OptimizationEngine {
                     p.current_step = idx;
                     p.total_steps = total_steps;
                     p.current_label = label.to_string();
-                    p.percent = ((idx * 100) / total_steps).min(100) as u8;
+                    p.percent = step_percent(idx, total_steps);
                 }
             }
         };

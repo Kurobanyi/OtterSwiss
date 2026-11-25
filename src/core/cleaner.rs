@@ -17,6 +17,7 @@ use crate::core::platform::safe_fs::{
 };
 use crate::core::platform::services::is_service_stopped;
 use crate::core::platform::wide::wide_ptr_to_string_and_free;
+use crate::core::progress::step_percent;
 
 #[derive(Debug, Clone, Default)]
 pub struct CategoryCleanResult {
@@ -292,7 +293,8 @@ impl SystemCleaner {
                     p.current_step = step;
                     p.total_steps = total_steps.max(1);
                     p.current_category = label.to_string();
-                    p.percent = ((step * 100) / total_steps.max(1)).min(99) as u8;
+                    // El 100 % se marca al terminar, después del último paso.
+                    p.percent = step_percent(step, total_steps).min(99);
                 }
             }
         };
