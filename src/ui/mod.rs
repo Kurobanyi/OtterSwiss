@@ -4,13 +4,13 @@
 #![forbid(unsafe_code)]
 
 mod app;
-pub mod components;
+pub(crate) mod components;
 pub mod document;
-pub mod format;
+pub(crate) mod format;
 pub mod i18n;
-pub mod installer;
-pub mod prefs;
-pub mod task;
+pub(crate) mod installer;
+pub(crate) mod prefs;
+pub(crate) mod task;
 pub mod theme;
 pub mod views;
 

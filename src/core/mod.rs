@@ -15,10 +15,10 @@ pub mod dns;
 pub mod drivers;
 pub mod hardware;
 pub mod optimize;
-pub mod progress;
+pub(crate) mod progress;
 pub mod rollback;
 pub mod store;
-pub mod sys_tools;
+pub(crate) mod sys_tools;
 #[cfg(test)]
 pub(crate) mod test_util;
 pub mod uninstall;

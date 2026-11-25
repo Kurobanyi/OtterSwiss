@@ -1,7 +1,7 @@
 //! Confianza: carpeta de datos solo para administradores, permisos, descargas verificadas y Authenticode.
 
-pub mod acl;
-pub mod authenticode;
+pub(crate) mod acl;
+pub(crate) mod authenticode;
 pub mod data_dir;
-pub mod download;
-pub mod http;
+pub(crate) mod download;
+pub(crate) mod http;
