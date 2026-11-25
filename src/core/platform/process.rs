@@ -345,7 +345,33 @@ pub fn run_in_job(
 
 #[cfg(test)]
 mod tests {
-    use super::ProcessExit;
+    use super::{run_captured, system32_dir, ProcessExit};
+
+    #[test]
+    fn captura_la_salida_de_una_herramienta() {
+        let cmd = system32_dir().unwrap().join("cmd.exe");
+        let out = run_captured(
+            &cmd,
+            &["/c", "echo hola"],
+            std::time::Duration::from_secs(10),
+        )
+        .unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout.trim(), "hola");
+    }
+
+    #[test]
+    fn corta_la_herramienta_que_pasa_el_tiempo() {
+        let cmd = system32_dir().unwrap().join("cmd.exe");
+        let started = std::time::Instant::now();
+        let res = run_captured(
+            &cmd,
+            &["/c", "ping -n 30 127.0.0.1 > nul"],
+            std::time::Duration::from_millis(300),
+        );
+        assert!(res.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
 
     #[test]
     fn codigo_de_salida_legible() {
@@ -360,4 +386,88 @@ mod tests {
         assert!(ProcessExit { exit_code: 3010 }.is_success());
         assert!(!ProcessExit { exit_code: 1602 }.is_success());
     }
+}
+
+/// `CREATE_NO_WINDOW`: el proceso hijo de consola no abre ventana.
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Salida de un proceso de consola ya terminado.
+#[derive(Debug, Clone)]
+pub struct CapturedOutput {
+    pub success: bool,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// AR-10: ejecuta una herramienta de consola de Windows (PowerShell, reg.exe…) sin ventana, leyendo stdout y
+/// stderr en hilos propios mientras corre (patrón 3 de BUGS.md) y matándola si pasa `timeout`. `program` tiene
+/// que ser una ruta absoluta (de `system32_dir`), nunca un nombre que se busque en `PATH`.
+pub fn run_captured<S: AsRef<std::ffi::OsStr>>(
+    program: &Path,
+    args: &[S],
+    timeout: std::time::Duration,
+) -> CoreResult<CapturedOutput> {
+    use std::io::Read;
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(program)
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    let spawn_reader = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let out_reader = spawn_reader(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err_reader = spawn_reader(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(CoreError::SystemTool {
+                message: format!(
+                    "Tiempo límite excedido ejecutando '{}'",
+                    program.file_name().unwrap_or_default().to_string_lossy()
+                ),
+                source: None,
+            });
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+
+    let text = |reader: std::thread::JoinHandle<Vec<u8>>| {
+        String::from_utf8_lossy(&reader.join().unwrap_or_default()).into_owned()
+    };
+    Ok(CapturedOutput {
+        success: status.success(),
+        code: status.code(),
+        stdout: text(out_reader),
+        stderr: text(err_reader).trim().to_string(),
+    })
 }

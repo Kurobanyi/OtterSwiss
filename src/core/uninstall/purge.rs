@@ -15,6 +15,7 @@ use super::{LeftoverItem, LeftoverKind, PurgeReport, UninstallerManager};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::folders::known_folder;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
+use crate::core::platform::process::run_captured;
 use crate::core::platform::process::system32_dir;
 use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_tree_verified, delete_verified_file_under, is_safe_non_root_dir,
@@ -30,9 +31,6 @@ pub(super) fn export_registry_key(
     wow64_32: bool,
     subkey: &str,
 ) -> CoreResult<PathBuf> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
     let dir = reg_backups_dir()?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -55,18 +53,25 @@ pub(super) fn export_registry_key(
     let file = dir.join(format!("{}_{}.reg", stamp, leaf));
     let full_key = format!("{}\\{}", if is_hkcu { "HKCU" } else { "HKLM" }, subkey);
 
-    let mut cmd = std::process::Command::new(system32_dir()?.join("reg.exe"));
-    cmd.arg("export").arg(&full_key).arg(&file).arg("/y");
+    let mut args = vec![
+        "export".to_string(),
+        full_key.clone(),
+        file.to_string_lossy().into_owned(),
+        "/y".to_string(),
+    ];
     if !is_hkcu {
-        cmd.arg(if wow64_32 { "/reg:32" } else { "/reg:64" });
+        args.push(if wow64_32 { "/reg:32" } else { "/reg:64" }.to_string());
     }
-    let out = cmd.creation_flags(CREATE_NO_WINDOW).output()?;
-    if !out.status.success() || !file.is_file() {
+    let out = run_captured(
+        &system32_dir()?.join("reg.exe"),
+        &args,
+        std::time::Duration::from_secs(60),
+    )?;
+    if !out.success || !file.is_file() {
         return Err(CoreError::Uninstaller {
             message: format!(
                 "No se pudo respaldar '{}' antes de borrarla; no se borró: {}",
-                full_key,
-                String::from_utf8_lossy(&out.stderr).trim()
+                full_key, out.stderr
             ),
             source: None,
         });

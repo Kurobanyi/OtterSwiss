@@ -1,11 +1,8 @@
 //! Apps Appx instaladas y aprovisionadas, consultadas con PowerShell.
 
 use std::collections::HashMap;
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::Deserialize;
 
@@ -13,8 +10,10 @@ use super::registry_backup::debloat_backup_path;
 use super::{DebloatScanResult, DebloaterManager, DetectedBloatApp, DEBLOAT_APP_CATALOG};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::process::run_captured;
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// Tope de cada consulta de PowerShell del escaneo (antes no tenía, AR-10).
+const SCAN_TIMEOUT_MS: u64 = 120_000;
 
 #[derive(Debug, Deserialize)]
 struct PsAppxEntry {
@@ -61,89 +60,30 @@ pub(super) fn is_valid_package_ident(s: &str) -> bool {
 /// proceso corre: si solo se leyeran al final, un error largo llenaría el pipe y PowerShell se quedaría
 /// bloqueado hasta el timeout (ERR-01).
 pub(super) fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResult<String> {
-    use std::io::Read;
-
-    let mut child = Command::new(ps_path)
-        .args([
+    let out = run_captured(
+        ps_path,
+        &[
             "-NoProfile",
             "-NonInteractive",
             "-ExecutionPolicy",
             "Bypass",
             "-Command",
             script,
-        ])
-        .creation_flags(CREATE_NO_WINDOW)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-
-    let mut out_pipe = child.stdout.take();
-    let mut err_pipe = child.stderr.take();
-    let out_reader = thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(p) = out_pipe.as_mut() {
-            let _ = p.read_to_end(&mut buf);
-        }
-        buf
-    });
-    let err_reader = thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(p) = err_pipe.as_mut() {
-            let _ = p.read_to_end(&mut buf);
-        }
-        buf
-    });
-
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if started.elapsed() >= Duration::from_millis(timeout_ms) {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(CoreError::SystemTool {
-                        message: "Tiempo límite excedido ejecutando PowerShell".into(),
-                        source: None,
-                    });
-                }
-                thread::sleep(Duration::from_millis(150));
-            }
-            Err(e) => return Err(CoreError::Io(e)),
-        }
-    };
-
-    let stdout = String::from_utf8_lossy(&out_reader.join().unwrap_or_default()).into_owned();
-    let stderr = String::from_utf8_lossy(&err_reader.join().unwrap_or_default())
-        .trim()
-        .to_string();
-    if status.success() {
-        Ok(stdout)
+        ],
+        Duration::from_millis(timeout_ms),
+    )?;
+    if out.success {
+        Ok(out.stdout)
     } else {
         Err(CoreError::SystemTool {
-            message: if stderr.is_empty() {
-                format!("PowerShell finalizó con código {:?}", status.code())
+            message: if out.stderr.is_empty() {
+                format!("PowerShell finalizó con código {:?}", out.code)
             } else {
-                stderr
+                out.stderr
             },
             source: None,
         })
     }
-}
-
-fn ps_scan_output(out: &std::process::Output, what: &str) -> CoreResult<String> {
-    if !out.status.success() {
-        return Err(CoreError::SystemTool {
-            message: format!(
-                "{} falló: {}",
-                what,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ),
-            source: None,
-        });
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// `ConvertTo-Json` devuelve un objeto suelto (no una lista) cuando hay un solo elemento.
@@ -167,22 +107,15 @@ impl DebloaterManager {
         ElevationManager::require_elevated("Escanear las apps instaladas para todos los usuarios")?;
         let ps_path = get_powershell_path()?;
 
-        let ps_installed = Command::new(&ps_path)
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object Name, PackageFullName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()?;
+        let ps_installed = run_ps(
+            &ps_path,
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object Name, PackageFullName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
+            SCAN_TIMEOUT_MS,
+        )?;
 
         let mut full_map: HashMap<String, Vec<String>> = HashMap::new();
         {
-            let txt = ps_scan_output(&ps_installed, "Get-AppxPackage")?;
-            let entries = parse_ps_json(&txt, "Get-AppxPackage")?;
+            let entries = parse_ps_json(&ps_installed, "Get-AppxPackage")?;
             {
                 for e in entries {
                     if let (Some(n), Some(full)) = (e.name, e.package_full_name) {
@@ -197,22 +130,15 @@ impl DebloaterManager {
             }
         }
 
-        let ps_prov = Command::new(&ps_path)
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()?;
+        let ps_prov = run_ps(
+            &ps_path,
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
+            SCAN_TIMEOUT_MS,
+        )?;
 
         let mut prov_map: HashMap<String, Vec<String>> = HashMap::new();
         {
-            let txt = ps_scan_output(&ps_prov, "Get-AppxProvisionedPackage")?;
-            let entries = parse_ps_json(&txt, "Get-AppxProvisionedPackage")?;
+            let entries = parse_ps_json(&ps_prov, "Get-AppxProvisionedPackage")?;
             {
                 for e in entries {
                     if let (Some(dn), Some(pn)) = (e.display_name, e.package_name) {
