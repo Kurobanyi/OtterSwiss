@@ -4,7 +4,7 @@ use dioxus::prelude::*;
 
 use crate::core::drivers::{
     CatalogDriverMatch, DriverManager, DriverUpdateCandidate, InstalledDriverDevice,
-    VendorDriverUpdate, describe_cm_problem,
+    InstalledDriverRecord, VendorDriverUpdate, describe_cm_problem,
 };
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
@@ -43,7 +43,9 @@ fn execute_install(
     let report = match pending {
         PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids),
         PendingInstall::Vendor(upd) => DriverManager::install_vendor_update(&upd),
-        PendingInstall::Catalog { uid, .. } => DriverManager::install_catalog_driver(&uid),
+        PendingInstall::Catalog { uid, title } => {
+            DriverManager::install_catalog_driver(&uid, &title)
+        }
     }
     .map_err(|e| format!("Error: {e}"))?;
     Ok(InstallOutcome {
@@ -51,6 +53,17 @@ fn execute_install(
         reboot: report.reboot_required,
         message: report.message,
     })
+}
+
+/// SYS-26: relee el historial de drivers instalados desde OtterSwiss. Sin elevación o sin historial queda vacío.
+fn refresh_driver_history(mut history: Signal<Vec<InstalledDriverRecord>>) {
+    spawn(async move {
+        if let Ok(Ok(list)) =
+            tokio::task::spawn_blocking(DriverManager::driver_install_history).await
+        {
+            history.set(list);
+        }
+    });
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,10 +135,43 @@ pub fn DriversView() -> Element {
     let mut reboot_alert = use_signal(|| false);
     let mut pending_install = use_signal(|| Option::<PendingInstall>::None);
     let mut backup_first = use_signal(|| true);
+    let install_history = use_signal(Vec::<InstalledDriverRecord>::new);
+    let mut pending_revert = use_signal(|| Option::<InstalledDriverRecord>::None);
 
     use_hook(move || {
         trigger_device_scan(en, is_working, status_msg, devices);
+        refresh_driver_history(install_history);
     });
+
+    let on_confirm_revert = move |_| {
+        let Some(record) = pending_revert.take() else {
+            return;
+        };
+        is_working.set(true);
+        spawn(async move {
+            let name = record.published_name.clone();
+            let res =
+                tokio::task::spawn_blocking(move || DriverManager::revert_installed_driver(&name))
+                    .await;
+            match res {
+                Ok(Ok(rep)) => {
+                    if rep.reboot_required {
+                        reboot_alert.set(true);
+                    }
+                    status_msg.set(Some((rep.message, Tone::Success)));
+                    if let Ok(Ok(refreshed)) =
+                        tokio::task::spawn_blocking(DriverManager::list_present_devices).await
+                    {
+                        devices.set(refreshed);
+                    }
+                }
+                Ok(Err(e)) => status_msg.set(Some((format!("Error: {e}"), Tone::Danger))),
+                Err(e) => status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger))),
+            }
+            refresh_driver_history(install_history);
+            is_working.set(false);
+        });
+    };
 
     let on_refresh_devices = move |_| {
         trigger_device_scan(en, is_working, status_msg, devices);
@@ -255,6 +301,7 @@ pub fn DriversView() -> Element {
                     {
                         devices.set(refreshed);
                     }
+                    refresh_driver_history(install_history);
                 }
                 Ok(Err(msg)) => status_msg.set(Some((msg, Tone::Danger))),
                 Err(e) => status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger))),
@@ -649,6 +696,57 @@ pub fn DriversView() -> Element {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            if !install_history.read().is_empty() {
+                Card {
+                    title: if en { "Drivers installed from OtterSwiss".to_string() } else { "Drivers instalados desde OtterSwiss".to_string() },
+                    subtitle: Some(if en {
+                        "Removing one sends its devices back to the best driver left on the PC.".to_string()
+                    } else {
+                        "Quitar uno devuelve sus dispositivos al mejor driver que quede en el equipo.".to_string()
+                    }),
+                    div { class: "stack-2",
+                        for rec in install_history.read().iter() {
+                            {
+                                let rec_c = rec.clone();
+                                rsx! {
+                                    div { key: "{rec.published_name}", class: "list-row row-between gap-3",
+                                        div {
+                                            div { class: "text-sm fw-semibold", "{rec.title}" }
+                                            div { class: "text-xs text-muted", "{rec.published_name}" }
+                                        }
+                                        button {
+                                            class: "btn btn-secondary btn-sm",
+                                            disabled: *is_working.read(),
+                                            onclick: move |_| pending_revert.set(Some(rec_c.clone())),
+                                            if en { "Remove" } else { "Quitar" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(rec) = pending_revert.read().clone() {
+                ConfirmDialog {
+                    title: if en { "Remove this driver?".to_string() } else { "¿Quitar este driver?".to_string() },
+                    subtitle: Some(format!("{} ({})", rec.title, rec.published_name)),
+                    confirm_label: if en { "Remove".to_string() } else { "Quitar".to_string() },
+                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    tone: Tone::Warning,
+                    on_confirm: on_confirm_revert,
+                    on_cancel: move |_| pending_revert.set(None),
+                    p { class: "text-sm",
+                        if en {
+                            "Windows removes the package from the Driver Store and the devices that used it go back to the previous driver. It may ask for a restart."
+                        } else {
+                            "Windows quita el paquete del Driver Store y los dispositivos que lo usaban vuelven al driver anterior. Puede pedir reiniciar."
                         }
                     }
                 }

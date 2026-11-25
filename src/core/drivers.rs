@@ -4,7 +4,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CR_SUCCESS, DIGCF_ALLCLASSES,
@@ -30,6 +30,8 @@ use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::archive::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::folders::windows_dir;
+use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::process::{Launch, run_captured, run_in_job, system32_dir};
 use crate::core::platform::safe_fs::{create_verified_new_file, delete_tree_verified};
@@ -606,6 +608,79 @@ struct NvidiaDriverAttrs {
 pub struct DriverManager;
 
 impl DriverManager {
+    /// Instala los drivers de Windows Update elegidos y registra los paquetes que agregó (SYS-26).
+    pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
+        with_driver_history("Windows Update", || {
+            Self::install_driver_updates_inner(selected_ids)
+        })
+    }
+
+    /// Instala un driver del Catálogo de Microsoft y registra los paquetes que agregó (SYS-26).
+    pub fn install_catalog_driver(update_id: &str, title: &str) -> CoreResult<DriverInstallReport> {
+        with_driver_history(title, || Self::install_catalog_driver_inner(update_id))
+    }
+
+    /// Instala una actualización de fabricante y registra los paquetes que agregó (SYS-26).
+    pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
+        with_driver_history(&upd.title, || Self::install_vendor_update_inner(upd))
+    }
+
+    /// Paquetes de drivers que instaló OtterSwiss y todavía se pueden quitar, del más nuevo al más viejo.
+    pub fn driver_install_history() -> CoreResult<Vec<InstalledDriverRecord>> {
+        let mut entries = read_driver_history()?.entries;
+        entries.retain(|e| oem_inf_path(&e.published_name).is_some_and(|p| p.exists()));
+        entries.reverse();
+        Ok(entries)
+    }
+
+    /// SYS-26: quita del Driver Store un paquete que instaló OtterSwiss (`pnputil /delete-driver … /uninstall`). Los
+    /// dispositivos que lo usaban vuelven al mejor driver que quede. Solo acepta paquetes del historial propio.
+    pub fn revert_installed_driver(published_name: &str) -> CoreResult<DriverInstallReport> {
+        let mut history = read_driver_history()?;
+        let Some(pos) = history
+            .entries
+            .iter()
+            .position(|e| e.published_name.eq_ignore_ascii_case(published_name))
+        else {
+            return Err(CoreError::Validation(format!(
+                "'{published_name}' no lo instaló OtterSwiss"
+            )));
+        };
+        let record = history.entries[pos].clone();
+        if !is_oem_inf_name(&record.published_name) {
+            return Err(CoreError::Validation(
+                "Nombre de paquete de driver inválido".into(),
+            ));
+        }
+        let out = run_captured(
+            &system32_dir()?.join("pnputil.exe"),
+            &[
+                "/delete-driver",
+                record.published_name.as_str(),
+                "/uninstall",
+                "/force",
+            ],
+            PNPUTIL_TIMEOUT,
+        )?;
+        let code = out.code.unwrap_or(-1);
+        if !(out.success || code == 3010) {
+            return Err(CoreError::SystemTool {
+                message: format!(
+                    "pnputil no pudo quitar '{}' (código {code}): {}",
+                    record.published_name,
+                    out.stdout.trim()
+                ),
+                source: None,
+            });
+        }
+        history.entries.remove(pos);
+        write_backup(&driver_history_path()?, &history)?;
+        Ok(DriverInstallReport::single(
+            format!("Se quitó '{}' ({}).", record.title, record.published_name),
+            code == 3010,
+        ))
+    }
+
     pub fn list_present_devices() -> CoreResult<Vec<InstalledDriverDevice>> {
         let h_dev_info: HDEVINFO = unsafe {
             SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT)
@@ -743,7 +818,31 @@ impl DriverManager {
             });
         }
 
-        let handle = std::thread::spawn(move || -> CoreResult<Vec<DriverUpdateCandidate>> {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(Self::search_driver_updates_on_this_thread());
+        });
+        // CON-03: Windows Update puede quedarse colgado (servicio ocupado, red). Pasado el plazo se deja de esperar;
+        // la búsqueda solo lee, así que el hilo puede terminar solo después sin dejar nada a medias.
+        match rx.recv_timeout(WUA_SEARCH_TIMEOUT) {
+            Ok(result) => result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(CoreError::SystemTool {
+                message: format!(
+                    "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
+                    WUA_SEARCH_TIMEOUT.as_secs() / 60
+                ),
+                source: None,
+            }),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(CoreError::SystemTool {
+                message: "Fallo inesperado en hilo COM de búsqueda de drivers".into(),
+                source: None,
+            }),
+        }
+    }
+
+    /// Búsqueda de drivers en WUA en el hilo actual (que no tenga COM iniciado en otro modo).
+    fn search_driver_updates_on_this_thread() -> CoreResult<Vec<DriverUpdateCandidate>> {
+        {
             let _com = ComApartmentGuard::new_sta()?;
 
             let session: IUpdateSession =
@@ -856,15 +955,10 @@ impl DriverManager {
             }
 
             Ok(candidates)
-        });
-
-        handle.join().map_err(|_| CoreError::SystemTool {
-            message: "Fallo inesperado en hilo COM de búsqueda de drivers".into(),
-            source: None,
-        })?
+        }
     }
 
-    pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
+    fn install_driver_updates_inner(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
         ensure_driver_updates_allowed()?;
         if selected_ids.is_empty() {
             return Err(CoreError::Validation(
@@ -1143,7 +1237,7 @@ impl DriverManager {
     /// se acepta solo si su host es de Windows Update y termina en `.cab`; el CAB se baja con el cliente HTTPS común
     /// (host final validado), tiene que estar firmado por Microsoft antes de expandirse y todo vive en una carpeta
     /// temporal que se borra al terminar.
-    pub fn install_catalog_driver(update_id: &str) -> CoreResult<DriverInstallReport> {
+    fn install_catalog_driver_inner(update_id: &str) -> CoreResult<DriverInstallReport> {
         ensure_driver_updates_allowed()?;
         if !is_guid(update_id) {
             return Err(CoreError::Validation(
@@ -1367,7 +1461,7 @@ impl DriverManager {
     /// SEC-30: descarga e instala una actualización de fabricante. Hosts y firmante salen de [`vendor_policy`] (fijos en el
     /// binario), nunca de `upd`, que viene del escaneo (de la red) y la vista devuelve tal cual. Todo ejecutable pasa por
     /// Authenticode con el firmante del fabricante y corre dentro de un Job; los temporales se borran al terminar.
-    pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
+    fn install_vendor_update_inner(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
         ensure_driver_updates_allowed()?;
         let (hosts, signer) = vendor_policy(&upd.vendor)?;
         validate_https_host(&upd.download_url, hosts)?;
@@ -1487,6 +1581,106 @@ fn catalog_cab_url(update_id: &str) -> CoreResult<String> {
         source: None,
     })
 }
+
+/// Paquete de driver (`oemNN.inf`) agregado al Driver Store por una instalación hecha desde OtterSwiss (SYS-26).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InstalledDriverRecord {
+    pub published_name: String,
+    pub title: String,
+    pub installed_at_unix: u64,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct DriverHistory {
+    entries: Vec<InstalledDriverRecord>,
+}
+
+const DRIVER_HISTORY_FILE: &str = "driver_installs.json";
+const MAX_DRIVER_HISTORY_BYTES: u64 = 1024 * 1024;
+
+fn driver_history_path() -> CoreResult<PathBuf> {
+    Ok(ensure_admin_only_data_dir()?.join(DRIVER_HISTORY_FILE))
+}
+
+fn read_driver_history() -> CoreResult<DriverHistory> {
+    let doc: Option<DriverHistory> = read_backup(
+        &driver_history_path()?,
+        MAX_DRIVER_HISTORY_BYTES,
+        "no se pueden revertir drivers instalados",
+    )?;
+    let mut doc = doc.unwrap_or_default();
+    // Patrón 4: solo nombres con la forma de un paquete OEM, nunca rutas.
+    doc.entries.retain(|e| is_oem_inf_name(&e.published_name));
+    Ok(doc)
+}
+
+/// `oem<N>.inf`: nombre que Windows da a cada paquete de terceros en el Driver Store.
+fn is_oem_inf_name(name: &str) -> bool {
+    let low = name.to_ascii_lowercase();
+    low.strip_prefix("oem")
+        .and_then(|r| r.strip_suffix(".inf"))
+        .is_some_and(|n| !n.is_empty() && n.len() <= 5 && n.chars().all(|c| c.is_ascii_digit()))
+}
+
+fn oem_inf_path(name: &str) -> Option<PathBuf> {
+    is_oem_inf_name(name).then(|| windows_dir().map(|w| w.join("INF").join(name)))?
+}
+
+/// Paquetes OEM presentes ahora (`%WINDIR%\INF\oem*.inf`), en minúsculas.
+fn oem_inf_names() -> HashSet<String> {
+    let Some(dir) = windows_dir().map(|w| w.join("INF")) else {
+        return HashSet::new();
+    };
+    std::fs::read_dir(dir)
+        .map(|it| {
+            it.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_ascii_lowercase())
+                .filter(|n| is_oem_inf_name(n))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Corre una instalación y guarda en el historial los `oemNN.inf` que aparecieron. Si el historial no se puede
+/// escribir, la instalación sigue siendo válida y el aviso lo dice.
+fn with_driver_history(
+    title: &str,
+    install: impl FnOnce() -> CoreResult<DriverInstallReport>,
+) -> CoreResult<DriverInstallReport> {
+    let before = oem_inf_names();
+    let mut report = install()?;
+    let added: Vec<String> = oem_inf_names().difference(&before).cloned().collect();
+    if added.is_empty() {
+        return Ok(report);
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let saved = read_driver_history().and_then(|mut h| {
+        let mut added = added.clone();
+        added.sort();
+        h.entries.extend(
+            added
+                .into_iter()
+                .map(|published_name| InstalledDriverRecord {
+                    published_name,
+                    title: title.to_string(),
+                    installed_at_unix: now,
+                }),
+        );
+        write_backup(&driver_history_path()?, &h)
+    });
+    if let Err(e) = saved {
+        report
+            .message
+            .push_str(&format!(" No se pudo registrar para revertir: {e}"));
+    }
+    Ok(report)
+}
+
+/// Plazo de una búsqueda de drivers en Windows Update (CON-03).
+const WUA_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4 * 60);
 
 /// Hosts de los que se aceptan CAB del Microsoft Update Catalog (SEC-33).
 const CATALOG_CAB_HOSTS: &[&str] = &["download.windowsupdate.com", "*.download.windowsupdate.com"];
@@ -1946,5 +2140,15 @@ mod tests {
         let first = found.first().expect("algún resultado");
         let url = catalog_cab_url(&first.update_id).expect("enlace del CAB");
         assert!(url.to_ascii_lowercase().ends_with(".cab"));
+    }
+
+    #[test]
+    fn solo_paquetes_oem() {
+        assert!(is_oem_inf_name("oem42.inf"));
+        assert!(is_oem_inf_name("OEM7.INF"));
+        assert!(!is_oem_inf_name("oem.inf"));
+        assert!(!is_oem_inf_name("..\\oem1.inf"));
+        assert!(!is_oem_inf_name("oem1.inf.bak"));
+        assert!(!is_oem_inf_name("machine.inf"));
     }
 }
