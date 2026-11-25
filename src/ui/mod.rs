@@ -5,10 +5,11 @@
 
 mod app;
 pub mod components;
+pub mod document;
 pub mod i18n;
 pub mod installer;
 pub mod prefs;
 pub mod theme;
 pub mod views;
 
-pub use app::{sync_document_attrs, App};
+pub use app::App;

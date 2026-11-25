@@ -109,9 +109,9 @@ pub fn ToolsView() -> Element {
                 }
                 Err(CoreError::NotElevated(_)) => {
                     let flag = if currently_active {
-                        "--uninstall-context-menu"
+                        crate::core::cli::UNINSTALL_CONTEXT_MENU
                     } else {
-                        "--install-context-menu"
+                        crate::core::cli::INSTALL_CONTEXT_MENU
                     };
                     if ElevationManager::relaunch_as_admin(&[flag]).is_ok() {
                         for _ in 0..8 {

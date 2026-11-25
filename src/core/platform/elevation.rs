@@ -7,18 +7,10 @@ use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW};
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
+use crate::core::cli::RELAUNCH_FLAGS;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::SafeHandle;
 use crate::core::platform::wide::to_wide_null;
-
-const ALLOWED_RELAUNCH_FLAGS: &[&str] = &[
-    "--elevated",
-    "--rollback",
-    "--install-context-menu",
-    "--uninstall-context-menu",
-    "--extract",
-    "--compress-zip",
-];
 
 pub struct ElevationManager;
 
@@ -66,7 +58,7 @@ impl ElevationManager {
         let mut sanitized = Vec::with_capacity(extra_args.len());
         for &arg in extra_args {
             let flag = arg.split_whitespace().next().unwrap_or(arg);
-            if !ALLOWED_RELAUNCH_FLAGS.contains(&flag) {
+            if !RELAUNCH_FLAGS.contains(&flag) {
                 return Err(CoreError::Validation(format!(
                     "Argumento no autorizado para relanzamiento elevado: '{}'",
                     arg

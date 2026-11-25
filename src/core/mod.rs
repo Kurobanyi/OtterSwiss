@@ -8,6 +8,7 @@ pub mod security;
 
 pub mod archive;
 pub mod cleaner;
+pub mod cli;
 pub mod context_menu;
 pub mod debloat;
 pub mod dns;

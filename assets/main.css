@@ -286,6 +286,15 @@ button {
     height: 40px;
 }
 
+.mini-window-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4);
+}
+
 .top-brand {
     display: flex;
     align-items: center;
@@ -774,7 +783,8 @@ button.badge {
 
 /* TE-15: en el ancho mínimo (960px) se ahorra espacio en la barra superior. */
 @media (max-width: 1150px) {
-    .top-version { display: none; }
+    /* La mini ventana del archivador muestra ahí su estado: no se oculta. */
+    .app-root-frameless:not(.mini-window) .top-version { display: none; }
     .top-nav-item { padding: var(--space-1) 6px; }
 }
 

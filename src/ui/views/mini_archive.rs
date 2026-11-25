@@ -1,0 +1,225 @@
+//! Mini ventana del archivador: extrae o comprime lo que se eligió desde el menú contextual de Windows.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use dioxus::desktop::use_window;
+use dioxus::prelude::*;
+
+use crate::core::archive::{
+    default_extract_dir, default_zip_path, resolve_extract_destination, ArchiveFormat,
+    ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
+};
+use crate::core::sys_tools::open_folder_in_explorer;
+use crate::ui::components::{StatusBanner, Tone};
+use crate::ui::document::sync_document_attrs;
+use crate::ui::i18n::Lang;
+use crate::ui::theme::Theme;
+
+/// Trabajo que llega por la línea de comandos (`--extract` o `--compress-zip`).
+#[derive(Debug, Clone)]
+pub struct MiniArchiveJob {
+    pub mode: ArchiveMode,
+    pub src: PathBuf,
+    pub dest: PathBuf,
+}
+
+impl MiniArchiveJob {
+    /// Extrae junto al archivo, nunca sobre una carpeta existente (usa la hermana libre «nombre (2)»).
+    pub fn extract(src: PathBuf) -> Self {
+        let dest = resolve_extract_destination(&default_extract_dir(&src));
+        Self {
+            mode: ArchiveMode::Extract,
+            src,
+            dest,
+        }
+    }
+
+    pub fn compress_zip(src: PathBuf) -> Self {
+        let dest = default_zip_path(&src);
+        Self {
+            mode: ArchiveMode::Compress,
+            src,
+            dest,
+        }
+    }
+}
+
+/// El trabajo se entrega con `LaunchBuilder::with_context`.
+#[component]
+pub fn MiniArchiveView() -> Element {
+    let job = use_context::<MiniArchiveJob>();
+    let window = use_window();
+    let theme = use_hook(Theme::load_persisted);
+    let lang = use_hook(Lang::load_persisted);
+    let en = lang.is_en();
+
+    let mut progress = use_signal(ArchiveProgress::default);
+    let mut is_running = use_signal(|| true);
+    let mut error_msg = use_signal(|| Option::<String>::None);
+    let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
+
+    let worker_job = job.clone();
+    let cancel_for_hook = Arc::clone(&cancel_flag);
+    use_hook(move || {
+        let prog_arc = Arc::new(Mutex::new(ArchiveProgress::default()));
+        let prog_worker = Arc::clone(&prog_arc);
+        let cancel_worker = Arc::clone(&cancel_for_hook);
+
+        spawn(async move {
+            let handle = tokio::task::spawn_blocking(move || {
+                match worker_job.mode {
+                    ArchiveMode::Extract => ArchiveManager::extract_archive_with_progress(
+                        &worker_job.src,
+                        &worker_job.dest,
+                        DEFAULT_EXTRACT_QUOTA,
+                        &cancel_worker,
+                        Some(&prog_worker),
+                    ),
+                    ArchiveMode::Compress => ArchiveManager::compress_path_with_progress(
+                        &worker_job.src,
+                        &worker_job.dest,
+                        ArchiveFormat::Zip,
+                        &cancel_worker,
+                        Some(&prog_worker),
+                    ),
+                }
+                .map_err(|e| e.to_string())
+            });
+
+            while !handle.is_finished() {
+                if let Ok(snap) = prog_arc.lock() {
+                    progress.set(snap.clone());
+                }
+                tokio::time::sleep(Duration::from_millis(120)).await;
+            }
+
+            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
+            if let Ok(snap) = prog_arc.lock() {
+                progress.set(snap.clone());
+            }
+            if let Err(err) = res {
+                error_msg.set(Some(err));
+            }
+            is_running.set(false);
+        });
+    });
+
+    use_effect(move || sync_document_attrs(theme.css_name(), lang.html_code()));
+
+    let prog = progress.read();
+    let running = *is_running.read();
+    let err_opt = error_msg.read().clone();
+    let win_drag = window.clone();
+    let win_close = window.clone();
+    let win_done = window;
+    let cancel_btn = Arc::clone(&cancel_flag);
+    let cancel_close = Arc::clone(&cancel_flag);
+    let dest_for_open = job.dest.clone();
+
+    let title_txt = match (job.mode, en) {
+        (ArchiveMode::Extract, false) => "Extrayendo archivo...",
+        (ArchiveMode::Extract, true) => "Extracting archive...",
+        (ArchiveMode::Compress, false) => "Comprimiendo a ZIP...",
+        (ArchiveMode::Compress, true) => "Compressing to ZIP...",
+    };
+    let top_status_txt = if running {
+        title_txt
+    } else if err_opt.is_some() {
+        "Error"
+    } else if en {
+        "Completed"
+    } else {
+        "Completado"
+    };
+    let current_file_lbl = if prog.current_file.is_empty() {
+        if en {
+            "Preparing files...".to_string()
+        } else {
+            "Preparando archivos...".to_string()
+        }
+    } else {
+        prog.current_file.clone()
+    };
+    let cancel_lbl = if en { "Cancel" } else { "Cancelar" };
+    let open_folder_lbl = if en { "Open folder" } else { "Abrir carpeta" };
+    let close_lbl = if en { "Close" } else { "Cerrar" };
+
+    let mb_done = prog.bytes_processed as f64 / (1024.0 * 1024.0);
+    let mb_total = prog.total_bytes as f64 / (1024.0 * 1024.0);
+    let eta_txt = prog
+        .eta_seconds
+        .map(|s| format!("~{}s", s))
+        .unwrap_or_else(|| "—".into());
+
+    rsx! {
+        div {
+            class: "app-root-frameless mini-window",
+            "data-theme": "{theme.css_name()}",
+
+            header {
+                class: "top-titlebar",
+                div {
+                    class: "top-brand",
+                    onmousedown: move |_| { win_drag.drag(); },
+                    span { class: "top-title", "OtterSwiss" }
+                    span { class: "top-version", "{top_status_txt}" }
+                }
+                button {
+                    class: "win-btn win-close-btn",
+                    title: "{close_lbl}",
+                    onclick: move |_| {
+                        cancel_close.store(true, Ordering::Release);
+                        win_close.close();
+                    },
+                    "✕"
+                }
+            }
+
+            div { class: "mini-window-body",
+                if let Some(err) = err_opt {
+                    StatusBanner { text: err, tone: Tone::Danger }
+                } else {
+                    div { class: "stack-2",
+                        div { class: "text-xs fw-semibold truncate", "{current_file_lbl}" }
+                        div {
+                            class: "progress",
+                            role: "progressbar",
+                            "aria-valuemin": "0",
+                            "aria-valuemax": "100",
+                            "aria-valuenow": "{prog.percent}",
+                            div { class: "progress-fill", style: "width: {prog.percent}%;" }
+                        }
+                        div { class: "row-between text-xs text-muted",
+                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
+                            span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
+                        }
+                    }
+                }
+
+                div { class: "row-end",
+                    if running {
+                        button {
+                            class: "btn btn-danger btn-sm",
+                            onclick: move |_| cancel_btn.store(true, Ordering::Release),
+                            "{cancel_lbl}"
+                        }
+                    } else {
+                        button {
+                            class: "btn btn-secondary btn-sm",
+                            onclick: move |_| open_folder_in_explorer(&dest_for_open),
+                            "{open_folder_lbl}"
+                        }
+                        button {
+                            class: "btn btn-primary btn-sm",
+                            onclick: move |_| win_done.close(),
+                            "{close_lbl}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

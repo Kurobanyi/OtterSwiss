@@ -10,7 +10,7 @@ mod staging;
 pub use paths::{is_reserved_windows_name, resolve_extract_destination, validate_path_components};
 pub use progress::ArchiveProgress;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -23,6 +23,39 @@ pub enum ArchiveFormat {
     Zip,
     SevenZip,
     TarGz,
+}
+
+/// AR-16: tope de bytes de una extracción (bomba de descompresión), igual en la ventana principal y en la mini.
+pub const DEFAULT_EXTRACT_QUOTA: u64 = 50 * 1024 * 1024 * 1024;
+
+/// CL-13: qué hace un trabajo del archivador.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchiveMode {
+    Extract,
+    Compress,
+}
+
+/// Carpeta junto al archivo con su nombre sin extensión (`datos.tar.gz` → `datos`). No comprueba si existe:
+/// para eso está `resolve_extract_destination`.
+pub fn default_extract_dir(archive: &Path) -> PathBuf {
+    let parent = archive.parent().unwrap_or(archive);
+    let name = archive
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let low = name.to_ascii_lowercase();
+    let stem = if low.ends_with(".tar.gz") {
+        &name[..name.len() - ".tar.gz".len()]
+    } else {
+        archive.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+    };
+    parent.join(if stem.is_empty() { "extracted" } else { stem })
+}
+
+/// `.zip` junto a la ruta, con su nombre completo (UI-15: `mi.proyecto\` da `mi.proyecto.zip`, no `mi.zip`).
+pub fn default_zip_path(src: &Path) -> PathBuf {
+    let name = src.file_name().unwrap_or_default().to_string_lossy();
+    src.parent().unwrap_or(src).join(format!("{name}.zip"))
 }
 
 pub struct ArchiveManager;
@@ -154,5 +187,28 @@ impl ArchiveManager {
             }
         }
         (count, bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn carpeta_de_extraccion_quita_la_extension_compuesta() {
+        let dir = |p: &str| default_extract_dir(Path::new(p));
+        assert_eq!(dir(r"C:\d\datos.zip"), PathBuf::from(r"C:\d\datos"));
+        assert_eq!(dir(r"C:\d\datos.tar.gz"), PathBuf::from(r"C:\d\datos"));
+        assert_eq!(dir(r"C:\d\datos.tgz"), PathBuf::from(r"C:\d\datos"));
+        // Sin nombre aparte de la extensión, la carpeta coincide con el archivo: resolve_extract_destination usa «(2)».
+        assert_eq!(dir(r"C:\d\.zip"), PathBuf::from(r"C:\d\.zip"));
+    }
+
+    #[test]
+    fn zip_conserva_el_nombre_completo() {
+        assert_eq!(
+            default_zip_path(Path::new(r"C:\d\mi.proyecto")),
+            PathBuf::from(r"C:\d\mi.proyecto.zip")
+        );
     }
 }

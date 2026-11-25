@@ -182,7 +182,7 @@ pub fn DashboardView() -> Element {
     };
 
     let on_relaunch_admin = move |_| {
-        let _ = ElevationManager::relaunch_as_admin(&["--elevated"]);
+        let _ = ElevationManager::relaunch_as_admin(&[crate::core::cli::ELEVATED]);
     };
 
     let hw_guard = hw_profile.read();

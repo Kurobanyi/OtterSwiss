@@ -24,6 +24,7 @@ use crate::core::updater::{
     check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
 };
 use crate::ui::components::{Modal, StatusBanner, Tone};
+use crate::ui::document::sync_document_attrs;
 use crate::ui::installer::{
     refresh_tools_inventory, run_installer_worker, InstallJobRequest, InstallerDispatcher,
     ToolsSharedState,
@@ -409,11 +410,4 @@ pub fn App() -> Element {
             }
         }
     }
-}
-
-/// Copia el tema y el idioma a `<html>`; la raíz de la app ya los lleva desde el primer render.
-pub fn sync_document_attrs(css_theme: &'static str, html_lang: &'static str) {
-    document::eval(&format!(
-        "document.documentElement.dataset.theme = '{css_theme}'; document.documentElement.lang = '{html_lang}';"
-    ));
 }

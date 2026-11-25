@@ -7,6 +7,7 @@ use dioxus::prelude::*;
 
 use crate::core::archive::{
     resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
+    DEFAULT_EXTRACT_QUOTA,
 };
 use crate::ui::components::{Card, Modal};
 use crate::ui::i18n::Lang;
@@ -66,7 +67,7 @@ pub fn ArchiverView() -> Element {
                     ArchiveManager::extract_archive_with_progress(
                         &src,
                         &dest,
-                        50 * 1024 * 1024 * 1024,
+                        DEFAULT_EXTRACT_QUOTA,
                         &cancel_worker,
                         Some(&prog_worker),
                     )

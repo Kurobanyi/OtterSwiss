@@ -4,6 +4,7 @@ pub mod dashboard;
 pub mod debloater;
 pub mod dns;
 pub mod hardware;
+pub mod mini_archive;
 pub mod sensors;
 pub mod tools;
 pub mod uninstaller;

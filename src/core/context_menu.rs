@@ -175,3 +175,23 @@ impl ContextMenuManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// AR-12: las órdenes del menú contextual solo usan flags que `CliCommand::parse` entiende.
+    #[test]
+    fn el_menu_solo_usa_flags_de_la_cli() {
+        for entry in MENU_ENTRIES {
+            for word in entry.cmd_template.split_whitespace() {
+                if word.starts_with("--") {
+                    assert!(
+                        crate::core::cli::RELAUNCH_FLAGS.contains(&word),
+                        "{word} no está en core::cli"
+                    );
+                }
+            }
+        }
+    }
+}
