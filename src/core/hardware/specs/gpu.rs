@@ -6,6 +6,7 @@ use windows::Win32::Graphics::Dxgi::{
 
 use super::GpuSpecs;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::hardware::pci;
 
 /// (proveedor, dispositivo, subsistema, revisión, VRAM dedicada) de un adaptador DXGI.
 pub(super) type GpuKey = (u32, u32, u32, u32, usize);
@@ -64,13 +65,11 @@ pub(super) fn read_dxgi_gpus() -> CoreResult<Vec<GpuSpecs>> {
             .trim()
             .to_string();
 
-        let vendor_name = match desc.VendorId {
-            0x1002 => "AMD",
-            0x10DE => "NVIDIA",
-            0x8086 => "Intel",
-            _ => "Otro",
-        }
-        .to_string();
+        let vendor_name = u16::try_from(desc.VendorId)
+            .ok()
+            .and_then(pci::vendor_name)
+            .unwrap_or("Otro")
+            .to_string();
 
         gpus.push(GpuSpecs {
             name,

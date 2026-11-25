@@ -266,6 +266,17 @@ fn fetch_bytes(
 mod tests {
     use super::*;
 
+    /// CL-22: solo pasan tal cual los caracteres no reservados de RFC 3986; el resto va en `%XX` por byte UTF-8.
+    #[test]
+    fn url_encode_escapa_lo_reservado() {
+        assert_eq!(
+            url_encode(r"PCI\VEN_8086&DEV_A0F0"),
+            "PCI%5CVEN_8086%26DEV_A0F0"
+        );
+        assert_eq!(url_encode("a-b_c.d~e"), "a-b_c.d~e");
+        assert_eq!(url_encode("ñ ?"), "%C3%B1%20%3F");
+    }
+
     /// CON-03: con la búsqueda cancelada no se consulta ninguna fuente ni se informa un fallo.
     #[test]
     fn busqueda_cancelada_no_consulta_fuentes() {

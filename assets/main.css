@@ -118,7 +118,7 @@
     --border: #cbd5e1;
     --control-border: #848d9b;
     --text: #0f172a;
-    --text-muted: #64748b;
+    --text-muted: #5b6576;
     --accent: #2563eb;
     --accent-hover: #1d4ed8;
     --success: #059669;
@@ -211,8 +211,8 @@
 
 [data-theme="dracula"] {
     color-scheme: dark;
-    --bg: #282a36;
-    --surface: #21222c;
+    --bg: #21222c;
+    --surface: #282a36;
     --surface-hover: #343746;
     --surface-active: #404350;
     --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
@@ -236,8 +236,8 @@
 
 [data-theme="tokyonight"] {
     color-scheme: dark;
-    --bg: #1a1b26;
-    --surface: #16161e;
+    --bg: #16161e;
+    --surface: #1a1b26;
     --surface-hover: #24283b;
     --surface-active: #2d3246;
     --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
@@ -268,7 +268,7 @@
     --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #134e5e;
     --control-border: #617f85;
-    --text: #a1aeaf;
+    --text: #eee8d5;
     --text-muted: #a0adae;
     --accent: #22837c;
     --accent-hover: #1e71ab;
@@ -284,6 +284,8 @@
     --accent-text: #37c8bd;
 }
 
+/* Paleta Rosé Pine (https://rosepinetheme.com, licencia MIT). TE-29: el acento es «iris» para no confundirse con
+   «love», que es el color de peligro. */
 [data-theme="sakura"] {
     color-scheme: dark;
     --bg: #191724;
@@ -295,8 +297,8 @@
     --control-border: #6b6883;
     --text: #e0def4;
     --text-muted: #908caa;
-    --accent: #eb6f92;
-    --accent-hover: #f6c177;
+    --accent: #c4a7e7;
+    --accent-hover: #d7c2f0;
     --success: #9ccfd8;
     --warning: #f6c177;
     --danger: #eb6f92;
@@ -306,7 +308,7 @@
     --success-text: #b3e3ec;
     --warning-text: #fcd7a1;
     --danger-text: #f08ea9;
-    --accent-text: #f49db7;
+    --accent-text: #c4a7e7;
 }
 
 /* 3 · Reset y base --------------------------------------------------------------------------------------------- */

@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **85 hechas, 11 parciales, 17 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **88 hechas, 9 parciales, 16 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -42,7 +42,6 @@ dependencias directas se usan.
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
-| [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Parcial |
 
 ## P2
 
@@ -55,7 +54,6 @@ dependencias directas se usan.
 | [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
 | [`IN-03`](PRACTICAS-detalle.md#in-03) | El estado guarda mensajes ya traducidos | M | Pendiente |
-| [`AR-24`](PRACTICAS-detalle.md#ar-24) | Guardianes y helpers Win32 duplicados | S | Parcial |
 | [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Pendiente |
 | [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Pendiente |
 | [`AR-28`](PRACTICAS-detalle.md#ar-28) | API pública de drivers más ancha de lo que usa la UI, y campos muertos | S | Pendiente |
@@ -64,7 +62,6 @@ dependencias directas se usan.
 | [`CL-23`](PRACTICAS-detalle.md#cl-23) | Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID | S | Parcial |
 | [`CL-25`](PRACTICAS-detalle.md#cl-25) | Componentes y clases que ya existen no se usan | S | Pendiente |
 | [`TE-26`](PRACTICAS-detalle.md#te-26) | `px` y colores derivados escritos en Rust | S | Pendiente |
-| [`TE-29`](PRACTICAS-detalle.md#te-29) | Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida | S | Pendiente |
 | [`IN-09`](PRACTICAS-detalle.md#in-09) | Textos en un solo idioma o mezclados | S | Pendiente |
 
 ## P3
@@ -79,10 +76,10 @@ dependencias directas se usan.
 
 ## Siguiente
 
-1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags` y `url_encode`) y el resto de `AR-24` (tabla PCI).
-2. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
-3. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-4. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03`.
+1. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
+2. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
+3. Decidido el 25/11: `AR-17` y `AR-26` (con `UI-11`) e `IN-03`: core devuelve datos y la UI traduce al mostrar. Decisión del autor:
+   `AR-19`.
 
 ## Lo que hay que conservar
 
@@ -91,7 +88,7 @@ dependencias directas se usan.
 - Catálogos embebidos con lista blanca y respaldos validados contra ellos; `atomic_write_new` y `read_bounded_bytes`.
 - `thiserror` con `CoreResult` como base del rediseño de errores; `catch_unwind` que se convierte en `CoreError::Panic`.
 - `Modal`, `ConfirmDialog`, `StatusBanner` y `Tone`: extender ese criterio, no reemplazarlo.
-- Los seis temas definen los mismos 18 tokens, todos los `var(--…)` usados existen y todas las clases definidas se usan.
+- Los diez temas definen los mismos tokens y `tests/temas.rs` les exige AA (TE-29), todos los `var(--…)` usados existen y todas las clases definidas se usan.
 - Traducciones completas por construcción (el compilador exige ES y EN): cualquier catálogo nuevo debe conservar esa garantía.
 - `build.rs` con `compile_for` y `test = false` en el binario; perfil release coherente; `Cargo.lock` versionado.
 - Comentarios con el porqué y el ID del hallazgo; tests junto al código con nombres que describen la regla.

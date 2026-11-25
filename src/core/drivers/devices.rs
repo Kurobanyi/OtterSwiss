@@ -15,6 +15,7 @@ use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 use super::hwid::{short_hw_id_of, ven_dev_of};
 use super::{DriverManager, PNPUTIL_TIMEOUT};
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::hardware::pci::vendor_name_hex;
 use crate::core::platform::handles::DevInfoList;
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::process::{run_captured, system32_dir};
@@ -65,27 +66,7 @@ impl InstalledDriverDevice {
 
     pub fn decoded_vendor_name(&self) -> Option<&'static str> {
         let (ven, _, _) = self.extract_ven_dev()?;
-        match ven.as_str() {
-            "8086" => Some("Intel"),
-            "8087" => Some("Intel Wireless / BT"),
-            "10DE" => Some("NVIDIA"),
-            "1002" | "1022" => Some("AMD"),
-            "10EC" => Some("Realtek"),
-            "14C3" => Some("MediaTek"),
-            "17CB" => Some("Qualcomm"),
-            "1B21" => Some("ASMedia"),
-            "144D" => Some("Samsung"),
-            "1987" => Some("Phison"),
-            "15B7" => Some("WD / SanDisk"),
-            "C0A9" => Some("Micron / Crucial"),
-            "2646" => Some("Kingston"),
-            "1912" => Some("Renesas"),
-            "1106" => Some("VIA"),
-            "046D" => Some("Logitech"),
-            "1532" => Some("Razer"),
-            "1B4B" => Some("Marvell"),
-            _ => None,
-        }
+        vendor_name_hex(&ven)
     }
 
     pub fn hardware_hint(&self) -> Option<&'static str> {

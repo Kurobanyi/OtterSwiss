@@ -1007,7 +1007,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-24"></a>
 ### AR-24 · Guardianes y helpers Win32 duplicados
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `ComApartmentGuard::new_sta` repite `ComGuard`; `DevInfoGuard` es RAII de plataforma dentro de una función de producto;
   `is_system_laptop` duplica `power::detect_battery_presence` con otro criterio; `decoded_vendor_name` es una segunda tabla PCI;
   `read_windows_build` inventa `"22631"` si falla.
@@ -1015,6 +1015,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Propuesta**: `ComGuard::init_sta()`, `DevInfoList` en `platform/handles.rs`, `power::detect_battery_presence`, tabla PCI compartida
   con `specs::gpu`, build como `Option<u32>`.
 - **Cierre parcial** (2026-11-25): `ComGuard::init_sta` y `DevInfoList` en `platform/handles.rs` reemplazan a `ComApartmentGuard` y `DevInfoGuard`; `is_system_laptop` usa `power::detect_battery_presence`, que ahora mira el bit 128 como máscara (antes solo el valor exacto 128). `read_windows_build` ya devolvía `Option` (`ERR-23`). Falta la tabla PCI compartida con `hardware`. Verificado: `cargo test` (68), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
+- **Cierre final** (2026-11-25): `core/hardware/pci.rs` con la única tabla de fabricantes (`vendor_name`, `vendor_name_hex`), usada por `specs::gpu` y por `InstalledDriverDevice::decoded_vendor_name`; la GPU ahora reconoce los mismos fabricantes que la lista de dispositivos. Verificado: `cargo test` (75 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-25"></a>
 ### AR-25 · Tres comparadores de versiones con semánticas distintas
@@ -1087,13 +1088,14 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-22"></a>
 ### CL-22 · Lógica pura nueva sin tests
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: sin tests `short_hw_id`, `extract_ven_dev`, `friendly_gpu_version`, `is_version_newer`, `url_encode`, `strip_html_tags`,
   los parsers del Catálogo, NVIDIA e Intel, `is_cpu_sensor_name`, ni invariantes del catálogo (IDs únicos, verificación, `winget_id`).
 - **Dónde**: `src/core/drivers.rs`; `src/core/hardware/sensors/wmi.rs`; `src/core/store/app_store.rs`.
 - **Propuesta**: tests junto al código (`id_pci_se_acorta_a_ven_dev`, `catalogo_directo_siempre_verificado`,
   `sensor_gpu_no_cuenta_como_cpu`) y fixtures chicos en `tests/fixtures/`. Ver `TST-02`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de IDs de hardware, versiones, GUID, enlace del CAB, sensores, winget, catálogo y Authenticode. Faltan `strip_html_tags`, `url_encode` y el JSON de Intel. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
+- **Cierre final** (2026-11-25): tests de `url_encode` (`url_encode_escapa_lo_reservado`) y `strip_html_tags` (`celda_html_a_texto`); el JSON de Intel ya no existe (`ERR-25`). Verificado: `cargo test` (75 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="cl-23"></a>
 ### CL-23 · Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID
@@ -1158,7 +1160,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="te-29"></a>
 ### TE-29 · Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (WCAG sobre los hex) · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (WCAG sobre los hex) · **Estado**: Hecha
 - **Qué pasa**: las paletas del compañero no pasaban AA (texto secundario de Dracula, Tokyo Night y Solarized, acento de Solarized). Al
   fusionar se subieron hasta 4,5:1 y se completaron los tokens que faltaban (`color-scheme`, `--surface-active`, `--surface-subtle`,
   `--control-border`, `--danger-hover`), pero quedó:
@@ -1170,6 +1172,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Dónde**: `assets/main.css` (bloques `dracula`, `tokyonight`, `solarized`, `sakura`).
 - **Propuesta**: subir `--text` de Solarized, `--danger` propio en Sakura, `--surface` sobre `--bg`; test de distancia mínima entre
   `--danger` y `--accent` y entre `--text` y `--text-muted`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Solarized con `--text` #eee8d5 (base2) sobre el muted; Sakura con acento «iris» #c4a7e7 (peligro sigue en «love») y crédito a Rosé Pine (MIT) en el CSS; Dracula y Tokyo Night con `--bg` y `--surface` intercambiados. Al medir apareció un fallo más: en Claro, `--text-muted` sobre `--bg` daba 4,34:1; pasa a #5b6576. `tests/temas.rs` exige AA (4,5:1) para cada texto sobre `--bg` y `--surface` y para `--on-accent`/`--on-danger`, peligro distinto del acento, aviso distinto del hover del acento, texto y muted distinguibles y superficie por encima del fondo, en los 10 temas; con el CSS anterior falla. Recorrido: Sakura, Dracula, Solarizado, Tokyo Night y Claro en Inicio. Verificado: `cargo test` (75 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="in-08"></a>
 ### IN-08 · 43 `if en` nuevos fuera del catálogo y regresión de `strings(en)` en la tienda

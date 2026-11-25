@@ -273,6 +273,23 @@ fn find_catalog_cab_url(html: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    /// CL-22: el texto de una celda del Catálogo, sin etiquetas, entidades comunes decodificadas y espacios colapsados.
+    #[test]
+    fn celda_html_a_texto() {
+        assert_eq!(
+            strip_html_tags(
+                "<td class='x'>
+  Intel&nbsp;-&nbsp;Display <b>&amp;</b> Audio  </td>"
+            ),
+            "Intel - Display & Audio"
+        );
+        assert_eq!(
+            strip_html_tags("<a href=\"#\">&lt;x&gt; &quot;y&quot;</a>"),
+            "<x> \"y\""
+        );
+        assert_eq!(strip_html_tags(""), "");
+    }
+
     #[test]
     fn update_id_solo_guid() {
         assert!(is_guid("0a1b2c3d-4e5f-6789-abcd-ef0123456789"));
