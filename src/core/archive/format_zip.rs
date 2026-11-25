@@ -11,7 +11,7 @@ use zip::write::SimpleFileOptions;
 
 use super::ArchiveManager;
 use super::paths::sanitize_archive_rel_path;
-use super::progress::{ArchiveProgress, TelemetryCtx, copy_with_quota};
+use super::progress::{ArchiveProgress, QuotaCopy, TelemetryCtx};
 use super::staging::{
     create_staging_dir, discard_staging, finalize_staging_dir, read_zone_identifier,
 };
@@ -42,7 +42,7 @@ impl ArchiveManager {
         tel.init(total_files, total_uncompressed);
 
         let (parent, tmp_dir) = create_staging_dir(dest_dir)?;
-        let mut bytes_written = 0u64;
+        let mut quota = QuotaCopy::new(max_quota_bytes, cancel);
 
         let extract_res = (|| -> CoreResult<()> {
             for i in 0..total_files {
@@ -79,18 +79,9 @@ impl ArchiveManager {
                 if entry.is_dir() {
                     std::fs::create_dir_all(&out_path)?;
                 } else {
-                    copy_with_quota(
-                        &mut entry,
-                        &out_path,
-                        &rel_display,
-                        &mut bytes_written,
-                        i + 1,
-                        max_quota_bytes,
-                        cancel,
-                        &mut tel,
-                    )?;
+                    quota.copy(&mut entry, &out_path, &rel_display, i + 1, &mut tel)?;
                 }
-                tel.tick(Some(&rel_display), bytes_written, i + 1, false);
+                tel.tick(Some(&rel_display), quota.written, i + 1, false);
             }
             Ok(())
         })();
@@ -101,8 +92,8 @@ impl ArchiveManager {
         }
 
         finalize_staging_dir(&tmp_dir, dest_dir, parent, zone.as_deref())?;
-        tel.finish(bytes_written, total_files);
-        Ok(bytes_written)
+        tel.finish(quota.written, total_files);
+        Ok(quota.written)
     }
 
     pub(super) fn compress_to_zip(

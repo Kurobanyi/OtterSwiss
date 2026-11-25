@@ -50,20 +50,33 @@ fn spawn_fill_missing_sizes(
     });
 }
 
-fn start_scan(
-    app: InstalledApp,
-    en: bool,
-    mut is_working: Signal<bool>,
-    mut status_msg: Signal<Status>,
-    mut selected_leftovers: Signal<HashSet<String>>,
-    mut leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
-) {
+/// CL-14: señales de la vista que comparten el escaneo y la desinstalación. Son `Copy`.
+#[derive(Clone, Copy)]
+struct UninstallerSignals {
+    is_working: Signal<bool>,
+    purge_summary: Signal<Option<PurgeReport>>,
+    status_msg: Signal<Status>,
+    apps: Signal<Vec<InstalledApp>>,
+    extra_sizes: Signal<HashMap<String, u64>>,
+    selected_leftovers: Signal<HashSet<String>>,
+    leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
+    tools_state: Signal<ToolsSharedState>,
+}
+
+fn start_scan(app: InstalledApp, en: bool, sig: UninstallerSignals) {
+    let UninstallerSignals {
+        mut is_working,
+        mut status_msg,
+        mut selected_leftovers,
+        mut leftovers_modal,
+        ..
+    } = sig;
     is_working.set(true);
     status_msg.set(Some((
         if en {
             format!("Scanning leftovers for '{}'…", app.display_name)
         } else {
-            format!("Escaneando rastros de '{}'…", app.display_name)
+            format!("Buscando restos de '{}'…", app.display_name)
         },
         Tone::Info,
     )));
@@ -114,22 +127,17 @@ fn start_scan(
     });
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "señales de la vista; se agrupan en CL-14"
-)]
-fn start_uninstall_and_scan(
-    app: InstalledApp,
-    en: bool,
-    mut is_working: Signal<bool>,
-    mut purge_summary: Signal<Option<PurgeReport>>,
-    mut status_msg: Signal<Status>,
-    apps: Signal<Vec<InstalledApp>>,
-    extra_sizes: Signal<HashMap<String, u64>>,
-    mut selected_leftovers: Signal<HashSet<String>>,
-    mut leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
-    tools_state: Signal<ToolsSharedState>,
-) {
+fn start_uninstall_and_scan(app: InstalledApp, en: bool, sig: UninstallerSignals) {
+    let UninstallerSignals {
+        mut is_working,
+        mut purge_summary,
+        mut status_msg,
+        apps,
+        extra_sizes,
+        mut selected_leftovers,
+        mut leftovers_modal,
+        tools_state,
+    } = sig;
     is_working.set(true);
     purge_summary.set(None);
     status_msg.set(Some((
@@ -281,6 +289,16 @@ pub fn UninstallerView() -> Element {
     let mut selected_leftovers = use_signal(HashSet::<String>::new);
     let mut purge_summary = use_signal(|| Option::<PurgeReport>::None);
     let tools_state = use_context::<Signal<ToolsSharedState>>();
+    let sig = UninstallerSignals {
+        is_working,
+        purge_summary,
+        status_msg,
+        apps,
+        extra_sizes,
+        selected_leftovers,
+        leftovers_modal,
+        tools_state,
+    };
     let dispatcher = use_context::<InstallerDispatcher>();
 
     let mut load_apps = move || {
@@ -609,18 +627,7 @@ pub fn UninstallerView() -> Element {
                             on_cancel: move |_| confirm_uninstall.set(None),
                             on_confirm: move |_| {
                                 confirm_uninstall.set(None);
-                                start_uninstall_and_scan(
-                                    target.clone(),
-                                    en,
-                                    is_working,
-                                    purge_summary,
-                                    status_msg,
-                                    apps,
-                                    extra_sizes,
-                                    selected_leftovers,
-                                    leftovers_modal,
-                                    tools_state,
-                                );
+                                start_uninstall_and_scan(target.clone(), en, sig);
                             },
                             p { class: "text-xs", "{body}" }
                         }
@@ -762,14 +769,7 @@ pub fn UninstallerView() -> Element {
                                         button {
                                             class: "btn btn-secondary",
                                             disabled: *is_working.read(),
-                                            onclick: move |_| start_scan(
-                                                app_for_scan.clone(),
-                                                en,
-                                                is_working,
-                                                status_msg,
-                                                selected_leftovers,
-                                                leftovers_modal,
-                                            ),
+                                            onclick: move |_| start_scan(app_for_scan.clone(), en, sig),
                                             "{scan_lbl}"
                                         }
                                         button {

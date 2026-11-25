@@ -104,45 +104,58 @@ impl<'a> TelemetryCtx<'a> {
     }
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "estado de una extracción en curso; se agrupa en CL-14"
-)]
-pub(super) fn copy_with_quota<R: Read + ?Sized>(
-    reader: &mut R,
-    out_path: &Path,
-    rel_name: &str,
-    bytes_written: &mut u64,
-    files_done: usize,
-    max_quota_bytes: u64,
-    cancel: &AtomicBool,
-    tel: &mut TelemetryCtx<'_>,
-) -> CoreResult<()> {
-    if let Some(p) = out_path.parent() {
-        std::fs::create_dir_all(p)?;
-    }
-    let (mut out_file, _) = create_verified_new_file(out_path, true)?;
-    let mut chunk = [0u8; 64 * 1024];
+/// CL-14: estado de una extracción que se reparte entre todas sus entradas: bytes escritos, tope y cancelación.
+pub(super) struct QuotaCopy<'a> {
+    pub(super) written: u64,
+    quota: u64,
+    cancel: &'a AtomicBool,
+}
 
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(CoreError::Cancelled);
+impl<'a> QuotaCopy<'a> {
+    pub(super) fn new(quota: u64, cancel: &'a AtomicBool) -> Self {
+        Self {
+            written: 0,
+            quota,
+            cancel,
         }
-        let read_len = reader.read(&mut chunk)?;
-        if read_len == 0 {
-            break;
-        }
-        *bytes_written = bytes_written.saturating_add(read_len as u64);
-        if *bytes_written > max_quota_bytes {
-            return Err(CoreError::Archive {
-                message: format!("Límite de cuota ({} bytes) excedido", max_quota_bytes),
-                source: None,
-            });
-        }
-        out_file.write_all(&chunk[..read_len])?;
-        tel.tick(Some(rel_name), *bytes_written, files_done, false);
     }
 
-    out_file.sync_all()?;
-    Ok(())
+    /// Copia una entrada a `out_path` (archivo nuevo, sin seguir reparse points) sumando al total y fallando si pasa
+    /// el tope (bomba de descompresión) o si se cancela.
+    pub(super) fn copy<R: Read + ?Sized>(
+        &mut self,
+        reader: &mut R,
+        out_path: &Path,
+        rel_name: &str,
+        files_done: usize,
+        tel: &mut TelemetryCtx<'_>,
+    ) -> CoreResult<()> {
+        if let Some(p) = out_path.parent() {
+            std::fs::create_dir_all(p)?;
+        }
+        let (mut out_file, _) = create_verified_new_file(out_path, true)?;
+        let mut chunk = [0u8; 64 * 1024];
+
+        loop {
+            if self.cancel.load(Ordering::Relaxed) {
+                return Err(CoreError::Cancelled);
+            }
+            let read_len = reader.read(&mut chunk)?;
+            if read_len == 0 {
+                break;
+            }
+            self.written = self.written.saturating_add(read_len as u64);
+            if self.written > self.quota {
+                return Err(CoreError::Archive {
+                    message: format!("Límite de cuota ({} bytes) excedido", self.quota),
+                    source: None,
+                });
+            }
+            out_file.write_all(&chunk[..read_len])?;
+            tel.tick(Some(rel_name), self.written, files_done, false);
+        }
+
+        out_file.sync_all()?;
+        Ok(())
+    }
 }

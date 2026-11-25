@@ -13,7 +13,7 @@ use tar::{Archive as TarArchive, Builder as TarBuilder, EntryType};
 
 use super::ArchiveManager;
 use super::paths::sanitize_archive_rel_path;
-use super::progress::{ArchiveProgress, TelemetryCtx, copy_with_quota};
+use super::progress::{ArchiveProgress, QuotaCopy, TelemetryCtx};
 use super::staging::{
     create_staging_dir, discard_staging, finalize_staging_dir, read_zone_identifier,
 };
@@ -62,7 +62,7 @@ impl ArchiveManager {
         tel.init(0, approx_bytes);
 
         let (parent, tmp_dir) = create_staging_dir(dest_dir)?;
-        let mut bytes_written = 0u64;
+        let mut quota = QuotaCopy::new(max_quota_bytes, cancel);
         let mut files_done = 0usize;
 
         let res = (|| -> CoreResult<()> {
@@ -106,18 +106,9 @@ impl ArchiveManager {
                 if etype.is_dir() {
                     std::fs::create_dir_all(&out_path)?;
                 } else if etype.is_file() {
-                    copy_with_quota(
-                        &mut entry,
-                        &out_path,
-                        &rel_display,
-                        &mut bytes_written,
-                        files_done,
-                        max_quota_bytes,
-                        cancel,
-                        &mut tel,
-                    )?;
+                    quota.copy(&mut entry, &out_path, &rel_display, files_done, &mut tel)?;
                 }
-                tel.tick(Some(&rel_display), bytes_written, files_done, false);
+                tel.tick(Some(&rel_display), quota.written, files_done, false);
             }
             Ok(())
         })();
@@ -128,8 +119,8 @@ impl ArchiveManager {
         }
 
         finalize_staging_dir(&tmp_dir, dest_dir, parent, zone.as_deref())?;
-        tel.finish(bytes_written, files_done);
-        Ok(bytes_written)
+        tel.finish(quota.written, files_done);
+        Ok(quota.written)
     }
 
     pub(super) fn compress_to_tar_gz(
