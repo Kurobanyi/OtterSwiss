@@ -1010,7 +1010,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-33"></a>
 ### SEC-33 · El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL
-- **Afecta**: Sistema · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; explotable con SEC-32 · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; explotable con SEC-32 · **Estado**: Resuelto
 - **Qué pasa**: la URL del CAB se acepta si contiene `download.windowsupdate.com`; el último segmento se usa como nombre de archivo
   (acepta `..\` y rutas absolutas: crear una DLL nueva en System32 como administrador). El `update_id` del HTML solo rechaza
   `\ / . espacio`, así que admite `:` y comillas, que llegan al JSON del POST y a `cache_root.join`. No se usa el digest que publica el
@@ -1018,10 +1018,11 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers.rs:1272-1282`, `1290-1350`.
 - **Propuesta**: `validate_https_host` exacto sobre la URL final, nombre fijo (`driver.cab`), `update_id` parseado como GUID y
   verificación del digest antes de `expand`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `update_id` tiene que ser un GUID (`is_guid`, también en la búsqueda); `find_catalog_cab_url` acepta solo `.cab` con host exacto de `CATALOG_CAB_HOSTS`; el CAB se baja con `security::http` validando el host final y el tamaño, se guarda como `driver.cab` en una carpeta temporal que se borra, y tiene que estar firmado por Microsoft (Authenticode sobre el handle que queda abierto) antes de `expand`. `expand` y `pnputil` van por `run_captured` con timeout. Tests `update_id_solo_guid` y `enlace_cab_del_catalogo`. Sin confirmar en una VM que todos los CAB del Catálogo traen firma Authenticode: si alguno no la trae, falla de forma segura. Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="sec-34"></a>
 ### SEC-34 · `DriverCache` no se borra nunca y puede bloquear la carpeta de datos
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (crecimiento); probable (bloqueo) · **Estado**: Parcial
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (crecimiento); probable (bloqueo) · **Estado**: Resuelto
 - **Qué pasa**: el `.cab` y `extracted/` del Catálogo, el `.exe` de NVIDIA (~700 MB por versión) y `ext_<nonce>` del ZIP de Intel quedan
   en `ProgramData\OtterSwiss\DriverCache` para siempre (solo se borra el `.zip` en una rama). Además `verify_tree_owned_by_admins`
   falla por profundidad mayor que 8: un paquete con muchos niveles hace fallar todo `ensure_admin_only_data_dir()` posterior, y con
@@ -1030,6 +1031,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Propuesta**: extraer en un staging que se borre al soltarse (como `StagedDownload`) o excluir `DriverCache` del recorrido. Test: la
   carpeta queda vacía tras instalar.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los paquetes de fabricante se bajan y extraen en una carpeta que se borra al terminar (`VendorScratch`) y el `.exe` va por `StagedDownload`, que también se borra. Falta el CAB del Catálogo y el límite de profundidad de `verify_tree_owned_by_admins`. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): fabricante y Catálogo trabajan en `ScratchDir` (`DriverCache\<tipo>\<id>_<nonce>`), que se borra al soltarse, y el `.exe` va por `StagedDownload`; ya no queda nada en `DriverCache` que pueda crecer o hacer fallar `verify_tree_owned_by_admins`. Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="sec-35"></a>
 ### SEC-35 · Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar
@@ -1042,15 +1044,16 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-36"></a>
 ### SEC-36 · El parser del Catálogo corta el HTML por bytes y puede entrar en pánico
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: probable · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: probable · **Estado**: Resuelto
 - **Qué pasa**: `&html[abs_pos-64..abs_pos]` cae en medio de un carácter UTF-8 (por ejemplo «®» en un título): pánico, `run_full_scan`
   aborta y la vista muestra «Error de hilo».
 - **Dónde**: `src/core/drivers.rs:1214`.
 - **Propuesta**: `get(..)` con `floor_char_boundary`, o trabajar sobre bytes.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): el corte hacia atrás avanza hasta `is_char_boundary`. Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="sec-37"></a>
 ### SEC-37 · Drivers, firmware y paquetes de fabricante se instalan con un clic, sin confirmar ni respaldar
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: los drivers WUA que no son firmware quedan preseleccionados, incluidos los opcionales (`BrowseOnly`, `is_optional` se
   calcula y no se usa). Los botones de fabricante y Catálogo instalan sin `ConfirmDialog`, sin punto de restauración y sin
   `export_driver_store_backup`; firmware y BIOS también con un clic. `AcceptEula()` se llama solo y winget pasa
@@ -1058,14 +1061,16 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/ui/views/drivers.rs:109-121`, `164-188`, `540-553`, `600-614`; `src/core/drivers.rs:1101-1106`; `src/core/store/app_store.rs:1595`.
 - **Propuesta**: no preseleccionar opcionales; confirmar con la lista concreta (obligatorio si hay firmware); ofrecer respaldo antes;
   que el core reciba solo un ID y resuelva la URL.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los tres caminos (Windows Update, fabricante y Catálogo) pasan por un `ConfirmDialog` con la lista concreta, aviso rojo si hay firmware o BIOS y una casilla, marcada por defecto, para respaldar el Driver Store antes (si el respaldo falla, no se instala). Los drivers opcionales y el firmware ya no se preseleccionan. Quedan `AcceptEula()` automático tras la confirmación y la URL que viaja con el `VendorDriverUpdate` (el core ya no confía en ella: `SEC-30`). Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="sys-25"></a>
 ### SYS-25 · El escaneo de drivers se salta la política de exclusión y WSUS
-- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: observado (la política solo alimenta un aviso); inferido que WUA devuelva drivers · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: observado (la política solo alimenta un aviso); inferido que WUA devuelva drivers · **Estado**: Resuelto
 - **Qué pasa**: con `ExcludeWUDriversInQualityUpdate=1` o un servidor WSUS, la búsqueda fuerza `ssWindowsUpdate`, ofrece e instala
   drivers igual, y el aviso «la política está bloqueando drivers» aparece junto a la lista. En equipos gestionados se salta al administrador.
 - **Dónde**: `src/core/drivers.rs:916-918`, `1053-1055`, `1682-1684`; `src/ui/views/drivers.rs:120`, `353-357`.
 - **Propuesta**: con la política activa, no buscar ni instalar (o pedir confirmación explícita); usar `ssDefault`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): con `ExcludeWUDriversInQualityUpdate=1` o `UseWUServer=1` el escaneo no busca nada y las tres funciones de instalación devuelven error; la vista lo explica. La búsqueda usa `ssDefault` (el servidor del administrador) en vez de forzar Windows Update. Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="sys-26"></a>
 ### SYS-26 · Un driver instalado desde la app no se puede revertir
@@ -1120,12 +1125,13 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-19"></a>
 ### ERR-19 · Lecturas HTTP cortadas a la mitad se toman como completas
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Parcial
 - **Qué pasa**: si `InternetReadFile` falla a mitad se hace `break` y se devuelve `Ok` con datos truncados (un CAB cortado sale como
   «Error extrayendo», un JSON de NVIDIA cortado como «sin actualización»). `wininet_post_form` no fija timeouts, no mira el estado HTTP
   y corta en silencio a los 4 MiB.
 - **Dónde**: `src/core/drivers.rs:558-559`, `573-663`.
 - **Propuesta**: usar `security::http` (ver `AR-21` de PRACTICAS): `Err` al fallar, tope que falla, timeouts y estado en el POST.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): las descargas de fabricante y Catálogo pasan por `download_to_file` (falla si la lectura se corta o no coincide con `Content-Length`). Quedan `wininet_get_bytes` para los JSON/HTML y `wininet_post_form` (`AR-21`). Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="err-20"></a>
 ### ERR-20 · Sin red o con un feed caído, el escaneo de drivers dice «completo» sin avisar
@@ -1146,11 +1152,12 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-22"></a>
 ### ERR-22 · CAB y ZIP de drivers enteros en RAM; se bajan `.msu` y `.exe` para rechazarlos después
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: hasta 350 MB (CAB) y 900 MB (ZIP) en memoria; una URL `.msu` o `.exe` se descarga entera y luego se rechaza con «no es
   un .CAB estándar».
 - **Dónde**: `src/core/drivers.rs:1300-1303`, `1343-1344`, `1352`, `1418`, `1590-1594`.
 - **Propuesta**: descarga a archivo por streaming (`StagedDownload`) y filtrar la URL antes de bajar.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): CAB y ZIP se bajan a archivo por bloques, y solo se acepta un enlace `.cab`. Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
 
 <a id="err-23"></a>
 ### ERR-23 · Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre
