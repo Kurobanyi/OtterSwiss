@@ -1,0 +1,9 @@
+# Configuración de compilación compartida (versionada).
+#
+# ARQ-04: el CRT de MSVC se enlaza estático. Sin esto, otter_swiss.exe depende de VCRUNTIME140(_1).dll y no abre en un
+# Windows sin el Visual C++ Redistributable (lo que pasa en un equipo limpio y con la versión portable).
+#
+# Ajustes propios de cada equipo (p. ej. `--remap-path-prefix` con las rutas del autor, ARQ-01) van en el
+# `~/.cargo/config.toml` del usuario, bajo esta misma sección: Cargo une los dos arrays `rustflags`.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

@@ -19,5 +19,3 @@ staging/
 *.user
 *.suo
 
-# Configuracion local de cargo (rutas del equipo del autor; ARQ-01)
-/.cargo/config.toml
