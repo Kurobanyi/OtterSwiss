@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **75 hechas, 9 parciales y 30 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **77 hechas, 11 parciales y 26 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -41,13 +41,11 @@ dependencias directas se usan.
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
 | [`OR-06`](PRACTICAS-detalle.md#or-06) | `drivers.rs` tiene 1857 líneas y seis responsabilidades | M | Pendiente |
-| [`AR-21`](PRACTICAS-detalle.md#ar-21) | `drivers.rs` reimplementa el cliente HTTPS | M | Pendiente |
-| [`AR-22`](PRACTICAS-detalle.md#ar-22) | Descargas, caché y ZIP de drivers fuera de `StagedDownload`, `DownloadPolicy` y `ArchiveManager` | M | Pendiente |
-| [`AR-23`](PRACTICAS-detalle.md#ar-23) | Procesos con `Command` directo y rutas de System32 a mano | S | Pendiente |
+| [`AR-23`](PRACTICAS-detalle.md#ar-23) | Procesos con `Command` directo y rutas de System32 a mano | S | Parcial |
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
 | [`CL-19`](PRACTICAS-detalle.md#cl-19) | 65 `unsafe` sin `// SAFETY:` tapados por un `#[allow]` con motivo obsoleto | S/M | Pendiente |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
-| [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Pendiente |
+| [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Parcial |
 | [`TE-25`](PRACTICAS-detalle.md#te-25) | 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline | M | Pendiente |
 | [`TE-27`](PRACTICAS-detalle.md#te-27) | Texto de error de la tienda con `--danger` (regresión de UI-18) | S | Pendiente |
 

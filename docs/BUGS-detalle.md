@@ -1117,29 +1117,32 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-18"></a>
 ### ERR-18 · El informe de instalación de WUA inventa los contadores
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: con `orcSucceededWithErrors` se informa «OK: n-1, Fallos: 1»; si `ResultCode()` falla se asume ese valor; los fallos de
   `Add` se ignoran pero suman a `matched`; tras instalar la lista se vacía aunque haya fallos y se muestra el número crudo del enum.
 - **Dónde**: `src/core/drivers.rs:1145`, `1169-1180`; `src/ui/views/drivers.rs:205-206`.
 - **Propuesta**: contar con `IInstallationResult::GetUpdateResult(i)` y conservar los fallidos en la lista.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): el conteo sale de `GetUpdateResult(i)` de cada driver (si no se puede leer, cuenta como fallo); solo se cuentan los que entraron en la colección; la descarga sin código se toma como fallo. Con fallos, la lista queda en pantalla. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="err-19"></a>
 ### ERR-19 · Lecturas HTTP cortadas a la mitad se toman como completas
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Parcial
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: si `InternetReadFile` falla a mitad se hace `break` y se devuelve `Ok` con datos truncados (un CAB cortado sale como
   «Error extrayendo», un JSON de NVIDIA cortado como «sin actualización»). `wininet_post_form` no fija timeouts, no mira el estado HTTP
   y corta en silencio a los 4 MiB.
 - **Dónde**: `src/core/drivers.rs:558-559`, `573-663`.
 - **Propuesta**: usar `security::http` (ver `AR-21` de PRACTICAS): `Err` al fallar, tope que falla, timeouts y estado en el POST.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): las descargas de fabricante y Catálogo pasan por `download_to_file` (falla si la lectura se corta o no coincide con `Content-Length`). Quedan `wininet_get_bytes` para los JSON/HTML y `wininet_post_form` (`AR-21`). Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): drivers ya no tiene cliente HTTP propio: los JSON y el HTML van por `fetch_bytes` (`security::http`, estado 200, host final en lista y tope que falla) y el formulario del Catálogo por el nuevo `http::post_form` con timeouts. Prueba en vivo `catalogo_en_vivo` (ignorada por usar la red): búsqueda, POST y enlace al CAB contra el Catálogo real. Al probarla apareció que el parser buscaba `_link"` y el Catálogo usa comillas simples: la búsqueda del Catálogo nunca había encontrado nada; corregido. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="err-20"></a>
 ### ERR-20 · Sin red o con un feed caído, el escaneo de drivers dice «completo» sin avisar
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: NVIDIA, Intel y Catálogo devuelven vacío en silencio; `notes` siempre es `Vec::new()`; si WUA falla pero hay resultados
   de fabricante, `wua_note` se descarta y la vista dice «Escaneo completo».
 - **Dónde**: `src/core/drivers.rs:1469-1477`, `1547-1557`, `1704`, `1720`; `src/ui/views/drivers.rs:127-154`.
 - **Propuesta**: propagar cada error a `notes` y mostrarlos siempre.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): NVIDIA e Intel devuelven error si no se pueden consultar o la respuesta no se entiende, y el Catálogo también; `run_full_scan` los junta en `notes` y la vista muestra el resumen con la lista de fuentes que fallaron (aviso ámbar). Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="err-21"></a>
 ### ERR-21 · `pnputil` recibe un comodín que no admite
@@ -1161,21 +1164,23 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-23"></a>
 ### ERR-23 · Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lógica) · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lógica) · **Estado**: Resuelto
 - **Qué pasa**: con `ACPI\VEN_INT&DEV_33A0`, `ven` sale `"INT&"` y el ID corto `VEN_INT&&DEV_…`. Si `friendly_gpu_version` devuelve
   `None` se compara `32.0.15.x` contra `566.xx`; con versión «Desconocida», `is_version_newer` da `true`: NVIDIA se ofrece siempre. La
   build `"22631"` inventada entra en la consulta a NVIDIA.
 - **Dónde**: `src/core/drivers.rs:85-135`, `686-714`, `716-733`, `1489-1494`.
 - **Propuesta**: cortar VEN/DEV en `&`; `is_newer -> Option<bool>` (`None` si no es numérica); build como `Option`. Tests de los parsers.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `hwid_field` corta cada campo del Hardware ID en `&` o `\` (`ACPI\VEN_INT&DEV_33A0` da `INT`); `is_version_newer` no ofrece nada si alguna versión no es numérica; NVIDIA solo compara su versión pública (`566.xx`) y `read_windows_build` devuelve `None` en vez de inventar `22631`. Tests `id_pci_se_acorta_a_ven_dev`, `id_acpi_y_usb`, `version_desconocida_no_ofrece_actualizar` y `version_amigable_de_nvidia`. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="err-24"></a>
 ### ERR-24 · Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Parcial
 - **Qué pasa**: Moonlight usa `/S` pero su instalador es WiX Burn (`/quiet`): abriría la UI y esperaría hasta el timeout. GOG está como
   `Evergreen` con URL fija 2.0.75.1: la UI dice «última» y es falso. IDs msstore sospechosos: Calculadora `9WZDNCRFJ364` (la
   Calculadora es `9WZDNCRFHVN5`), Fotos `9NBLGGH42THS`, Enlace Móvil `9NBLGGH4S547`.
 - **Dónde**: `src/core/store/app_store.rs` (entradas citadas).
 - **Propuesta**: verificar cada uno con `winget show --id X --source msstore` y probar los instaladores en una VM.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): IDs de la Store corregidos según listas de la comunidad: Calculadora `9WZDNCRFHVN5` (el anterior era Skype), Fotos `9WZDNCRFJBH4`, Enlace Móvil `9NMPJ99VJBWV`. Faltan los argumentos silenciosos de Moonlight y la versión de GOG, que piden una VM. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="con-03"></a>
 ### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación
@@ -1195,37 +1200,41 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="ui-20"></a>
 ### UI-20 · Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado; DisplayName exactos inferidos · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado; DisplayName exactos inferidos · **Estado**: Resuelto
 - **Qué pasa**: las 15 UWP se buscan en `Uninstall` del registro, donde la Store no las registra. Python: `Python 3.12.8 (64-bit)` frente
   al prefijo `Python 3.12` deja `.8` y no coincide. Rufus es portable: se ejecuta su GUI como «instalador», el exe se borra y se muestra
   «Listo». Moonlight probablemente tampoco coincide.
 - **Dónde**: `src/core/store/app_store.rs:1530-1572`.
 - **Propuesta**: UWP con `PackageManager`/`Get-AppxPackage`; prefijo `Python 3.12.`; sacar Rufus o tratarlo como portable; test de
   `display_name_matches` con nombres reales.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): las apps de la Store se detectan por su paquete en el repositorio de AppModel del usuario (`uninstall_display_prefix` es el nombre del paquete, p. ej. `Microsoft.WindowsCalculator`): en esta PC detecta exactamente las 10 que hay. `Python 3.12` coincide con `Python 3.12.8 (64-bit)` (test). Rufus sale del catálogo: es portable y se abría su interfaz como «instalador». Moonlight sin confirmar. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ui-21"></a>
 ### UI-21 · «Instalar (N)» incluye apps que el filtro oculta
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: la selección sobrevive al filtro y a la búsqueda, no se limpia tras el lote y deja reinstalar apps ya instaladas.
 - **Dónde**: `src/ui/views/tools.rs:448-452`, `460`, `494-507`.
 - **Propuesta**: contar e instalar solo lo visible (o mostrar lo oculto) y limpiar al terminar.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): «Instalar (N)» cuenta e instala solo lo visible con la búsqueda y la categoría actuales (`filter_catalog`), y la selección se limpia al encolar el lote. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ui-22"></a>
 ### UI-22 · Temperaturas de GPU o distancias a TjMax mostradas como CPU
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: lógica confirmada; nombres de LHM inferidos · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: lógica confirmada; nombres de LHM inferidos · **Estado**: Resuelto
 - **Qué pasa**: `is_cpu_sensor_name` acepta «GPU Core» (contiene `core`) y «CPU Core #n Distance to TjMax» (tipo Temperature, valor
   1-125): se muestran como «CPU (LibreHardwareMonitor)».
 - **Dónde**: `src/core/hardware/sensors/wmi.rs:144-175`.
 - **Propuesta**: filtrar por `Identifier`/`Parent` (`/intelcpu/`, `/amdcpu/`) y excluir «Distance». Test con nombres reales.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `is_cpu_temperature` decide por `Identifier` (`/amdcpu/`, `/intelcpu/`), descarta «Distance to TjMax» y, sin `Identifier`, lo que diga «GPU». Test `sensor_gpu_no_cuenta_como_cpu`. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="arq-05"></a>
 ### ARQ-05 · La vista de drivers detecta el reinicio buscando una palabra en el mensaje
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: `msg.contains("Reinicio") || msg.contains("Reboot")` sobre un texto que arma el core en español; «Reboot» nunca se
   produce y cualquier cambio de redacción rompe el aviso. El instalador de fabricante se lanza sin esperar y el aviso dice «iniciado»
   como si fuera éxito.
 - **Dónde**: `src/ui/views/drivers.rs:619-621`; `src/core/drivers.rs:1668-1678`.
 - **Propuesta**: devolver `DriverInstallOutcome { Installed { reboot_required }, InstallerLaunched }` (ver `AR-26` de PRACTICAS).
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `install_catalog_driver` e `install_vendor_update` devuelven `DriverInstallReport` con `reboot_required` (códigos 3010/1641); la vista ya no busca palabras en el mensaje. El instalador de fabricante ahora se espera, así que el aviso dice «terminado» con su resultado real. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="tst-02"></a>
 ### TST-02 · El código nuevo de drivers, tienda y sensores no tiene tests
@@ -1236,4 +1245,5 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers.rs`; `src/core/store/app_store.rs:1711-1746`; `src/core/hardware/sensors/wmi.rs`.
 - **Propuesta**: ver `CL-22` de PRACTICAS.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de los códigos de winget, de las invariantes del catálogo y de la cadena Authenticode. Faltan los parsers de drivers y el sensor. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de IDs de hardware, versiones, versión de NVIDIA, GUID y enlace del CAB, sensores de LHM, códigos de winget, invariantes del catálogo, cadena Authenticode y detección de Python; prueba en vivo del Catálogo. Falta `collect_intel_matches` (`SYS-27`, formato desconocido). Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 

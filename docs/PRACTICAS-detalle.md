@@ -970,32 +970,35 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-21"></a>
 ### AR-21 · `drivers.rs` reimplementa el cliente HTTPS
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `wininet_get_bytes` (102 líneas) copia `security::http::get` + `read_to_end_capped`; `wininet_post_form` (91) agrega un
   POST que `http.rs` no tiene y corta en silencio a 4 MiB. Ninguno comprueba `final_url` contra una lista de hosts. User agents fijos
   (`OtterSwiss-Catalog/4.0`…) y `NvBackend/36.0.0.0` haciéndose pasar por el cliente de NVIDIA.
 - **Dónde**: `src/core/drivers.rs:470-663`.
 - **Propuesta**: `http::get` y un `http::post_form` nuevo en `security/http.rs`; cada llamador valida `final_url`. Causa de `ERR-19`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): fuera `wininet_get_bytes` y `wininet_post_form`: drivers usa `security::http` (`fetch_bytes`, `post_form` nuevo, `get_with_agent` solo para NVIDIA) con hosts exactos por servicio; desaparecen 10 `unsafe` sin SAFETY. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ar-22"></a>
 ### AR-22 · Descargas, caché y ZIP de drivers fuera de `StagedDownload`, `DownloadPolicy` y `ArchiveManager`
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: el .cab y el .zip se bajan a memoria y se escriben sin hash ni firma; la rama .exe arma a mano lo que ya hacen
   `StagedDownload` + `run_in_job`; el ZIP se extrae con `ZipArchive::extract`; la caché no se limpia. Causa de `SEC-30`, `SEC-33`,
   `SEC-34` y `ERR-22`.
 - **Dónde**: `src/core/drivers.rs:1325-1350`, `1565-1673`.
 - **Propuesta**: todo instalador por `StagedDownload::download` con política que exige firma; extracción con `ArchiveManager`; caché que
   se borra al soltarse.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): fabricante y Catálogo descargan con `download_to_file`/`StagedDownload` a `ScratchDir`, el ZIP se extrae con `ArchiveManager` y todo ejecutable o CAB pasa por Authenticode. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ar-23"></a>
 ### AR-23 · Procesos con `Command` directo y rutas de System32 a mano
-- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: 6 `Command::new` en `drivers.rs`: tres `.output()` sin el timeout de `run_captured` y tres `.spawn()` sin Job ni espera.
   `get_system32_tool` duplica `process::system32_dir` con un `C:\Windows\System32` literal; `CREATE_NO_WINDOW` redefinido;
   `resolve_winget_binary` acaba en `"winget.exe"` relativo (`SEC-31`).
 - **Dónde**: `src/core/drivers.rs:51`, `364-372`, `868`, `1357`, `1382`, `1619`, `1628`, `1668`; `src/core/store/app_store.rs:1444-1458`.
 - **Propuesta**: `run_captured` para herramientas de consola, `run_in_job` con `INSTALLER_TIMEOUT` para instaladores, `Err` si no hay
   ruta absoluta.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): instaladores con `run_in_job` y `expand`/`pnputil` con `run_captured`; winget solo con ruta absoluta del perfil. Queda `export_driver_store_backup` con `Command` y `get_system32_tool`. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ar-24"></a>
 ### AR-24 · Guardianes y helpers Win32 duplicados
@@ -1077,12 +1080,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-22"></a>
 ### CL-22 · Lógica pura nueva sin tests
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: sin tests `short_hw_id`, `extract_ven_dev`, `friendly_gpu_version`, `is_version_newer`, `url_encode`, `strip_html_tags`,
   los parsers del Catálogo, NVIDIA e Intel, `is_cpu_sensor_name`, ni invariantes del catálogo (IDs únicos, verificación, `winget_id`).
 - **Dónde**: `src/core/drivers.rs`; `src/core/hardware/sensors/wmi.rs`; `src/core/store/app_store.rs`.
 - **Propuesta**: tests junto al código (`id_pci_se_acorta_a_ven_dev`, `catalogo_directo_siempre_verificado`,
   `sensor_gpu_no_cuenta_como_cpu`) y fixtures chicos en `tests/fixtures/`. Ver `TST-02`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de IDs de hardware, versiones, GUID, enlace del CAB, sensores, winget, catálogo y Authenticode. Faltan `strip_html_tags`, `url_encode` y el JSON de Intel. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="cl-23"></a>
 ### CL-23 · Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID

@@ -27,17 +27,16 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 |---|---|---|---|---|---|
 | Seguridad (`SEC-`) | 37 | 2 | 1 | 0 | 34 |
 | Sistema y rollback (`SYS-`) | 27 | 2 | 1 | 0 | 24 |
-| Errores y procesos (`ERR-`) | 24 | 5 | 0 | 0 | 19 |
+| Errores y procesos (`ERR-`) | 24 | 1 | 0 | 0 | 23 |
 | Concurrencia (`CON-`) | 3 | 1 | 0 | 0 | 2 |
-| Arquitectura (`ARQ-`) | 5 | 1 | 0 | 0 | 4 |
-| Interfaz (`UI-`) | 22 | 4 | 0 | 0 | 18 |
+| Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
+| Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 2 | 2 | 0 | 0 | 0 |
-| **Total** | **124** | **17** | **3** | **1** | **103** |
+| **Total** | **124** | **9** | **3** | **1** | **111** |
 
-La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; ya se cerraron `SEC-30`, `SEC-31`,
-`SEC-33`, `SEC-34`, `SEC-36`, `SEC-37`, `SYS-25`, `UI-19`, `ERR-15`, `ERR-16`, `ERR-17`, `ERR-21` y `ERR-22`; `SEC-32` y `ERR-19` quedan
-parciales. Sin probar instalando en una VM.
+La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; quedan abiertos `SEC-32` (parcial: el
+proxy del usuario), `SEC-35`, `SYS-26`, `SYS-27`, `CON-03`, `ERR-24` (parcial) y `TST-02` (parcial). Sin probar instalando en una VM.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -52,16 +51,8 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | [`SEC-35`](BUGS-detalle.md#sec-35) | Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar | Sistema | Baja | Pendiente |
 | [`SYS-26`](BUGS-detalle.md#sys-26) | Un driver instalado desde la app no se puede revertir | Sistema, Usuario | Media | Pendiente |
 | [`SYS-27`](BUGS-detalle.md#sys-27) | El JSON de Intel puede ofrecer el paquete de otro dispositivo | Sistema, Usuario | Media | Pendiente |
-| [`ERR-18`](BUGS-detalle.md#err-18) | El informe de instalación de WUA inventa los contadores | Usuario | Media | Pendiente |
-| [`ERR-19`](BUGS-detalle.md#err-19) | Lecturas HTTP cortadas a la mitad se toman como completas | Usuario | Media | Parcial |
-| [`ERR-20`](BUGS-detalle.md#err-20) | Sin red o con un feed caído, el escaneo de drivers dice «completo» sin avisar | Usuario | Media | Pendiente |
-| [`ERR-23`](BUGS-detalle.md#err-23) | Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre | Usuario | Baja | Pendiente |
-| [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Pendiente |
+| [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
 | [`CON-03`](BUGS-detalle.md#con-03) | Windows Update se consulta e instala sin plazo ni cancelación | Usuario | Media | Pendiente |
-| [`UI-20`](BUGS-detalle.md#ui-20) | Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse | Usuario | Media | Pendiente |
-| [`UI-21`](BUGS-detalle.md#ui-21) | «Instalar (N)» incluye apps que el filtro oculta | Usuario | Baja | Pendiente |
-| [`UI-22`](BUGS-detalle.md#ui-22) | Temperaturas de GPU o distancias a TjMax mostradas como CPU | Usuario | Media | Pendiente |
-| [`ARQ-05`](BUGS-detalle.md#arq-05) | La vista de drivers detecta el reinicio buscando una palabra en el mensaje | Usuario | Baja | Pendiente |
 | [`TST-02`](BUGS-detalle.md#tst-02) | El código nuevo de drivers, tienda y sensores no tiene tests | Desarrollador | Media | Parcial |
 
 ## Diferidos y pendientes de decisión
@@ -77,12 +68,12 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. Resto de `SEC-32` (proxy del usuario en WinInet) y `SEC-35` (SHA-256 en las entradas versionadas).
-2. Tienda: `UI-20` (detección de instaladas) y `ERR-24` (en VM).
-3. Resto de drivers (`ERR-18`…`ERR-23`, `SYS-26`, `SYS-27`, `CON-03`, `UI-19`, `ARQ-05`) junto con el reordenamiento `OR-06`/`AR-21`…`AR-23`
-   de `docs/PRACTICAS.md`, que reemplaza el cliente HTTP y las descargas propias por las primitivas de `security/`.
-4. En una VM: argumentos silenciosos e IDs de la Store (`ERR-24`), instalar drivers y quitar una app Appx.
-5. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`), `UI-11`.
+1. Decisión del autor: `SEC-32` (WinInet sin el proxy del usuario rompe redes con proxy obligatorio) y `SEC-35` (fijar SHA-256 en
+   las entradas versionadas obliga a actualizarlos con cada versión).
+2. Drivers: `SYS-26` (revertir un driver instalado), `CON-03` (Windows Update con cancelación) y `SYS-27` (formato real del JSON de Intel).
+3. En una VM: instalar un driver de cada camino, quitar una app Appx, `ERR-24` (Moonlight, GOG) y la ventana en tamaño chico.
+4. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`), `UI-11`.
+5. Mejoras de `docs/PRACTICAS.md`.
 
 ## Patrones
 
