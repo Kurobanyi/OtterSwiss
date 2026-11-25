@@ -1,3 +1,5 @@
+// src/core/trust.rs
+
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::windows::fs::OpenOptionsExt;
@@ -94,12 +96,6 @@ pub fn get_program_data_dir() -> CoreResult<PathBuf> {
     Ok(PathBuf::from(path_str))
 }
 
-/// Único punto de acceso a `C:\ProgramData\OtterSwiss`.
-///
-/// `C:\ProgramData` deja a cualquier usuario crear carpetas y archivos (de los que queda como dueño), así que
-/// la carpeta se crea ya con un descriptor solo-admin, se reinician dueño y DACL si existía, y se rechaza
-/// cualquier reparse point o hijo cuyo dueño no sea Administradores o SYSTEM: esos archivos pudo plantarlos
-/// un usuario sin privilegios para que OtterSwiss los lea o ejecute como administrador.
 pub fn ensure_admin_only_data_dir() -> CoreResult<PathBuf> {
     let base = get_program_data_dir()?;
     let target = base.join("OtterSwiss");
@@ -125,7 +121,6 @@ pub fn ensure_admin_only_data_dir() -> CoreResult<PathBuf> {
     Ok(target)
 }
 
-/// Crea `path` con un descriptor de seguridad solo-admin desde el primer instante.
 pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
     let sddl = to_wide_null("O:BAG:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)");
     let mut psd = PSECURITY_DESCRIPTOR::default();
@@ -155,7 +150,6 @@ pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
 
     match res {
         Ok(()) => Ok(()),
-        // Otro proceso la creó entre la comprobación y aquí: la validación posterior decide.
         Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => Ok(()),
         Err(e) => Err(CoreError::Trust {
             message: format!("No se pudo crear '{}': {}", path.display(), e),
@@ -164,8 +158,6 @@ pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
     }
 }
 
-/// Quita la DACL protegida de `path` y deja que herede los permisos de su carpeta padre (y los propague a
-/// todo el árbol). Se usa al terminar una extracción hecha en un staging solo-admin.
 pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
     let mut empty_acl = ACL::default();
     unsafe {
@@ -204,7 +196,6 @@ pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
     Ok(())
 }
 
-/// `true` si el dueño de `path` es Administradores o SYSTEM.
 fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
     let wide = to_wide_null(path);
     let mut owner = PSID::default();
@@ -241,7 +232,6 @@ fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
     Ok(ok)
 }
 
-/// Recorre `root` y falla si encuentra un reparse point o un objeto que no sea de Administradores o SYSTEM.
 fn verify_tree_owned_by_admins(root: &Path, max_depth: usize) -> CoreResult<()> {
     let mut stack = vec![(root.to_path_buf(), 0usize)];
     while let Some((dir, depth)) = stack.pop() {
@@ -394,8 +384,6 @@ pub fn secure_download_and_verify(
     secure_download_and_verify_with_progress(dest_path, policy, None, None)
 }
 
-/// Igual que `secure_download_and_verify`, informando el porcentaje en `progress` y abortando si `cancel`
-/// se activa.
 pub fn secure_download_and_verify_with_progress(
     dest_path: &Path,
     policy: &DownloadPolicy<'_>,
@@ -435,7 +423,7 @@ pub fn secure_download_and_verify_with_progress(
         });
     }
 
-    let agent_w = to_wide_null("OtterSwiss/3.0");
+    let agent_w = to_wide_null("OtterSwiss/4.0");
     let h_internet = WinInetHandle::new(unsafe {
         InternetOpenW(
             PCWSTR(agent_w.as_ptr()),
@@ -632,7 +620,7 @@ pub fn secure_download_and_verify_with_progress(
     file.sync_all()?;
 
     if let Some(expected_sha) = policy.expected_sha256_hex {
-        let actual_sha = format!("{:x}", hasher.finalize());
+        let actual_sha: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         if !actual_sha.eq_ignore_ascii_case(expected_sha.trim()) {
             return Err(CoreError::Trust {
                 message: format!(
@@ -658,11 +646,8 @@ pub fn secure_download_and_verify_with_progress(
     Ok(file)
 }
 
-/// Reabre un instalador ya descargado para ejecutarlo. El handle comparte solo lectura, así que mientras
-/// viva nadie puede escribir, renombrar ni borrar el archivo; SHA-256 y Authenticode se repiten sobre este
-/// mismo handle. El llamador mantiene el `File` vivo hasta que el proceso haya terminado.
 pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> CoreResult<File> {
-    use std::io::{Seek, SeekFrom};
+    use std::io::{Read, Seek, SeekFrom};
 
     if policy.expected_sha256_hex.is_none() && policy.expected_signer_cn.is_none() {
         return Err(CoreError::Trust {
@@ -690,8 +675,15 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
 
     if let Some(expected_sha) = policy.expected_sha256_hex {
         let mut hasher = Sha256::new();
-        std::io::copy(&mut file, &mut hasher)?;
-        let actual = format!("{:x}", hasher.finalize());
+        let mut buf = [0u8; 32 * 1024];
+        loop {
+            let n = file.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        let actual: String = hasher.finalize().iter().map(|b| format!("{:02x}", b)).collect();
         if !actual.eq_ignore_ascii_case(expected_sha.trim()) {
             return Err(CoreError::Trust {
                 message: format!(
@@ -780,8 +772,6 @@ pub fn verify_authenticode_on_handle(
     let trust_data = WINTRUST_DATA {
         cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
         dwUIChoice: WTD_UI_NONE,
-        // Comprobar revocación de toda la cadena (excepto la raíz): un certificado revocado por robo de la
-        // clave privada no debe seguir siendo aceptado (SEC-12).
         fdwRevocationChecks: WTD_REVOKE_WHOLECHAIN,
         dwProvFlags: WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
         dwUnionChoice: WTD_CHOICE_FILE,

@@ -20,6 +20,7 @@ use views::cleaner::CleanerView;
 use views::dashboard::DashboardView;
 use views::debloater::DebloaterView;
 use views::dns::DnsView;
+use views::drivers::DriversView;
 use views::hardware_tab::HardwareTab;
 use views::sensors::SensorsView;
 use views::tools::ToolsView;
@@ -39,6 +40,7 @@ pub enum ActiveTab {
     Cleaner,
     Debloater,
     Dns,
+    Drivers,
     Archiver,
     Tools,
     Uninstaller,
@@ -46,11 +48,12 @@ pub enum ActiveTab {
     Sensors,
 }
 
-const KEEP_ALIVE_TABS: [ActiveTab; 7] = [
+const KEEP_ALIVE_TABS: [ActiveTab; 8] = [
     ActiveTab::Dashboard,
     ActiveTab::Cleaner,
     ActiveTab::Debloater,
     ActiveTab::Dns,
+    ActiveTab::Drivers,
     ActiveTab::Archiver,
     ActiveTab::Tools,
     ActiveTab::Uninstaller,
@@ -273,7 +276,6 @@ fn run_installer_worker(
                     s.progress_percent = 100;
                     s.progress_label = None;
                     s.is_working = false;
-                    // UI-02: el resumen dice qué falló o si se canceló, no un «OK» genérico.
                     let en = lang_is_en();
                     s.summary_msg = Some(match (cancelled, err_count, en) {
                         (true, _, true) => {
@@ -305,7 +307,6 @@ pub fn App() -> Element {
     let mut current_theme = use_signal(Theme::load_persisted);
     let mut current_lang = use_signal(Lang::load_persisted);
     let mut active_tab = use_signal(|| ActiveTab::Dashboard);
-    // CON-02: una pestaña visitada sigue montada (oculta) para no perder una tarea en curso.
     let mut visited_tabs = use_signal(|| HashSet::from([ActiveTab::Dashboard]));
     use_effect(move || {
         let tab = *active_tab.read();
@@ -321,7 +322,6 @@ pub fn App() -> Element {
     let mut system_specs = use_signal(|| None::<crate::core::specs::SystemSpecs>);
     let mut specs_error = use_signal(|| None::<String>);
     use_future(move || async move {
-        // UI-06: un fallo se muestra en la pestaña en vez de dejarla «Analizando...» para siempre.
         match tokio::task::spawn_blocking(crate::core::specs::collect_system_specs).await {
             Ok(Ok(data)) => system_specs.set(Some(data)),
             Ok(Err(e)) => specs_error.set(Some(e.to_string())),
@@ -400,7 +400,6 @@ pub fn App() -> Element {
         spawn(async move {
             let res = tokio::task::spawn_blocking(move || {
                 let installer_path = download_and_install_update(&info, &cancel_arc, &prog_arc)?;
-                // Solo vuelve si no pudo lanzar el instalador; si lo lanza, la app se cierra.
                 launch_installer_and_exit(&installer_path, &info)
             })
             .await
@@ -468,6 +467,11 @@ pub fn App() -> Element {
                         class: if *active_tab.read() == ActiveTab::Dns { "top-nav-item active" } else { "top-nav-item" },
                         onclick: move |_| active_tab.set(ActiveTab::Dns),
                         "DNS"
+                    }
+                    button {
+                        class: if *active_tab.read() == ActiveTab::Drivers { "top-nav-item active" } else { "top-nav-item" },
+                        onclick: move |_| active_tab.set(ActiveTab::Drivers),
+                        "Drivers"
                     }
                     button {
                         class: if *active_tab.read() == ActiveTab::Archiver { "top-nav-item active" } else { "top-nav-item" },
@@ -541,7 +545,6 @@ pub fn App() -> Element {
                 }
             }
 
-            // --- Modal de Actualización Disponible (UI-09) ---
             if *show_update_modal.read() {
                 if let Some(upd) = update_info.read().clone() {
                     {
@@ -615,8 +618,6 @@ pub fn App() -> Element {
             }
 
             main { class: "main-content-full",
-                // CON-02: las pestañas con tareas largas se montan al visitarlas y quedan vivas, ocultas.
-                // Sensores y Hardware no tienen tareas: Sensores se desmonta para dejar de sondear.
                 for tab in KEEP_ALIVE_TABS {
                     if visited_tabs.read().contains(&tab) {
                         div {
@@ -627,6 +628,7 @@ pub fn App() -> Element {
                                 ActiveTab::Cleaner => rsx! { CleanerView {} },
                                 ActiveTab::Debloater => rsx! { DebloaterView {} },
                                 ActiveTab::Dns => rsx! { DnsView {} },
+                                ActiveTab::Drivers => rsx! { DriversView {} },
                                 ActiveTab::Archiver => rsx! { ArchiverView {} },
                                 ActiveTab::Tools => rsx! { ToolsView {} },
                                 ActiveTab::Uninstaller => rsx! { UninstallerView {} },

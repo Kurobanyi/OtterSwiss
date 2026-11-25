@@ -1,3 +1,5 @@
+// tests/vm_sistema.rs
+
 //! Recorrido de las acciones que cambian el sistema, contra Windows real y **como administrador**.
 //!
 //! Solo para una VM desechable: aplica ajustes, cambia el DNS, elimina una app Appx, borra temporales y
@@ -62,7 +64,7 @@ fn raw_value(hklm: bool, subkey: &str, name: &str) -> Option<(u32, Vec<u8>)> {
     };
     let key = root.open_subkey_with_flags(subkey, flags).ok()?;
     let v = key.get_raw_value(name).ok()?;
-    Some((v.vtype as u32, v.bytes))
+    Some((v.vtype as u32, v.bytes.into_owned()))
 }
 
 fn service_start(name: &str) -> Option<u32> {
@@ -186,7 +188,6 @@ fn debloater(c: &mut Checks) {
         "el respaldo del Debloater se borró",
     );
 
-    // Una app Appx del catálogo (la VM es desechable): debe desaparecer del escaneo.
     let Ok(scan) = DebloaterManager::scan_system() else {
         c.check(false, "escanear apps Appx");
         return;
@@ -221,7 +222,6 @@ fn debloater(c: &mut Checks) {
 fn dns(c: &mut Checks, data: &Path) {
     println!("\n== DNS");
     let adapters = list_active_adapters().unwrap_or_default();
-    // Preferir uno físico; en Windows Sandbox solo hay un adaptador virtual de Hyper-V.
     let Some(ad) = adapters
         .iter()
         .find(|a| !a.is_virtual_or_vpn)
@@ -310,12 +310,10 @@ fn archivador(c: &mut Checks) {
     let cancel = AtomicBool::new(false);
     let res = ArchiveManager::compress_path(&src, &zip, ArchiveFormat::Zip, &cancel);
     c.check(res.is_ok() && zip.is_file(), "comprimir a .zip");
-    // Marca del archivo descargado, para comprobar que se propaga (SEC-15).
     let mut ads = zip.as_os_str().to_os_string();
     ads.push(":Zone.Identifier");
     std::fs::write(PathBuf::from(ads), "[ZoneTransfer]\r\nZoneId=3\r\n").ok();
 
-    // `proyecto` ya existe: extraer no debe tocarla (SYS-01).
     std::fs::write(src.join("centinela.txt"), "no tocar").ok();
     let dest = resolve_extract_destination(&src);
     c.check(dest != src, &format!("destino libre: {}", dest.display()));
@@ -379,7 +377,6 @@ fn desinstalador(c: &mut Checks) {
         c.check(false, "la app falsa aparece en la lista");
         return;
     };
-    // Mientras sigue registrada, su carpeta no es un rastro (SYS-04).
     let early = UninstallerManager::scan_leftovers(&app).unwrap_or_default();
     c.check(
         !early

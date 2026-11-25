@@ -1,3 +1,5 @@
+// src/core/win_common.rs
+
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
@@ -68,8 +70,6 @@ pub fn wide_ptr_to_string_and_free(ptr: PWSTR) -> String {
     result
 }
 
-/// Carpeta conocida de Windows por `SHGetKnownFolderPath`. Se usa en lugar de variables de entorno
-/// (`%ProgramFiles%`, `%SystemRoot%`…), que un proceso sin elevar puede redefinir en `HKCU\Environment`.
 pub fn known_folder(id: &windows::core::GUID) -> Option<std::path::PathBuf> {
     use windows::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
     let raw = unsafe { SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None) }.ok()?;
@@ -97,8 +97,6 @@ pub fn local_app_data_dir() -> Option<std::path::PathBuf> {
     known_folder(&windows::Win32::UI::Shell::FOLDERID_LocalAppData)
 }
 
-/// Buffer de bytes alineado a 8. Las APIs de Windows devuelven estructuras dentro de un buffer de bytes;
-/// reinterpretar un `Vec<u8>` (alineado a 1) como esa estructura es comportamiento indefinido (SEC-28).
 pub struct AlignedBuf {
     words: Vec<u64>,
     len: usize,
@@ -169,7 +167,6 @@ impl SafeLibrary {
 
     pub fn load_from_verified_path(path: &Path) -> CoreResult<Self> {
         let wide = to_wide_null(path);
-        // Las dependencias de la DLL se buscan solo junto a ella y en System32, nunca en el directorio actual.
         let module = unsafe {
             LoadLibraryExW(
                 PCWSTR(wide.as_ptr()),
@@ -287,8 +284,6 @@ pub struct NamedMutex {
 }
 
 impl NamedMutex {
-    /// Crea (o abre) el mutex con una DACL solo para Administradores y SYSTEM: así un usuario sin privilegios
-    /// no puede crearlo antes y retenerlo para bloquear respaldos y rollbacks (SEC-23).
     fn open(name: &str) -> CoreResult<SafeHandle> {
         use windows::Win32::Security::Authorization::{
             ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
@@ -328,7 +323,6 @@ impl NamedMutex {
             .ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))
     }
 
-    /// `WAIT_ABANDONED` significa que el dueño anterior murió sin soltarlo: el mutex ya es nuestro (CON-01).
     fn wait(handle: &SafeHandle, timeout_ms: u32) -> windows::Win32::Foundation::WAIT_EVENT {
         unsafe { WaitForSingleObject(handle.raw(), timeout_ms) }
     }
@@ -345,7 +339,6 @@ impl NamedMutex {
         Err(CoreError::AlreadyRunning)
     }
 
-    /// Espera el mutex hasta 60 s; nunca indefinidamente.
     pub fn acquire_blocking(name: &str) -> CoreResult<Self> {
         let handle = Self::open(name)?;
         let w = Self::wait(&handle, 60_000);
@@ -421,12 +414,28 @@ pub struct HardwareProfile {
 
 impl HardwareProfile {
     pub fn detect() -> Self {
-        let mut sys = System::new();
-        sys.refresh_memory();
-        sys.refresh_cpu_all();
+        let (logical_cores, total_ram_mb, sys_cpu_brand) = match System::new() {
+            Ok(mut sys) => {
+                sys.refresh_memory();
+                sys.refresh_cpu_all();
+                let cores = sys.cpus().len().max(1);
+                let ram_mb = sys.total_memory() / (1024 * 1024);
+                let brand = sys
+                    .cpus()
+                    .first()
+                    .map(|c| c.brand().trim().to_string())
+                    .filter(|s| !s.is_empty());
+                (cores, ram_mb, brand)
+            }
+            Err(_) => (
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4),
+                8192,
+                None,
+            ),
+        };
 
-        let logical_cores = sys.cpus().len().max(1);
-        let total_ram_mb = sys.total_memory() / (1024 * 1024);
         let is_laptop_or_battery = detect_battery_presence();
 
         let tier = if logical_cores >= 8 && total_ram_mb >= 14_336 {
@@ -437,7 +446,7 @@ impl HardwareProfile {
             HardwareTier::LowEnd
         };
 
-        let cpu_name = detect_cpu_name(&sys);
+        let cpu_name = detect_cpu_name(sys_cpu_brand.as_deref());
         let gpu_names = detect_gpu_names();
         let motherboard = detect_motherboard_name();
         let storage_drives = detect_storage_drives();
@@ -455,7 +464,7 @@ impl HardwareProfile {
     }
 }
 
-fn detect_cpu_name(sys: &System) -> String {
+fn detect_cpu_name(fallback_brand: Option<&str>) -> String {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     if let Ok(k) = hklm.open_subkey_with_flags(
         r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
@@ -468,10 +477,10 @@ fn detect_cpu_name(sys: &System) -> String {
             }
         }
     }
-    sys.cpus()
-        .first()
-        .map(|c| c.brand().trim().to_string())
+    fallback_brand
+        .map(str::trim)
         .filter(|s| !s.is_empty())
+        .map(str::to_string)
         .unwrap_or_else(|| "Procesador x86_64".into())
 }
 
@@ -636,7 +645,6 @@ pub fn detect_battery_presence() -> bool {
     }
 }
 
-/// Reinicia Windows de forma nativa habilitando `SE_SHUTDOWN_NAME` en el token actual.
 pub fn reboot_system_now() -> CoreResult<()> {
     let mut raw_token = HANDLE::default();
     unsafe {

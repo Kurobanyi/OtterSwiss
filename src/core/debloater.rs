@@ -1,3 +1,5 @@
+// src/core/debloater.rs
+
 use std::collections::HashMap;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -448,7 +450,6 @@ pub struct DebloatItemOutcome {
 
 #[derive(Debug, Clone, Default)]
 pub struct DebloatReport {
-    /// `true` si el usuario canceló: el informe incluye lo que ya se hizo antes de cancelar.
     pub cancelled: bool,
     pub removed_apps: usize,
     pub applied_reg_tweaks: usize,
@@ -462,10 +463,8 @@ struct DebloatRegSnapshot {
     subkey: String,
     value_name: String,
     existed: bool,
-    /// Formato antiguo (solo DWORD). Se conserva para leer respaldos de versiones previas.
     #[serde(default)]
     previous_dword: Option<u32>,
-    /// Tipo y bytes exactos del valor original, sea cual sea su tipo.
     #[serde(default)]
     previous_type: Option<u32>,
     #[serde(default)]
@@ -473,8 +472,6 @@ struct DebloatRegSnapshot {
 }
 
 impl DebloatRegSnapshot {
-    /// La entrada solo es válida si corresponde a un ajuste del catálogo embebido. Cualquier otra clave
-    /// en el respaldo solo puede venir de un archivo manipulado y nunca se escribe en el registro.
     fn catalog_entry(&self) -> Option<&'static DebloatRegEntry> {
         DEBLOAT_REG_TWEAKS
             .iter()
@@ -548,9 +545,6 @@ fn is_valid_package_ident(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '~'))
 }
 
-/// Ejecuta un script de PowerShell y devuelve su salida estándar. Las salidas se leen en hilos mientras el
-/// proceso corre: si solo se leyeran al final, un error largo llenaría el pipe y PowerShell se quedaría
-/// bloqueado hasta el timeout (ERR-01).
 fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResult<String> {
     use std::io::Read;
 
@@ -637,7 +631,6 @@ fn ps_scan_output(out: &std::process::Output, what: &str) -> CoreResult<String> 
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
-/// `ConvertTo-Json` devuelve un objeto suelto (no una lista) cuando hay un solo elemento.
 fn parse_ps_json(txt: &str, what: &str) -> CoreResult<Vec<PsAppxEntry>> {
     let t = txt.trim();
     let parsed = if t.starts_with('{') {
@@ -659,8 +652,6 @@ pub struct DebloaterManager;
 
 impl DebloaterManager {
     pub fn scan_system() -> CoreResult<DebloatScanResult> {
-        // ERR-05: sin elevación `Get-AppxPackage -AllUsers` falla con acceso denegado y, con
-        // `-ErrorAction SilentlyContinue`, el escaneo diría «nada instalado».
         ElevationManager::require_elevated("Escanear las apps instaladas para todos los usuarios")?;
         let ps_path = get_powershell_path()?;
 
@@ -680,14 +671,12 @@ impl DebloaterManager {
         {
             let txt = ps_scan_output(&ps_installed, "Get-AppxPackage")?;
             let entries = parse_ps_json(&txt, "Get-AppxPackage")?;
-            {
-                for e in entries {
-                    if let (Some(n), Some(full)) = (e.name, e.package_full_name) {
-                        if is_valid_package_ident(&full) {
-                            let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
-                            if !vec.contains(&full) {
-                                vec.push(full);
-                            }
+            for e in entries {
+                if let (Some(n), Some(full)) = (e.name, e.package_full_name) {
+                    if is_valid_package_ident(&full) {
+                        let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
+                        if !vec.contains(&full) {
+                            vec.push(full);
                         }
                     }
                 }
@@ -710,14 +699,12 @@ impl DebloaterManager {
         {
             let txt = ps_scan_output(&ps_prov, "Get-AppxProvisionedPackage")?;
             let entries = parse_ps_json(&txt, "Get-AppxProvisionedPackage")?;
-            {
-                for e in entries {
-                    if let (Some(dn), Some(pn)) = (e.display_name, e.package_name) {
-                        if is_valid_package_ident(&pn) {
-                            let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
-                            if !vec.contains(&pn) {
-                                vec.push(pn);
-                            }
+            for e in entries {
+                if let (Some(dn), Some(pn)) = (e.display_name, e.package_name) {
+                    if is_valid_package_ident(&pn) {
+                        let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
+                        if !vec.contains(&pn) {
+                            vec.push(pn);
                         }
                     }
                 }
@@ -811,7 +798,6 @@ impl DebloaterManager {
                 if !is_valid_package_ident(full_name) {
                     continue;
                 }
-                // Cada paquete se deja terminar: cancelar a mitad de Remove-AppxPackage puede dejarlo roto.
                 let cmd = format!(
                     "try {{ Remove-AppxPackage -Package '{}' -AllUsers -ErrorAction Stop; 'SCOPE=ALL' }} catch {{ Remove-AppxPackage -Package '{}' -ErrorAction Stop; 'SCOPE=USER' }}",
                     full_name, full_name
@@ -911,8 +897,6 @@ impl DebloaterManager {
         Ok(report)
     }
 
-    /// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
-    /// entradas que no son del catálogo, falla: el archivo fue manipulado.
     fn load_backup_doc(path: &Path) -> CoreResult<DebloatBackupDoc> {
         if !path.exists() {
             return Ok(DebloatBackupDoc {
@@ -965,7 +949,6 @@ impl DebloaterManager {
                 DebloatRegHive::Hklm => KEY_READ | KEY_WOW64_64KEY,
             };
 
-            // Distinguir «no existe» de un error real: un error no puede guardarse como «no existía».
             let prev = match root.open_subkey_with_flags(entry.subkey, flags) {
                 Ok(key) => match key.get_raw_value(entry.value_name) {
                     Ok(raw) => Some(raw),
@@ -995,7 +978,7 @@ impl DebloaterManager {
                 existed: prev.is_some(),
                 previous_dword: None,
                 previous_type: prev.as_ref().map(|r| reg_type_to_u32(&r.vtype)),
-                previous_raw: prev.map(|r| r.bytes),
+                previous_raw: prev.map(|r| r.bytes.into_owned()),
             });
         }
 
@@ -1028,13 +1011,10 @@ impl DebloaterManager {
         Ok(())
     }
 
-    /// `true` si hay ajustes de registro del Debloater pendientes de revertir.
     pub fn has_registry_backup() -> bool {
         debloat_backup_path().map(|p| p.exists()).unwrap_or(false)
     }
 
-    /// Revierte los ajustes de registro del Debloater. Solo toca claves del catálogo, propaga cada error
-    /// y conserva el respaldo si algo no se pudo revertir, para poder reintentar.
     pub fn revert_registry_debloat() -> CoreResult<usize> {
         ElevationManager::require_elevated("Revertir ajustes de registro del Debloater")?;
         let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
@@ -1092,7 +1072,7 @@ impl DebloaterManager {
                 (Some(raw), Some(t), _) => key.set_raw_value(
                     entry.value_name,
                     &RegValue {
-                        bytes: raw.clone(),
+                        bytes: raw.as_slice().into(),
                         vtype: u32_to_reg_type(t),
                     },
                 )?,
@@ -1135,7 +1115,6 @@ mod tests {
         }
     }
 
-    /// SEC-03 / SYS-11: solo se revierte lo del catálogo, con el tipo exacto o el formato viejo.
     #[test]
     fn snapshot_del_debloater_solo_del_catalogo() {
         assert!(snapshot().is_valid());
@@ -1169,7 +1148,6 @@ mod tests {
         assert!(!is_valid_package_ident(&"a".repeat(300)));
     }
 
-    /// SYS-20: Outlook, To Do, Enlace Móvil y Teams no vienen preseleccionadas.
     #[test]
     fn apps_de_uso_real_no_vienen_marcadas() {
         for name in [

@@ -1,3 +1,5 @@
+// src/core/sensors.rs
+
 use std::collections::HashSet;
 use std::ffi::{c_char, c_int, c_uint, c_void, CStr};
 use std::mem::{size_of, zeroed};
@@ -20,7 +22,9 @@ use windows::Win32::System::Ioctl::{
     PropertyStandardQuery, StorageDeviceTemperatureProperty, IOCTL_STORAGE_QUERY_PROPERTY,
     STORAGE_PROPERTY_QUERY, STORAGE_TEMPERATURE_DATA_DESCRIPTOR, STORAGE_TEMPERATURE_INFO,
 };
-use windows::Win32::System::Variant::{VariantClear, VariantToInt32, VariantToStringAlloc};
+use windows::Win32::System::Variant::{
+    VariantClear, VariantToDouble, VariantToInt32, VariantToStringAlloc,
+};
 use windows::Win32::System::Wmi::{
     IWbemClassObject, IWbemLocator, WbemLocator, WBEM_FLAG_FORWARD_ONLY,
     WBEM_FLAG_RETURN_IMMEDIATELY,
@@ -42,8 +46,6 @@ pub struct SensorReading {
     pub max_celsius: Option<f32>,
 }
 
-/// UI-14: dos GPU del mismo modelo dan el mismo nombre; la UI usa el nombre como clave y para picos.
-/// Desde la segunda aparición se agrega « #n».
 pub fn disambiguate_sensor_names(readings: &mut [SensorReading]) {
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for r in readings.iter_mut() {
@@ -69,9 +71,6 @@ unsafe fn resolve_proc<T>(lib: &SafeLibrary, symbol: &[u8]) -> Option<T> {
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
-// ============================================================================
-// NVIDIA NVML
-// ============================================================================
 const NVML_SUCCESS: i32 = 0;
 const NVML_TEMPERATURE_GPU: u32 = 0;
 const NVML_TEMPERATURE_THRESHOLD_SLOWDOWN: u32 = 1;
@@ -102,8 +101,6 @@ impl NvmlSession {
         let lib = match SafeLibrary::load_system("nvml.dll") {
             Ok(l) => l,
             Err(_) => {
-                // Carpeta real de Program Files (no `%ProgramFiles%`, redefinible por el usuario) y DLL
-                // firmada por NVIDIA: el proceso corre elevado y cargar una DLL ajena sería ejecutar código.
                 let pf = crate::core::win_common::program_files_dir()?;
                 let fallback = pf.join(r"NVIDIA Corporation\NVSMI\nvml.dll");
                 let (file, _) = open_verified_file_read(&fallback, true, None).ok()?;
@@ -112,7 +109,6 @@ impl NvmlSession {
                 );
                 verify_authenticode_on_handle(&fallback, handle, "NVIDIA Corporation", None)
                     .ok()?;
-                // `file` sigue abierto (solo lectura compartida) hasta después de cargar la DLL.
                 let lib = SafeLibrary::load_from_verified_path(&fallback).ok()?;
                 drop(file);
                 lib
@@ -224,9 +220,6 @@ impl Drop for NvmlSession {
     }
 }
 
-// ============================================================================
-// AMD ADL2 (PMLog RDNA + OverdriveN + Overdrive5)
-// ============================================================================
 const ADL_OK: i32 = 0;
 const AMD_VENDOR_ID_HEX: i32 = 0x1002;
 const AMD_VENDOR_ID_DEC: i32 = 1002;
@@ -344,7 +337,6 @@ impl AdlSession {
                 resolve_proc(&lib, b"ADL2_Overdrive5_Temperature_Get\0");
 
             let mut ctx: *mut c_void = ptr::null_mut();
-            // 0 = enumerar todos los adaptadores (evita omitir GPUs si iEnumConnectedAdapters=1 falla)
             if create(adl_malloc, 0, &mut ctx) != ADL_OK || ctx.is_null() {
                 return None;
             }
@@ -428,7 +420,6 @@ impl AdlSession {
 
             let mut found_for_this_gpu = false;
 
-            // 1) Ruta moderna RDNA (RX 5000 / 6000 / 7000): ADL2_New_QueryPMLogData_Get (valores en °C enteros)
             if let Some(pmlog) = self.pmlog_get {
                 let mut pm = AdlPmLogDataOutput::default();
                 let rc = unsafe { pmlog(self.ctx, info.i_adapter_index, &mut pm) };
@@ -470,7 +461,6 @@ impl AdlSession {
                 }
             }
 
-            // 2) Fallback OverdriveN (milli-°C)
             if !found_for_this_gpu {
                 if let Some(odn) = self.odn_temp {
                     let mut milli_c: c_int = 0;
@@ -521,7 +511,6 @@ impl AdlSession {
                 }
             }
 
-            // 3) Fallback Overdrive5 (milli-°C)
             if !found_for_this_gpu {
                 if let Some(od5) = self.od5_temp {
                     let mut adl_t = AdlTemperature {
@@ -574,9 +563,6 @@ impl Drop for AdlSession {
     }
 }
 
-// ============================================================================
-// Sesión unificada de sensores
-// ============================================================================
 pub struct SensorSession {
     nvml: Option<NvmlSession>,
     adl: Option<AdlSession>,
@@ -722,6 +708,101 @@ impl SensorSession {
         (gpus, note)
     }
 
+    /// Puente pasivo sin driver propio: si el usuario ejecuta LibreHardwareMonitor u OpenHardwareMonitor,
+    /// consulta sus namespaces WMI (`root\LibreHardwareMonitor` / `root\OpenHardwareMonitor`) para obtener
+    /// temperaturas reales del CPU (Core / Package / Tctl / Tdie) sin exponer un driver kernel vulnerable.
+    fn poll_external_cpu_wmi(&self, locator: &IWbemLocator) -> Vec<SensorReading> {
+        let mut out = Vec::new();
+        let empty = BSTR::default();
+
+        for (ns_str, label) in [
+            (r"root\LibreHardwareMonitor", "CPU (LibreHardwareMonitor)"),
+            (r"root\OpenHardwareMonitor", "CPU (OpenHardwareMonitor)"),
+        ] {
+            let ns = BSTR::from(ns_str);
+            let Ok(services) =
+                (unsafe { locator.ConnectServer(&ns, &empty, &empty, &empty, 0, &empty, None) })
+            else {
+                continue;
+            };
+            let _ = unsafe {
+                CoSetProxyBlanket(
+                    &services,
+                    RPC_C_AUTHN_WINNT,
+                    RPC_C_AUTHZ_NONE,
+                    None,
+                    RPC_C_AUTHN_LEVEL_CALL,
+                    RPC_C_IMP_LEVEL_IMPERSONATE,
+                    None,
+                    EOAC_NONE,
+                )
+            };
+
+            let wql = BSTR::from("WQL");
+            let query = BSTR::from("SELECT Name, SensorType, Value, Max FROM Sensor");
+            let Ok(enumerator) = (unsafe {
+                services.ExecQuery(
+                    &wql,
+                    &query,
+                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                    None,
+                )
+            }) else {
+                continue;
+            };
+
+            for _ in 0..64 {
+                let mut objs: [Option<IWbemClassObject>; 1] = [None];
+                let mut returned = 0u32;
+                let hr = unsafe { enumerator.Next(800, &mut objs, &mut returned) };
+                if hr.is_err() || returned == 0 {
+                    break;
+                }
+                let Some(obj) = objs[0].take() else {
+                    break;
+                };
+
+                let stype = unsafe { read_wmi_string(&obj, "SensorType") }.unwrap_or_default();
+                if !stype.eq_ignore_ascii_case("Temperature") {
+                    continue;
+                }
+
+                let name = unsafe { read_wmi_string(&obj, "Name") }.unwrap_or_default();
+                let low = name.to_ascii_lowercase();
+                let is_cpu = low.contains("cpu")
+                    || low.contains("package")
+                    || low.contains("core")
+                    || low.contains("tctl")
+                    || low.contains("tdie")
+                    || low.contains("ccd");
+                if !is_cpu {
+                    continue;
+                }
+
+                let Some(val) = (unsafe { read_wmi_f32(&obj, "Value") }) else {
+                    continue;
+                };
+                if val <= 1.0 || val >= 125.0 {
+                    continue;
+                }
+                let max_val = unsafe { read_wmi_f32(&obj, "Max") }.filter(|&v| v > 1.0 && v < 150.0);
+
+                out.push(SensorReading {
+                    name,
+                    sensor_type: label.into(),
+                    current_celsius: val,
+                    max_celsius: max_val,
+                });
+            }
+
+            if !out.is_empty() {
+                break;
+            }
+        }
+
+        out
+    }
+
     pub fn poll_wmi_acpi(&self) -> (Vec<SensorReading>, Option<String>) {
         let mut readings = Vec::new();
         let locator: IWbemLocator =
@@ -729,6 +810,8 @@ impl SensorSession {
                 Ok(l) => l,
                 Err(e) => return (readings, Some(format!("WMI locator no disponible: {}", e))),
             };
+
+        readings.extend(self.poll_external_cpu_wmi(&locator));
 
         let ns = BSTR::from(r"root\WMI");
         let empty = BSTR::default();
@@ -790,7 +873,6 @@ impl SensorSession {
 
                     readings.push(SensorReading {
                         name: format!("ACPI ({})", instance_name),
-                        // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
                         sensor_type: "Zona térmica ACPI (WMI)".into(),
                         current_celsius: c,
                         max_celsius: crit_c,
@@ -799,7 +881,6 @@ impl SensorSession {
             }
         }
 
-        // Fallback en root\CIMV2 -> Win32_PerfFormattedData_Counters_ThermalZoneInformation
         if readings.is_empty() {
             let cimv2 = BSTR::from(r"root\CIMV2");
             if let Ok(services) =
@@ -868,7 +949,7 @@ impl SensorSession {
 
         let note = if readings.is_empty() {
             Some(
-                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo."
+                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo (opcionalmente puedes tener abierto LibreHardwareMonitor en segundo plano)."
                     .into(),
             )
         } else {
@@ -878,7 +959,8 @@ impl SensorSession {
     }
 
     pub fn poll_all(&self, started: Instant) -> SystemSensorsSnapshot {
-        let (cpu_temps, wmi_note) = self.poll_wmi_acpi();
+        let (mut cpu_temps, wmi_note) = self.poll_wmi_acpi();
+        disambiguate_sensor_names(&mut cpu_temps);
         let (mut gpu_temps, gpu_note) = self.poll_gpu();
         disambiguate_sensor_names(&mut gpu_temps);
         let storage_temps = self.poll_storage();
@@ -914,6 +996,20 @@ unsafe fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
         return None;
     }
     let val = VariantToInt32(&var).ok();
+    let _ = VariantClear(&mut var);
+    val
+}
+
+unsafe fn read_wmi_f32(obj: &IWbemClassObject, prop: &str) -> Option<f32> {
+    let w = to_wide_null(prop);
+    let mut var = VARIANT::default();
+    if obj
+        .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+        .is_err()
+    {
+        return None;
+    }
+    let val = VariantToDouble(&var).ok().map(|v| v as f32);
     let _ = VariantClear(&mut var);
     val
 }
@@ -1005,8 +1101,6 @@ impl SensorMonitor {
 }
 
 impl Drop for SensorMonitor {
-    /// UI-05: no espera al hilo (un `poll_all` WMI puede tardar decenas de segundos y bloquearía la UI
-    /// al salir de Sensores). El hilo ve la bandera y termina solo; su sesión se libera dentro de él.
     fn drop(&mut self) {
         self.stop_flag.store(true, Ordering::Release);
         drop(self.worker.take());
@@ -1026,7 +1120,6 @@ mod tests {
         }
     }
 
-    /// UI-14: dos GPU del mismo modelo no comparten nombre (clave de la UI y de los picos).
     #[test]
     fn nombres_de_sensores_repetidos_se_distinguen() {
         let mut list = vec![reading("RTX 3080"), reading("RTX 3080"), reading("RX 7900")];

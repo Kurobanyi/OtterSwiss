@@ -1,3 +1,5 @@
+// src/core/archiver.rs
+
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -152,12 +154,8 @@ fn validate_cli_paths(src: &Path, dst: &Path) -> CoreResult<()> {
     Ok(())
 }
 
-/// Profundidad máxima de rutas dentro de un archivo comprimido. La limpieza usa el mismo límite, así que
-/// nunca queda un staging a medio borrar (ERR-08).
 const MAX_ARCHIVE_DEPTH: usize = 48;
 
-/// Destino real de una extracción: si `dest` ya existe, la carpeta hermana libre `dest (2)`, `dest (3)`…
-/// Extraer nunca borra ni mezcla una carpeta existente (SYS-01).
 pub fn resolve_extract_destination(dest: &Path) -> PathBuf {
     if !dest.exists() {
         return dest.to_path_buf();
@@ -183,8 +181,6 @@ pub fn resolve_extract_destination(dest: &Path) -> PathBuf {
     ))
 }
 
-/// Crea el staging **solo para administradores**: durante la extracción (que corre elevada) ningún proceso
-/// del usuario puede cambiar una subcarpeta por una junction para redirigir escrituras (SEC-08).
 fn create_staging_dir(dest_dir: &Path) -> CoreResult<(&Path, PathBuf)> {
     let parent = dest_dir
         .parent()
@@ -199,13 +195,10 @@ fn create_staging_dir(dest_dir: &Path) -> CoreResult<(&Path, PathBuf)> {
     Ok((parent, tmp_dir))
 }
 
-/// Borra el staging tras un error o una cancelación, con el mismo límite de profundidad que la extracción.
 fn discard_staging(tmp_dir: &Path, parent: &Path) {
     let _ = delete_tree_verified(tmp_dir, parent, MAX_ARCHIVE_DEPTH + 2);
 }
 
-/// Mueve el staging a `dest_dir` (que no debe existir), le devuelve los permisos heredados de la carpeta
-/// destino y propaga el Mark-of-the-Web del archivo original a cada archivo extraído (SEC-15).
 fn finalize_staging_dir(
     tmp_dir: &Path,
     dest_dir: &Path,
@@ -233,7 +226,6 @@ fn finalize_staging_dir(
     Ok(())
 }
 
-/// `Zone.Identifier` del archivo comprimido, si lo tiene (descargado de internet).
 fn read_zone_identifier(archive_path: &Path) -> Option<Vec<u8>> {
     let mut ads = archive_path.as_os_str().to_os_string();
     ads.push(":Zone.Identifier");
@@ -329,7 +321,7 @@ impl<'a> TelemetryCtx<'a> {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // Estado de una extracción en curso; agruparlo no aclara nada.
+#[allow(clippy::too_many_arguments)]
 fn copy_with_quota<R: Read + ?Sized>(
     reader: &mut R,
     out_path: &Path,
@@ -454,24 +446,32 @@ impl ArchiveManager {
                     source: None,
                 })?;
 
+                let entry_name = entry
+                    .name()
+                    .map_err(|e| CoreError::Archive {
+                        message: format!("Nombre de entrada ZIP inválido #{}: {}", i, e),
+                        source: None,
+                    })?
+                    .into_owned();
+
                 if entry
                     .unix_mode()
                     .is_some_and(|m| (m & 0o170000) == 0o120000)
                 {
                     return Err(CoreError::Validation(format!(
                         "Symlink rechazado en archivo ZIP: {}",
-                        entry.name()
+                        entry_name
                     )));
                 }
 
                 if entry.enclosed_name().is_none() {
                     return Err(CoreError::Validation(format!(
                         "Ruta insegura en archivo ZIP: {}",
-                        entry.name()
+                        entry_name
                     )));
                 }
-                // Mismo saneo que 7z y tar: rechaza también ':' (flujos alternos NTFS) y rutas profundas.
-                let raw_path = sanitize_archive_rel_path(entry.name())?;
+
+                let raw_path = sanitize_archive_rel_path(&entry_name)?;
                 let rel_display = raw_path.to_string_lossy().into_owned();
                 let out_path = tmp_dir.join(&raw_path);
 
@@ -725,8 +725,6 @@ impl ArchiveManager {
             )));
         }
 
-        // Se escribe en un temporal y solo se renombra al terminar bien: cancelar o fallar nunca deja
-        // un .zip truncado con apariencia de válido (SYS-22).
         let name = dest_archive
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -935,8 +933,6 @@ impl ArchiveManager {
         let (file, _) = create_verified_new_file(dest_archive, true)?;
         let enc = GzEncoder::new(file, Compression::default());
         let mut tar = TarBuilder::new(enc);
-        // No seguir symlinks ni junctions: la compresión corre elevada y podría empaquetar archivos de
-        // fuera del origen que el usuario no puede leer (SEC-16).
         tar.follow_symlinks(false);
 
         if src_path.is_file() {
@@ -972,7 +968,6 @@ impl ArchiveManager {
 mod tests {
     use super::*;
 
-    /// Carpeta temporal única para un test (se borra al final de cada test).
     fn temp_dir(tag: &str) -> PathBuf {
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1031,7 +1026,6 @@ mod tests {
         assert!(validate_path_components(Path::new("C:\\b.txt")).is_err());
     }
 
-    /// SYS-01: extraer junto a una carpeta existente nunca la reutiliza ni la borra.
     #[test]
     fn destino_existente_usa_carpeta_hermana_y_conserva_el_centinela() {
         let root = temp_dir("dest");

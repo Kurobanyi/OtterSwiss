@@ -1,3 +1,5 @@
+// src/core/registry.rs
+
 use std::io;
 use winreg::enums::{KEY_READ, KEY_WRITE};
 use winreg::{RegKey, RegValue};
@@ -13,8 +15,6 @@ fn root_key(hive: RegHive) -> RegKey {
     }
 }
 
-/// Captura el estado previo exacto `(vtype, raw_bytes)` distinguiendo `NotFound`
-/// de errores reales de permisos o corrupción.
 pub fn capture_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<RegistrySnapshot> {
     if !is_allowed_registry_entry(spec.hive, spec.subkey, spec.value_name) {
         return Err(CoreError::Validation(format!(
@@ -35,7 +35,7 @@ pub fn capture_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<RegistrySn
                 existed: true,
                 key_created: false,
                 value_type: Some(reg_type_to_u32(&raw_val.vtype)),
-                raw_bytes: Some(raw_val.bytes),
+                raw_bytes: Some(raw_val.bytes.into_owned()),
                 applied_bytes,
             }),
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(RegistrySnapshot {
@@ -77,7 +77,6 @@ pub fn capture_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<RegistrySn
     }
 }
 
-/// Aplica un ajuste validado tras haber persistido su snapshot en `backup.json`.
 pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
     if !is_allowed_registry_entry(spec.hive, spec.subkey, spec.value_name) {
         return Err(CoreError::Validation(format!(
@@ -96,7 +95,7 @@ pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
         })?;
 
     let raw_val = RegValue {
-        bytes: spec.value.to_bytes(),
+        bytes: spec.value.to_bytes().into(),
         vtype: u32_to_reg_type(spec.value.kind().win32_type()),
     };
 
@@ -113,8 +112,6 @@ pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
         })
 }
 
-/// Revierte un snapshot validado. Comprueba si el usuario modificó el valor posteriormente
-/// antes de pisarlo y propaga cualquier error real de escritura/borrado.
 pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreResult<bool> {
     if !snap.is_valid() {
         return Err(CoreError::Validation(format!(
@@ -138,7 +135,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
 
     if !force {
         if let Ok(current) = key.get_raw_value(&snap.value_name) {
-            if current.bytes != snap.applied_bytes {
+            if current.bytes.as_ref() != snap.applied_bytes.as_slice() {
                 return Ok(false);
             }
         }
@@ -152,7 +149,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
             CoreError::Validation("Snapshot inconsistente: existed=true sin raw_bytes".into())
         })?;
         let raw_val = RegValue {
-            bytes,
+            bytes: bytes.into(),
             vtype: u32_to_reg_type(vtype),
         };
         key.set_raw_value(&snap.value_name, &raw_val)
@@ -183,8 +180,6 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
                 });
             }
         }
-        // Solo se borra la clave creada por OtterSwiss si quedó vacía: otra política o programa puede
-        // haber escrito valores en ella después.
         if snap.key_created {
             let is_empty = key
                 .query_info()

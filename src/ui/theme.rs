@@ -1,3 +1,5 @@
+// src/ui/theme.rs
+
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -11,6 +13,10 @@ pub enum Theme {
     Nord,
     Emerald,
     Crimson,
+    Dracula,
+    TokyoNight,
+    Solarized,
+    Sakura,
 }
 
 impl Theme {
@@ -22,6 +28,10 @@ impl Theme {
             Self::Nord => "nord",
             Self::Emerald => "emerald",
             Self::Crimson => "crimson",
+            Self::Dracula => "dracula",
+            Self::TokyoNight => "tokyonight",
+            Self::Solarized => "solarized",
+            Self::Sakura => "sakura",
         }
     }
 
@@ -31,7 +41,11 @@ impl Theme {
             Self::Cyberpunk => Self::Nord,
             Self::Nord => Self::Emerald,
             Self::Emerald => Self::Crimson,
-            Self::Crimson => Self::Light,
+            Self::Crimson => Self::Dracula,
+            Self::Dracula => Self::TokyoNight,
+            Self::TokyoNight => Self::Solarized,
+            Self::Solarized => Self::Sakura,
+            Self::Sakura => Self::Light,
             Self::Light => Self::Dark,
         }
     }
@@ -45,6 +59,10 @@ impl Theme {
             Self::Nord => (0x2e, 0x34, 0x40, 0xff),
             Self::Emerald => (0x07, 0x13, 0x0e, 0xff),
             Self::Crimson => (0x12, 0x09, 0x0c, 0xff),
+            Self::Dracula => (0x28, 0x2a, 0x36, 0xff),
+            Self::TokyoNight => (0x1a, 0x1b, 0x26, 0xff),
+            Self::Solarized => (0x00, 0x2b, 0x36, 0xff),
+            Self::Sakura => (0x19, 0x17, 0x24, 0xff),
         }
     }
 
@@ -60,6 +78,11 @@ impl Theme {
             (Self::Emerald, true) => "Emerald",
             (Self::Crimson, false) => "Carmesí",
             (Self::Crimson, true) => "Crimson",
+            (Self::Dracula, _) => "Dracula",
+            (Self::TokyoNight, _) => "Tokyo Night",
+            (Self::Solarized, false) => "Solarizado",
+            (Self::Solarized, true) => "Solarized",
+            (Self::Sakura, _) => "Sakura",
         }
     }
 
@@ -81,7 +104,6 @@ impl Theme {
     }
 
     pub fn save_persisted(&self) {
-        // El proceso corre elevado: se escribe sin seguir junctions (SEC-19).
         if let (Some(root), Ok(json)) = (dirs::config_dir(), serde_json::to_vec_pretty(self)) {
             let _ =
                 crate::core::safe_fs::write_file_inside(&root, "OtterSwiss", "theme.json", &json);
