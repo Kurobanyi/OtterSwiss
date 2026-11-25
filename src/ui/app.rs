@@ -23,7 +23,7 @@ use crate::core::error::CoreError;
 use crate::core::updater::{
     check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
 };
-use crate::ui::components::{Modal, StatusBanner, Tone};
+use crate::ui::components::{Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::installer::{
     refresh_tools_inventory, run_installer_worker, InstallJobRequest, InstallerDispatcher,
@@ -334,21 +334,18 @@ pub fn App() -> Element {
                                     }
                                 },
                                 if !upd.notes.is_empty() {
-                                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                                        span { class: "text-xs text-muted", style: "font-weight: 600;", "{notes_header}" }
+                                    div { class: "stack-2",
+                                        span { class: "text-xs text-muted fw-semibold", "{notes_header}" }
                                         div {
-                                            class: "modal-list",
-                                            style: "white-space: pre-wrap; font-family: monospace;",
+                                            class: "modal-list mono pre-wrap",
                                             "{upd.notes}"
                                         }
                                     }
                                 }
 
                                 if *is_downloading_update.read() {
-                                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                                        div { style: "width: 100%; height: var(--space-2); background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                                            div { style: "height: 100%; width: {update_progress.read()}%; background: var(--accent); transition: width 0.15s ease;" }
-                                        }
+                                    div { class: "stack-2",
+                                        ProgressBar { percent: *update_progress.read() }
                                         div { class: "text-xs text-muted", style: "display: flex; justify-content: space-between;",
                                             span { "{update_progress.read()}%" }
                                             span { "{upd.asset_name}" }

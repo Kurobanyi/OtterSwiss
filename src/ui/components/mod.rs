@@ -2,12 +2,14 @@
 
 mod card;
 mod modal;
+mod progress;
 mod state;
 mod status;
 mod tone;
 
 pub use card::Card;
 pub use modal::{ConfirmDialog, Modal};
+pub use progress::ProgressBar;
 pub use state::{EmptyState, ErrorState, LoadingState};
 pub use status::StatusBanner;
 pub use tone::Tone;

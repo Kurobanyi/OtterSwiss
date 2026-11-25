@@ -273,8 +273,8 @@ pub fn DnsView() -> Element {
             Card {
                 title: optimizer_card_title,
                 subtitle: optimizer_card_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                    div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
+                div { class: "stack-3",
+                    div { class: "row wrap",
                         for p in DNS_PRESETS {
                             {
                                 let b = bench_map.get(p.id);
@@ -340,7 +340,7 @@ pub fn DnsView() -> Element {
             Card {
                 title: adapters_card_title,
                 subtitle: None,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                div { class: "stack-2",
                     match adapters_state.as_ref() {
                         None => rsx! {
                             LoadingState { message: if en { "Reading network adapters...".to_string() } else { "Leyendo los adaptadores de red...".to_string() } }
@@ -363,7 +363,7 @@ pub fn DnsView() -> Element {
                                     key: "{adapter.interface_guid}",
                                     style: "padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); display: flex; justify-content: space-between; align-items: center;",
                                     div {
-                                        div { style: "font-weight: 600; font-size: var(--font-size-sm);", "{adapter.friendly_name}" }
+                                        div { class: "text-sm fw-semibold", "{adapter.friendly_name}" }
                                         div { class: "text-xs text-muted",
                                             "IPv4: "
                                             {if adapter.current_ipv4_dns.is_empty() { if en { "automatic (DHCP)" } else { "automático (DHCP)" } } else { adapter.current_ipv4_dns.as_str() }}

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
-use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
+use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
 
@@ -141,9 +141,9 @@ pub fn CleanerView() -> Element {
             Card {
                 title: cleaner_title,
                 subtitle: cleaner_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
+                div { class: "stack-3",
                     div { style: "display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;",
-                        label { style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer;",
+                        label { class: "row clickable",
                             input {
                                 r#type: "checkbox",
                                 checked: *clean_recycle.read(),
@@ -153,7 +153,7 @@ pub fn CleanerView() -> Element {
                             span { if en { "Empty Recycle Bin (permanent)" } else { "Vaciar Papelera (permanente)" } }
                         }
 
-                        label { style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer;",
+                        label { class: "row clickable",
                             input {
                                 r#type: "checkbox",
                                 checked: *clean_all_temps.read(),
@@ -164,7 +164,7 @@ pub fn CleanerView() -> Element {
                         }
                     }
 
-                    div { style: "display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap;",
+                    div { class: "row gap-3 wrap",
                         span { class: "badge badge-info",
                             if *clean_all_temps.read() {
                                 if en { "Mode: Full (0h)" } else { "Modo: Total (0h)" }
@@ -209,15 +209,12 @@ pub fn CleanerView() -> Element {
                         prog.total_steps.max(1),
                         format_mb(prog.bytes_freed_so_far)
                     )),
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        div { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                    div { class: "stack-2",
+                        div { class: "text-xs text-muted",
                             "{prog.percent}% • {prog.files_removed_so_far} "
                             {if en { "files" } else { "archivos" }}
                         }
-                        div {
-                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                            div { style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.2s ease;" }
-                        }
+                        ProgressBar { percent: prog.percent }
                     }
                 }
             }
@@ -250,13 +247,13 @@ pub fn CleanerView() -> Element {
                 Card {
                     title: details_title,
                     subtitle: None,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { class: "stack-2",
                         for item in results.read().iter() {
                             div {
                                 key: "{item.category}",
-                                style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
+                                class: "list-row",
                                 div {
-                                    div { style: "font-weight: 600;", "{item.category}" }
+                                    div { class: "fw-semibold", "{item.category}" }
                                     div { class: "text-xs text-muted",
                                         if en {
                                             "Removed: {item.files_removed} | Skipped: {item.skipped_recent_or_locked}"
@@ -266,10 +263,10 @@ pub fn CleanerView() -> Element {
                                     }
                                     // ERR-07 / SYS-23: lo omitido o fallido se dice (p. ej. Windows Update activo).
                                     if let Some(err) = item.error.as_ref() {
-                                        div { class: "text-xs", style: "color: var(--warning-text);", "{err}" }
+                                        div { class: "text-xs text-warning", "{err}" }
                                     }
                                 }
-                                div { style: "font-weight: 600; color: var(--success-text);", "{format_mb(item.bytes_freed)}" }
+                                div { class: "fw-semibold text-success", "{format_mb(item.bytes_freed)}" }
                             }
                         }
                     }

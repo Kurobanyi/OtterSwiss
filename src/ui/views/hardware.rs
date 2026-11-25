@@ -63,11 +63,11 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     h3 { style: "margin: 0; font-size: var(--font-size-md); color: var(--text);",
                         if en { "Hardware Specifications" } else { "Especificaciones del Sistema" }
                     }
-                    span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                    span { class: "text-xs text-muted",
                         "{specs.os.edition} {specs.os.display_version} • Build {specs.os.build}"
                     }
                 }
-                div { style: "display: flex; align-items: center; gap: var(--space-2);",
+                div { class: "row",
                     if let Some(msg) = status_msg() {
                         span { style: "font-size: var(--font-size-xs); color: var(--accent-text); margin-right: var(--space-2);", "{msg}" }
                     }
@@ -113,14 +113,14 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
             }
 
             div { class: "cards-grid",
-                div { class: "card", style: "padding: var(--space-4);",
-                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent-text);", "CPU" }
+                div { class: "card",
+                    div { class: "row-between mb-2",
+                        strong { class: "text-accent", "CPU" }
                         if let Some(temp) = props.cpu_temp_c {
-                            span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{temp:.0} °C" }
+                            span { class: "text-xs fw-semibold", "{temp:.0} °C" }
                         }
                     }
-                    div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-2);", "{specs.cpu.brand}" }
+                    div { class: "text-md fw-semibold mb-2", "{specs.cpu.brand}" }
                     SpecRow {
                         label: if en { "Arch".to_string() } else { "Arq.".to_string() },
                         value: format!("{} • F:{:X}h M:{:X}h S:{}", specs.cpu.vendor, specs.cpu.family, specs.cpu.model, specs.cpu.stepping),
@@ -139,11 +139,11 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: var(--space-4);",
-                    div { style: "margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent-text);", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
+                div { class: "card",
+                    div { class: "mb-2",
+                        strong { class: "text-accent", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
                     }
-                    div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-2);", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
+                    div { class: "text-md fw-semibold mb-2", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
                     SpecRow {
                         label: "BIOS".to_string(),
                         value: format!("{} ({})", specs.motherboard.bios_version, specs.motherboard.bios_date),
@@ -158,17 +158,17 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: var(--space-4);",
-                    div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent-text);", "GPU" }
+                div { class: "card",
+                    div { class: "row-between mb-2",
+                        strong { class: "text-accent", "GPU" }
                         if let Some(edge) = props.gpu_edge_temp_c {
-                            span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{edge:.0} °C" }
+                            span { class: "text-xs fw-semibold", "{edge:.0} °C" }
                         }
                     }
                     // UI-14: dos GPU iguales tienen el mismo nombre; la clave es el índice.
                     for (gpu_idx, gpu) in specs.gpus.iter().enumerate() {
-                        div { key: "{gpu_idx}", style: "margin-bottom: var(--space-2);",
-                            div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-1);", "{gpu.name}" }
+                        div { key: "{gpu_idx}", class: "mb-2",
+                            div { class: "text-md fw-semibold mb-1", "{gpu.name}" }
                             SpecRow {
                                 label: "ID".to_string(),
                                 value: format!("{} ({:04X}:{:04X})", gpu.vendor_name, gpu.vendor_id, gpu.device_id),
@@ -181,13 +181,13 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     }
                 }
 
-                div { class: "card", style: "padding: var(--space-4);",
-                    div { style: "margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent-text);", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
+                div { class: "card",
+                    div { class: "mb-2",
+                        strong { class: "text-accent", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
                     }
                     for drive in &specs.storage {
-                        div { key: "{drive.device_index}", style: "margin-bottom: var(--space-2);",
-                            div { style: "font-size: var(--font-size-sm); font-weight: 600;", "[Disk {drive.device_index}] {drive.model}" }
+                        div { key: "{drive.device_index}", class: "mb-2",
+                            div { class: "text-sm fw-semibold", "[Disk {drive.device_index}] {drive.model}" }
                             SpecRow {
                                 label: "Bus / FW".to_string(),
                                 value: format!("{} • {}", drive.bus_type, drive.firmware),
@@ -197,10 +197,10 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                 }
             }
 
-            div { class: "card", style: "padding: var(--space-4);",
-                div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                    strong { style: "color: var(--accent-text);", "RAM (SMBIOS)" }
-                    span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+            div { class: "card",
+                div { class: "row-between mb-2",
+                    strong { class: "text-accent", "RAM (SMBIOS)" }
+                    span { class: "text-xs text-muted",
                         "{ram_gb:.1} GB {specs.memory.memory_type} @ {specs.memory.effective_speed_mts} MT/s ({specs.memory.populated_slots}/{specs.memory.total_slots})"
                     }
                 }
@@ -209,12 +209,12 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                         div {
                             key: "{module.slot}",
                             style: "border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);",
-                            div { style: "font-size: var(--font-size-xs); font-weight: 700; margin-bottom: var(--space-1);", "{module.slot}" }
+                            div { class: "text-xs fw-bold mb-1", "{module.slot}" }
                             if module.populated {
-                                div { style: "font-size: var(--font-size-sm);", "{format_capacity(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
-                                div { style: "font-size: var(--font-size-xs); color: var(--text-muted);", "{module.manufacturer} ({module.part_number})" }
+                                div { class: "text-sm", "{format_capacity(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
+                                div { class: "text-xs text-muted", "{module.manufacturer} ({module.part_number})" }
                             } else {
-                                div { style: "font-size: var(--font-size-xs); color: var(--text-muted);", if en { "Empty slot" } else { "Ranura libre" } }
+                                div { class: "text-xs text-muted", if en { "Empty slot" } else { "Ranura libre" } }
                             }
                         }
                     }

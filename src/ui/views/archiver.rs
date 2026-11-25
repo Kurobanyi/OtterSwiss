@@ -8,7 +8,7 @@ use crate::core::archive::{
     resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
     DEFAULT_EXTRACT_QUOTA,
 };
-use crate::ui::components::{Card, Modal};
+use crate::ui::components::{Card, Modal, ProgressBar};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
 
@@ -139,12 +139,7 @@ pub fn ArchiverView() -> Element {
                     },
                     subtitle: Some(if prog.current_file.is_empty() { "...".to_string() } else { prog.current_file.clone() }),
                     on_close: move |_| {},
-                        div {
-                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                            div {
-                                style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.15s ease;",
-                            }
-                        }
+                        ProgressBar { percent: prog.percent }
                         div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
@@ -162,8 +157,8 @@ pub fn ArchiverView() -> Element {
             Card {
                 title: card_title,
                 subtitle: card_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                    div { style: "display: flex; gap: var(--space-2);",
+                div { class: "stack-3",
+                    div { class: "flex gap-2",
                         button {
                             class: if *mode.read() == "extract" { "btn btn-primary" } else { "btn btn-secondary" },
                             disabled: *is_working.read(),
@@ -178,8 +173,8 @@ pub fn ArchiverView() -> Element {
                         }
                     }
 
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        label { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                    div { class: "stack-2",
+                        label { class: "text-xs text-muted",
                             if *mode.read() == "extract" {
                                 if en { "Archive path (.zip, .7z, .tar, .tar.gz):" } else { "Archivo comprimido (.zip, .7z, .tar, .tar.gz):" }
                             } else if en {
@@ -193,11 +188,11 @@ pub fn ArchiverView() -> Element {
                             placeholder: "C:\\Path\\To\\Target",
                             value: "{src_path.read()}",
                             disabled: *is_working.read(),
-                            style: "padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            class: "input",
                             oninput: move |evt| src_path.set(evt.value()),
                         }
 
-                        label { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                        label { class: "text-xs text-muted",
                             if *mode.read() == "extract" {
                                 if en { "Output folder:" } else { "Carpeta destino:" }
                             } else if en {
@@ -211,13 +206,13 @@ pub fn ArchiverView() -> Element {
                             placeholder: if *mode.read() == "extract" { "C:\\Extracted" } else { "C:\\Backup\\Archive.zip" },
                             value: "{dest_path.read()}",
                             disabled: *is_working.read(),
-                            style: "padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            class: "input",
                             oninput: move |evt| dest_path.set(evt.value()),
                         }
 
                         if *mode.read() == "compress" {
                             div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
-                                span { style: "font-size: var(--font-size-xs); color: var(--text-muted);", if en { "Format:" } else { "Formato:" } }
+                                span { class: "text-xs text-muted", if en { "Format:" } else { "Formato:" } }
                                 button {
                                     class: if *selected_format.read() == ArchiveFormat::Zip { "btn btn-primary" } else { "btn btn-secondary" },
                                     disabled: *is_working.read(),

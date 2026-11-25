@@ -9,7 +9,7 @@ use crate::core::optimize::power_plan::get_active_scheme_guid;
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
-use crate::ui::components::{Card, ConfirmDialog, LoadingState, StatusBanner, Tone};
+use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
 
@@ -264,7 +264,7 @@ pub fn DashboardView() -> Element {
                     div { class: "modal-list",
                         for item in eligible_items.iter() {
                             div { key: "{item.category}:{item.label}",
-                                div { style: "font-weight: 600;", "[{item.category}] {item.label}" }
+                                div { class: "fw-semibold", "[{item.category}] {item.label}" }
                                 if !item.detail.is_empty() {
                                     div { class: "text-muted", "{item.detail}" }
                                 }
@@ -304,7 +304,7 @@ pub fn DashboardView() -> Element {
                         for drive in hw.storage_drives.iter() {
                             p { strong { if en { "Disk: " } else { "Disco: " } } "{drive}" }
                         }
-                        div { style: "margin-top: var(--space-1);",
+                        div { class: "mt-1",
                             span {
                                 class: match hw.tier {
                                     HardwareTier::HighEnd => "badge badge-success",
@@ -320,11 +320,11 @@ pub fn DashboardView() -> Element {
                 Card {
                     title: power_title,
                     subtitle: power_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { class: "stack-2",
                         code { style: "font-size: var(--font-size-xs); background: var(--bg); padding: var(--space-2); border-radius: var(--radius-sm); word-break: break-all;",
                             "{active_scheme.read()}"
                         }
-                        p { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                        p { class: "text-xs text-muted",
                             if en { "Auto-selects optimal plan for desktop or laptop." } else { "Selecciona el plan óptimo según PC o portátil." }
                         }
                     }
@@ -333,7 +333,7 @@ pub fn DashboardView() -> Element {
                 Card {
                     title: opt_title,
                     subtitle: opt_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
+                    div { class: "stack-3",
                         button {
                             class: "btn btn-primary",
                             disabled: *is_running.read() || eligible_items.is_empty(),
@@ -364,12 +364,9 @@ pub fn DashboardView() -> Element {
                 Card {
                     title: active_action_label.read().clone(),
                     subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), prog.current_label)),
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        div { style: "font-size: var(--font-size-xs); color: var(--text-muted);", "{prog.percent}%" }
-                        div {
-                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                            div { style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.2s ease;" }
-                        }
+                    div { class: "stack-2",
+                        div { class: "text-xs text-muted", "{prog.percent}%" }
+                        ProgressBar { percent: prog.percent }
                     }
                 }
             }
@@ -425,7 +422,7 @@ pub fn DashboardView() -> Element {
                     } else {
                         format!("Aplicados: {} • Omitidos: {} • Errores: {}", rep.applied_count, rep.skipped_count, rep.failed_items.len())
                     }),
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { class: "stack-2",
                         // UI-01: fallos y advertencias del motor, no solo los contadores.
                         if !rep.failed_items.is_empty() {
                             StatusBanner { text: rep.failed_items.join("\n"), tone: Tone::Danger }
@@ -436,9 +433,9 @@ pub fn DashboardView() -> Element {
                         for step in rep.step_results.iter() {
                             div {
                                 key: "{step.category}:{step.label}",
-                                style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
+                                class: "list-row",
                                 div {
-                                    div { style: "font-size: var(--font-size-sm); font-weight: 600;", "[{step.category}] {step.label}" }
+                                    div { class: "text-sm fw-semibold", "[{step.category}] {step.label}" }
                                     if !step.detail.is_empty() {
                                         div { class: "text-xs text-muted", "{step.detail}" }
                                     }
@@ -465,14 +462,14 @@ pub fn DashboardView() -> Element {
                 Card {
                     title: planned_title,
                     subtitle: planned_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { class: "stack-2",
                         for item in planned_items.iter() {
                             div {
                                 key: "{item.category}:{item.label}",
-                                style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
+                                class: "list-row",
                                 // UI-12: cada ajuste explica qué hace.
                                 div {
-                                    div { style: "font-size: var(--font-size-sm); font-weight: 600;", "[{item.category}] {item.label}" }
+                                    div { class: "text-sm fw-semibold", "[{item.category}] {item.label}" }
                                     if !item.detail.is_empty() {
                                         div { class: "text-xs text-muted", "{item.detail}" }
                                     }

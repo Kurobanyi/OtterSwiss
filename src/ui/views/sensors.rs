@@ -164,15 +164,15 @@ fn render_sensor_section(
     }
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-            h3 { style: "font-size: var(--font-size-md);", "{section_title}" }
+        div { class: "stack-2",
+            h3 { class: "text-md", "{section_title}" }
             div { class: "cards-grid",
                 for reading in items.iter() {
                     Card {
                         key: "{reading.name}",
                         title: reading.name.clone(),
                         subtitle: Some(reading.sensor_type.clone()),
-                        div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                        div { class: "stack-2",
                             h2 {
                                 style: if reading.current_celsius >= 80.0 {
                                     "color: var(--danger-text); font-size: var(--font-size-xl);"

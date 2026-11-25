@@ -540,8 +540,8 @@ pub fn UninstallerView() -> Element {
                                                                 }
                                                             },
                                                         }
-                                                        div { style: "min-width: 0;",
-                                                            div { style: "font-weight: 600;",
+                                                        div { class: "min-w-0",
+                                                            div { class: "fw-semibold",
                                                                 "[{badge_lbl}] {item.category} "
                                                                 if !item.recommended {
                                                                     span { class: "badge badge-warning", "{review_lbl}" }
@@ -557,7 +557,7 @@ pub fn UninstallerView() -> Element {
                                     }
                                 }
 
-                                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
+                                div { class: "row-between gap-3 wrap",
                                     span { class: "text-xs text-muted",
                                         "{sel_count} • {format_size_mb(total_sel_bytes)}"
                                     }
@@ -643,8 +643,8 @@ pub fn UninstallerView() -> Element {
             Card {
                 title: uninstaller_title,
                 subtitle: uninstaller_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                    div { style: "display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap;",
+                div { class: "stack-3",
+                    div { class: "row gap-3 wrap",
                         input {
                             r#type: "text",
                             placeholder: "{search_placeholder}",
@@ -661,8 +661,8 @@ pub fn UninstallerView() -> Element {
                         }
                     }
 
-                    div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
-                        span { style: "font-size: var(--font-size-xs); color: var(--text-muted);", "{sort_lbl}" }
+                    div { class: "row wrap",
+                        span { class: "text-xs text-muted", "{sort_lbl}" }
                         button {
                             class: if *sort_mode.read() == SortMode::NameAsc { "btn btn-primary" } else { "btn btn-secondary" },
                             style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
@@ -694,7 +694,7 @@ pub fn UninstallerView() -> Element {
             Card {
                 title: installed_title,
                 subtitle: None,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                div { class: "stack-2",
                     if !*apps_loaded.read() {
                         LoadingState {
                             message: if en { "Reading installed apps...".to_string() } else { "Leyendo las apps instaladas...".to_string() },
@@ -717,9 +717,9 @@ pub fn UninstallerView() -> Element {
                                     style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); flex-wrap: wrap;",
                                     div { style: "min-width: 240px; flex: 1;",
                                         div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
-                                            span { style: "font-weight: 600;", "{app.display_name}" }
+                                            span { class: "fw-semibold", "{app.display_name}" }
                                             if !app.display_version.is_empty() {
-                                                span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                                                span { class: "text-xs text-muted",
                                                     "v{app.display_version}"
                                                 }
                                             }
@@ -729,7 +729,7 @@ pub fn UninstallerView() -> Element {
                                                 }
                                             }
                                         }
-                                        div { style: "font-size: var(--font-size-xs); color: var(--text-muted); margin-top: var(--space-1);",
+                                        div { class: "text-xs text-muted mt-1",
                                             if !app.publisher.is_empty() {
                                                 "{app.publisher} • "
                                             }
@@ -738,11 +738,10 @@ pub fn UninstallerView() -> Element {
                                         }
                                     }
 
-                                    div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                    div { class: "row",
                                         if let Some(newer) = update_opt {
                                             button {
-                                                class: "btn btn-primary",
-                                                style: "padding: var(--space-2) var(--space-3); font-size: var(--font-size-xs);",
+                                                class: "btn btn-primary btn-sm",
                                                 disabled: *is_working.read(),
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallAppBatch(vec![newer.id]));

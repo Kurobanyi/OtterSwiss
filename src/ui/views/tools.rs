@@ -10,7 +10,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::store::app_store::{AppCategory, AppStoreManager};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
-use crate::ui::components::{Card, Modal, StatusBanner, Tone};
+use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
@@ -209,19 +209,14 @@ pub fn ToolsView() -> Element {
                 div {
                     class: "card",
                     style: "border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface));",
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        strong { style: "color: var(--warning-text);",
+                    div { class: "stack-2",
+                        strong { class: "text-warning",
                             if en { "Installing — Please keep OtterSwiss open until finished." } else { "Instalando — No cierres OtterSwiss hasta que finalice." }
                         }
                         if let Some(lbl) = state.progress_label.as_ref() {
-                            div { style: "font-size: var(--font-size-sm);", "{lbl} ({state.progress_percent}%)" }
+                            div { class: "text-sm", "{lbl} ({state.progress_percent}%)" }
                         }
-                        div {
-                            style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                            div {
-                                style: "height: 100%; width: {state.progress_percent}%; background: var(--accent); transition: width 0.25s ease;",
-                            }
-                        }
+                        ProgressBar { percent: state.progress_percent }
                     }
                 }
             }
@@ -284,7 +279,7 @@ pub fn ToolsView() -> Element {
             Card {
                 title: runtimes_title,
                 subtitle: runtimes_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                div { class: "stack-2",
                     for dep in DependencyManager::get_catalog() {
                         {
                             let installed = state.dep_states.get(dep.id).copied().unwrap_or(false);
@@ -293,11 +288,11 @@ pub fn ToolsView() -> Element {
                             rsx! {
                                 div {
                                     key: "{dep_id}",
-                                    style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--border);",
+                                    class: "list-row",
                                     div {
-                                        div { style: "font-weight: 600; font-size: var(--font-size-sm);", "{dep.name}" }
+                                        div { class: "text-sm fw-semibold", "{dep.name}" }
                                     }
-                                    div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                    div { class: "row",
                                         span {
                                             class: if installed { "badge badge-success" } else { "badge badge-warning" },
                                             if installed {
@@ -310,8 +305,7 @@ pub fn ToolsView() -> Element {
                                         }
                                         if !installed {
                                             button {
-                                                class: "btn btn-primary",
-                                                style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
+                                                class: "btn btn-primary btn-sm",
                                                 disabled: any_busy,
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallRuntime(dep_id));
@@ -387,9 +381,9 @@ pub fn BatchAppStoreCard() -> Element {
         Card {
             title: store_title,
             subtitle: store_sub,
-            div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
-                    div { style: "display: flex; gap: var(--space-2);",
+            div { class: "stack-3",
+                div { class: "row-between gap-3 wrap",
+                    div { class: "flex gap-2",
                         button {
                             class: "btn btn-primary",
                             disabled: is_running || selected_count == 0,
@@ -423,7 +417,7 @@ pub fn BatchAppStoreCard() -> Element {
                 }
 
                 for cat in categories {
-                    div { key: "{cat.label(en)}", style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    div { key: "{cat.label(en)}", class: "stack-2",
                         h4 { style: "font-size: var(--font-size-xs); color: var(--accent-text); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1);",
                             "{cat.label(en)}"
                         }
@@ -447,7 +441,7 @@ pub fn BatchAppStoreCard() -> Element {
                                         style: "display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius);",
                                         label {
                                             style: "display: flex; justify-content: space-between; align-items: center; cursor: pointer;",
-                                            div { style: "display: flex; align-items: center; gap: var(--space-3);",
+                                            div { class: "row gap-3",
                                                 input {
                                                     r#type: "checkbox",
                                                     checked: is_checked,
@@ -462,19 +456,19 @@ pub fn BatchAppStoreCard() -> Element {
                                                     },
                                                 }
                                                 div {
-                                                    div { style: "font-weight: 600; font-size: var(--font-size-sm);",
+                                                    div { class: "text-sm fw-semibold",
                                                         "{pkg.name} "
                                                         span { style: "font-weight: 400; font-size: var(--font-size-xs); color: var(--text-muted);",
                                                             "{version_label} • © {pkg.copyright_holder} ({pkg.license})"
                                                         }
                                                     }
-                                                    div { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
+                                                    div { class: "text-xs text-muted",
                                                         "{desc}"
                                                     }
                                                 }
                                             }
 
-                                            div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                            div { class: "row",
                                                 if is_installed {
                                                     span { class: "badge badge-success", if en { "Installed" } else { "Instalada" } }
                                                 }

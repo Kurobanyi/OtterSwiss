@@ -8,7 +8,7 @@ use crate::core::debloat::{
     DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult, DebloaterManager,
     DetectedBloatApp, DEBLOAT_REG_TWEAKS,
 };
-use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
+use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use crate::ui::task::{run_blocking, run_with_progress};
 
@@ -272,7 +272,7 @@ pub fn DebloaterView() -> Element {
             Card {
                 title: debloat_title,
                 subtitle: debloat_sub,
-                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
+                div { class: "row-between gap-3 wrap",
                     div { style: "display: flex; gap: var(--space-2); flex-wrap: wrap;",
                         button {
                             class: "btn btn-danger",
@@ -347,10 +347,7 @@ pub fn DebloaterView() -> Element {
                 Card {
                     title: prog_title,
                     subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), prog.current_label)),
-                    div {
-                        style: "width: 100%; height: var(--space-2); background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border);",
-                        div { style: "height: 100%; width: {prog.percent}%; background: var(--accent); transition: width 0.2s ease;" }
-                    }
+                    ProgressBar { percent: prog.percent }
                 }
             }
 
@@ -366,13 +363,13 @@ pub fn DebloaterView() -> Element {
                 Card {
                     title: rep_title,
                     subtitle: None,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-1);",
+                    div { class: "stack-1",
                         for item in rep.outcomes.iter() {
                             div {
                                 key: "{item.label}",
                                 style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); font-size: var(--font-size-xs);",
                                 div {
-                                    div { style: "font-weight: 600;", "{item.label}" }
+                                    div { class: "fw-semibold", "{item.label}" }
                                     if !item.message.is_empty() {
                                         div { class: "text-muted", "{item.message}" }
                                     }
@@ -390,7 +387,7 @@ pub fn DebloaterView() -> Element {
             Card {
                 title: tweaks_title,
                 subtitle: None,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                div { class: "stack-2",
                     for spec in DEBLOAT_REG_TWEAKS {
                         {
                             let tid = spec.id;
@@ -409,7 +406,7 @@ pub fn DebloaterView() -> Element {
                                         },
                                     }
                                     div {
-                                        div { style: "font-size: var(--font-size-sm); font-weight: 600;", "{spec.label}" }
+                                        div { class: "text-sm fw-semibold", "{spec.label}" }
                                         div { class: "text-xs text-muted", "{spec.description}" }
                                     }
                                 }
@@ -434,7 +431,7 @@ pub fn DebloaterView() -> Element {
                             key: "{cat_label}",
                             title: cat_label.to_string(),
                             subtitle: None,
-                            div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                            div { class: "stack-2",
                                 for app in scan.apps.iter().filter(|a| a.category == cat) {
                                     {
                                         let app_id = app.id;
@@ -443,7 +440,7 @@ pub fn DebloaterView() -> Element {
                                             label {
                                                 key: "{app_id}",
                                                 style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;",
-                                                div { style: "display: flex; align-items: center; gap: var(--space-3);",
+                                                div { class: "row gap-3",
                                                     input {
                                                         r#type: "checkbox",
                                                         checked: checked,
@@ -454,7 +451,7 @@ pub fn DebloaterView() -> Element {
                                                         },
                                                     }
                                                     div {
-                                                        span { style: "font-weight: 600; font-size: var(--font-size-sm);", "{app.display_name} " }
+                                                        span { class: "text-sm fw-semibold", "{app.display_name} " }
                                                         span { class: "text-xs text-muted", "({app.package_name})" }
                                                         div { class: "text-xs text-muted", "{app.description}" }
                                                     }
