@@ -17,7 +17,7 @@ use otter_swiss::core::archiver::{
 use otter_swiss::core::context_menu::ContextMenuManager;
 use otter_swiss::ui::i18n::Lang;
 use otter_swiss::ui::theme::Theme;
-use otter_swiss::ui::App;
+use otter_swiss::ui::{sync_document_attrs, App};
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 
 #[derive(Clone)]
@@ -28,6 +28,15 @@ struct MiniArchiveJob {
 }
 
 static MINI_JOB: OnceLock<MiniArchiveJob> = OnceLock::new();
+
+/// TE-22: los estilos van una sola vez en el `<head>` de cada ventana, con el script de foco de los diálogos.
+fn document_head() -> String {
+    format!(
+        "<style>{}</style>{}",
+        include_str!("../assets/main.css"),
+        FOCUS_TRAP_SCRIPT
+    )
+}
 
 /// UI-09: con un `[role=dialog]` abierto, Tab y Mayús+Tab recorren solo sus controles.
 const FOCUS_TRAP_SCRIPT: &str = r#"<script>
@@ -207,17 +216,15 @@ fn MiniArchiveProgressApp() -> Element {
         .map(|s| format!("~{}s", s))
         .unwrap_or_else(|| "—".into());
 
-    rsx! {
-        style { {include_str!("../assets/main.css")} }
+    use_effect(move || sync_document_attrs(theme.css_name(), lang.html_code()));
 
+    rsx! {
         div {
-            class: "app-root-frameless",
-            "data-theme": "{theme.as_str()}",
-            style: "border: 1px solid var(--border);",
+            class: "app-root-frameless mini-window",
+            "data-theme": "{theme.css_name()}",
 
             header {
                 class: "top-titlebar",
-                style: "height: 40px;",
                 div {
                     class: "top-brand",
                     onmousedown: move |_| { win_drag.drag(); },
@@ -406,7 +413,7 @@ fn ensure_webview2(en: bool) -> bool {
 
 /// Un `panic` (p. ej. dentro de dioxus-desktop al crear la ventana) se muestra en un cuadro nativo en vez de
 /// cerrar la app sin explicación: el binario es `windows_subsystem = "windows"` y no tiene consola.
-fn install_panic_dialog() {
+fn install_panic_dialog(en: bool) {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let msg = info
@@ -414,17 +421,31 @@ fn install_panic_dialog() {
             .downcast_ref::<&str>()
             .map(|s| s.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "error desconocido".into());
+            .unwrap_or_else(|| {
+                if en {
+                    "unknown error"
+                } else {
+                    "error desconocido"
+                }
+                .into()
+            });
         let place = info
             .location()
             .map(|l| format!(" ({}:{})", l.file(), l.line()))
             .unwrap_or_default();
-        native_message(
-            "OtterSwiss — Error inesperado",
-            &format!("OtterSwiss se cerró por un error inesperado:\n\n{msg}{place}"),
-            false,
-            true,
-        );
+        // IN-05: el diálogo sigue el idioma de la app.
+        let (title, intro) = if en {
+            (
+                "OtterSwiss — Unexpected error",
+                "OtterSwiss closed because of an unexpected error:",
+            )
+        } else {
+            (
+                "OtterSwiss — Error inesperado",
+                "OtterSwiss se cerró por un error inesperado:",
+            )
+        };
+        native_message(title, &format!("{intro}\n\n{msg}{place}"), false, true);
         default_hook(info);
     }));
 }
@@ -451,17 +472,23 @@ fn main() {
         return;
     }
 
-    install_panic_dialog();
-    if !ensure_webview2(Lang::load_persisted().is_en()) {
+    let lang = Lang::load_persisted();
+    let theme = Theme::load_persisted();
+    install_panic_dialog(lang.is_en());
+    if !ensure_webview2(lang.is_en()) {
         std::process::exit(1);
     }
 
-    let window_icon = icon_from_memory(include_bytes!("../assets/logo.png")).ok();
+    let window_icon = icon_from_memory(include_bytes!("../assets/brand/logo.png")).ok();
 
     if let Some(job) = prepare_mini_archive_job(&args) {
         let _ = MINI_JOB.set(job);
         let mini_win = WindowBuilder::new()
-            .with_title("OtterSwiss — Archivador")
+            .with_title(if lang.is_en() {
+                "OtterSwiss — Archiver"
+            } else {
+                "OtterSwiss — Archivador"
+            })
             .with_inner_size(dioxus::desktop::LogicalSize::new(460.0, 235.0))
             .with_decorations(false)
             .with_resizable(false)
@@ -469,6 +496,8 @@ fn main() {
         let cfg = Config::new()
             .with_menu(None)
             .with_disable_context_menu(true)
+            .with_background_color(theme.background_rgba())
+            .with_custom_head(document_head())
             .with_window(mini_win);
         dioxus::LaunchBuilder::desktop()
             .with_cfg(cfg)
@@ -477,7 +506,11 @@ fn main() {
     }
 
     let window = WindowBuilder::new()
-        .with_title("OtterSwiss — Suite Nativa Win32")
+        .with_title(if lang.is_en() {
+            "OtterSwiss — Native Win32 Suite"
+        } else {
+            "OtterSwiss — Suite Nativa Win32"
+        })
         .with_inner_size(dioxus::desktop::LogicalSize::new(1180.0, 760.0))
         .with_min_inner_size(dioxus::desktop::LogicalSize::new(960.0, 600.0))
         .with_decorations(false)
@@ -487,8 +520,8 @@ fn main() {
     let config = Config::new()
         .with_menu(None)
         .with_disable_context_menu(true)
-        .with_background_color(Theme::load_persisted().background_rgba())
-        .with_custom_head(FOCUS_TRAP_SCRIPT.to_string())
+        .with_background_color(theme.background_rgba())
+        .with_custom_head(document_head())
         .with_window(window);
 
     dioxus::LaunchBuilder::desktop()

@@ -1,9 +1,9 @@
 fn main() {
-    println!("cargo:rerun-if-changed=assets/icon.ico");
+    println!("cargo:rerun-if-changed=assets/brand/icon.ico");
     println!("cargo:rerun-if-changed=Cargo.toml");
     if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
         let mut res = winresource::WindowsResource::new();
-        res.set_icon("assets/icon.ico");
+        res.set_icon("assets/brand/icon.ico");
         res.set_manifest(
             r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">

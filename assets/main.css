@@ -1,35 +1,80 @@
+/*
+ * Estilos de OtterSwiss. Orden: 1 tokens comunes · 2 temas · 3 reset y base · 4 layout · 5 componentes ·
+ * 6 utilidades · 7 accesibilidad y medios.
+ *
+ * Reglas (ver .agents/rules/ui-temas.md):
+ * - Ningún valor suelto: colores, espacios, tamaños, radios, duraciones y capas salen de un token.
+ * - --success, --warning, --danger y --accent son para fondos y bordes; el texto usa siempre --*-text (UI-18).
+ * - Cada tema define los mismos tokens de color. `--bg` de cada tema tiene que coincidir con
+ *   `Theme::background_rgba` (lo comprueba un test en src/ui/theme.rs).
+ */
+
+/* 1 · Tokens comunes ------------------------------------------------------------------------------------------ */
+
 :root {
-    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --radius-sm: 6px;
-    --radius: 10px;
-    --radius-lg: 14px;
-    --space-1: 4px;
-    --space-2: 8px;
-    --space-3: 12px;
-    --space-4: 16px;
-    --space-5: 24px;
+    --font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, monospace;
+    --font-icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+
+    --font-size-2xs: 11px;
     --font-size-xs: 12px;
     --font-size-sm: 13px;
     --font-size-md: 14px;
     --font-size-lg: 18px;
     --font-size-xl: 24px;
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+
+    --radius-xs: 4px;
+    --radius-sm: 6px;
+    --radius: 10px;
+    --radius-lg: 14px;
+    --radius-pill: 999px;
+
+    --duration-fast: 0.15s;
+    --ease: ease;
+
+    --z-titlebar: 100;
+    --z-modal: 1000;
+
+    --titlebar-h: 52px;
+    --content-max: 1200px;
+    --control-min-h: 28px;
+    --overlay: rgb(0 0 0 / 0.72);
+    /* Rojo estándar del botón de cerrar de Windows, en todos los temas. */
+    --win-close: #e81123;
+    --on-win-close: #ffffff;
 }
 
+/* 2 · Temas ---------------------------------------------------------------------------------------------------- */
+/* El atributo data-theme va en <html> y en la raíz de la app; :root lleva el tema oscuro como respaldo (TE-04). */
+
+:root,
 [data-theme="dark"] {
+    color-scheme: dark;
     --bg: #0f111a;
     --surface: #181b28;
-    --surface-hover: #1f2334;
+    --surface-hover: #2b2d3a;
+    --surface-active: #353844;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #262a3d;
+    --control-border: #636776;
     --text: #e6e8f0;
     --text-muted: #8d93aa;
     --accent: #3b82f6;
-    --accent-rgb: 59, 130, 246;
-    /* UI-18: el hover aclara para que --on-accent (oscuro) siga en >= 4.5:1. */
     --accent-hover: #60a5fa;
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #ef4444;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #ed6263;
     --on-accent: #0f111a;
     --on-danger: #0f111a;
     --success-text: #70ceb3;
@@ -39,19 +84,22 @@
 }
 
 [data-theme="cyberpunk"] {
+    color-scheme: dark;
     --bg: #0d091a;
     --surface: #18122b;
-    --surface-hover: #221a3c;
+    --surface-hover: #2c263e;
+    --surface-active: #373148;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #322659;
+    --control-border: #685f87;
     --text: #f3f0fc;
     --text-muted: #9f8fc2;
     --accent: #00d4ff;
-    --accent-rgb: 0, 212, 255;
     --accent-hover: #00b0d4;
     --success: #00ffaa;
     --warning: #ffb800;
     --danger: #ff2a6d;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #fd4e87;
     --on-accent: #0d091a;
     --on-danger: #0d091a;
     --success-text: #6df8cf;
@@ -61,19 +109,22 @@
 }
 
 [data-theme="light"] {
+    color-scheme: light;
     --bg: #f1f5f9;
     --surface: #ffffff;
-    --surface-hover: #f8fafc;
+    --surface-hover: #e5e5e8;
+    --surface-active: #d4d5d9;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #cbd5e1;
+    --control-border: #848d9b;
     --text: #0f172a;
     --text-muted: #64748b;
     --accent: #2563eb;
-    --accent-rgb: 37, 99, 235;
     --accent-hover: #1d4ed8;
     --success: #059669;
     --warning: #d97706;
     --danger: #dc2626;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #bb2020;
     --on-accent: #ffffff;
     --on-danger: #ffffff;
     --success-text: #0a5d4d;
@@ -83,19 +134,23 @@
 }
 
 [data-theme="nord"] {
+    color-scheme: dark;
     --bg: #2e3440;
     --surface: #3b4252;
-    --surface-hover: #434c5e;
+    --surface-hover: #4b5261;
+    --surface-active: #545a69;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #4c566a;
+    --control-border: #868d9c;
     --text: #eceff4;
-    --text-muted: #d8dee9;
+    /* TE-21: antes #d8dee9, casi igual a --text (1,17:1). */
+    --text-muted: #aeb6c6;
     --accent: #88c0d0;
-    --accent-rgb: 136, 192, 208;
     --accent-hover: #81a1c1;
     --success: #a3be8c;
     --warning: #ebcb8b;
     --danger: #bf616a;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #c77b83;
     --on-accent: #2e3440;
     --on-danger: #0b0d12;
     --success-text: #c4d4bb;
@@ -105,19 +160,22 @@
 }
 
 [data-theme="emerald"] {
+    color-scheme: dark;
     --bg: #07130e;
     --surface: #0d2118;
-    --surface-hover: #133022;
+    --surface-hover: #21342b;
+    --surface-active: #293d34;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #1b4332;
+    --control-border: #4e7061;
     --text: #e8f5ee;
     --text-muted: #8ab89f;
     --accent: #10b981;
-    --accent-rgb: 16, 185, 129;
     --accent-hover: #059669;
     --success: #34d399;
     --warning: #fbbf24;
     --danger: #f87171;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #f58988;
     --on-accent: #07130e;
     --on-danger: #07130e;
     --success-text: #85e2bf;
@@ -127,20 +185,22 @@
 }
 
 [data-theme="crimson"] {
+    color-scheme: dark;
     --bg: #12090c;
     --surface: #1e1015;
-    --surface-hover: #2a161d;
+    --surface-hover: #34262b;
+    --surface-active: #3f3136;
+    --surface-subtle: color-mix(in srgb, var(--text) 6%, transparent);
     --border: #45202b;
+    --control-border: #795b64;
     --text: #f7ecef;
     --text-muted: #b58d99;
     --accent: #f43f5e;
-    --accent-rgb: 244, 63, 94;
-    /* UI-18: el hover aclara para que --on-accent (oscuro) siga en >= 4.5:1. */
     --accent-hover: #f75d78;
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #fb7185;
-    /* UI-08: texto sobre acento/peligro y texto de insignias con contraste AA (>= 4.5:1). */
+    --danger-hover: #fa8798;
     --on-accent: #12090c;
     --on-danger: #12090c;
     --success-text: #78d0b2;
@@ -149,18 +209,51 @@
     --accent-text: #f58d9f;
 }
 
-html, body {
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+/* 3 · Reset y base --------------------------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+h1, h2, h3, h4, p {
+    margin: 0;
+}
+
+html,
+body {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
     /* UI-10: el color de fondo previo al primer render lo pone la ventana según el tema guardado. */
     background: transparent;
     color: var(--text);
-    overflow: hidden !important;
-    user-select: none;
     font-family: var(--font-family);
+    accent-color: var(--accent);
 }
+
+/* Barras de desplazamiento con los colores del tema (TE-01). */
+* {
+    scrollbar-color: var(--control-border) transparent;
+}
+
+/* TE-20: se puede seleccionar texto (rutas, errores, notas); los controles no. */
+button,
+.top-titlebar,
+.badge {
+    user-select: none;
+}
+
+input,
+select,
+button {
+    font: inherit;
+}
+
+/* 4 · Layout --------------------------------------------------------------------------------------------------- */
 
 .app-root-frameless {
     display: flex;
@@ -170,66 +263,79 @@ html, body {
     background: var(--bg);
     color: var(--text);
     overflow: hidden;
-    pointer-events: auto !important;
+}
+
+.app-root-frameless.mini-window {
+    border: 1px solid var(--border);
 }
 
 .top-titlebar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 52px;
+    gap: var(--space-2);
+    height: var(--titlebar-h);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0 10px 0 14px;
+    padding: 0 var(--space-2) 0 var(--space-3);
     flex-shrink: 0;
-    z-index: 100;
+    z-index: var(--z-titlebar);
+}
+
+.mini-window .top-titlebar {
+    height: 40px;
 }
 
 .top-brand {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
+    flex-shrink: 0;
     cursor: grab;
 }
 
 .top-brand .brand-icon {
     width: 30px;
     height: 30px;
-    border-radius: 8px;
-    object-fit: cover;
+    border-radius: var(--radius-sm);
 }
 
 .top-title {
-    font-size: 14px;
-    font-weight: 700;
+    font-size: var(--font-size-md);
+    font-weight: var(--fw-bold);
     letter-spacing: 0.4px;
 }
 
 .top-version {
-    font-size: 11px;
+    font-size: var(--font-size-2xs);
     color: var(--text-muted);
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 2px 6px;
-    border-radius: 4px;
+    font-weight: var(--fw-semibold);
+    background: var(--surface-subtle);
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-xs);
 }
 
 .top-nav {
     display: flex;
     align-items: center;
     gap: 2px;
+    min-width: 0;
+    /* TE-15: si no entra en el ancho mínimo, se desplaza en vez de empujar los botones de ventana. */
+    overflow-x: auto;
+    scrollbar-width: none;
 }
 
 .top-nav-item {
     background: transparent;
     border: none;
     color: var(--text-muted);
-    padding: 7px 9px;
+    min-height: var(--control-min-h);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
-    font-size: 11px;
-    font-weight: 600;
+    font-size: var(--font-size-2xs);
+    font-weight: var(--fw-semibold);
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
     white-space: nowrap;
 }
 
@@ -238,34 +344,72 @@ html, body {
     background: var(--surface-hover);
 }
 
-.top-nav-item.active {
+.top-nav-item:active {
+    background: var(--surface-active);
+}
+
+.top-nav-item.active,
+.top-nav-item[aria-current="page"] {
     /* UI-18: --accent como texto queda bajo 4.5:1 en cuatro temas. */
     color: var(--accent-text);
-    background: rgba(var(--accent-rgb, 59, 130, 246), 0.16);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .top-controls {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--space-1);
+    flex-shrink: 0;
 }
 
-.theme-toggle-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 8px;
+.main-content-full {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-4);
+    background: var(--bg);
+}
+
+.content-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    max-width: var(--content-max);
+    margin: 0 auto;
+}
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: var(--space-4);
+}
+
+/* 5 · Componentes ---------------------------------------------------------------------------------------------- */
+
+/* Controles de la barra superior: idioma, tema y botones de ventana. */
+.theme-toggle-btn,
+.theme-select {
+    min-height: var(--control-min-h);
+    background: var(--surface-subtle);
+    border: 1px solid var(--control-border);
+    font-size: var(--font-size-xs);
+    font-weight: var(--fw-semibold);
+    padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--text);
-    transition: background 0.15s ease;
+    transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
     white-space: nowrap;
 }
 
-.theme-toggle-btn:hover {
+.theme-toggle-btn:hover,
+.theme-select:hover {
     background: var(--surface-hover);
     border-color: var(--accent);
+}
+
+.theme-select option {
+    background: var(--surface);
+    color: var(--text);
 }
 
 .win-btn {
@@ -277,10 +421,11 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-family: var(--font-icons), var(--font-family);
+    font-size: var(--font-size-2xs);
     cursor: pointer;
     border-radius: var(--radius-sm);
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .win-btn:hover {
@@ -288,33 +433,12 @@ html, body {
     color: var(--text);
 }
 
-.win-close-btn:hover {
-    background: #e81123 !important;
-    color: #ffffff !important;
+.win-btn.win-close-btn:hover {
+    background: var(--win-close);
+    color: var(--on-win-close);
 }
 
-.main-content-full {
-    flex: 1;
-    overflow-y: auto;
-    padding: var(--space-4);
-    background: var(--bg);
-    pointer-events: auto !important;
-}
-
-.content-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-.cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: var(--space-4);
-}
-
+/* Tarjeta */
 .card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -323,23 +447,28 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    transition: border-color 0.15s ease;
-    pointer-events: auto !important;
+    transition: border-color var(--duration-fast) var(--ease);
 }
 
 .card:hover {
-    border-color: rgba(var(--accent-rgb, 59, 130, 246), 0.4);
+    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.card.card-warning {
+    border-color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 8%, var(--surface));
 }
 
 .card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: var(--space-3);
 }
 
 .card-title {
     font-size: var(--font-size-md);
-    font-weight: 700;
+    font-weight: var(--fw-bold);
 }
 
 .card-subtitle {
@@ -348,17 +477,33 @@ html, body {
     margin-top: 2px;
 }
 
+.card-kicker {
+    font-size: var(--font-size-xs);
+    font-weight: var(--fw-bold);
+    letter-spacing: 0.4px;
+    color: var(--accent-text);
+}
+
+/* Botones */
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 8px 16px;
+    gap: var(--space-2);
+    min-height: var(--control-min-h);
+    padding: var(--space-2) var(--space-4);
     border-radius: var(--radius);
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     cursor: pointer;
-    border: none;
-    transition: all 0.15s ease;
+    border: 1px solid transparent;
+    transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
+        color var(--duration-fast) var(--ease);
+}
+
+.btn-sm {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--font-size-xs);
 }
 
 .btn-primary {
@@ -373,12 +518,12 @@ html, body {
 .btn-secondary {
     background: var(--bg);
     color: var(--text);
-    border: 1px solid var(--border);
+    border-color: var(--control-border);
 }
 
 .btn-secondary:hover:not(:disabled) {
     border-color: var(--accent);
-    color: var(--accent);
+    color: var(--accent-text);
 }
 
 .btn-danger {
@@ -387,21 +532,42 @@ html, body {
 }
 
 .btn-danger:hover:not(:disabled) {
-    opacity: 0.9;
+    background: var(--danger-hover);
 }
 
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* TE-24: deshabilitado con fondo y texto propios, no solo opacidad. */
 .btn:disabled {
-    opacity: 0.5;
+    background: var(--surface-hover);
+    color: var(--text-muted);
+    border-color: transparent;
     cursor: not-allowed;
 }
 
+/* Grupo de opciones excluyentes (TE-13): la elegida se marca con aria-pressed, no con btn-primary. */
+.segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+}
+
+.segmented > button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+    border-color: var(--accent);
+    color: var(--accent-text);
+}
+
+/* Insignias y avisos */
 .badge {
     display: inline-flex;
     align-items: center;
-    padding: 3px 8px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-pill);
+    font-size: var(--font-size-2xs);
+    font-weight: var(--fw-semibold);
 }
 
 .badge-success { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success-text); }
@@ -409,31 +575,96 @@ html, body {
 .badge-danger { background: color-mix(in srgb, var(--danger) 15%, transparent); color: var(--danger-text); }
 .badge-info { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-text); }
 
+button.badge {
+    min-height: var(--control-min-h);
+    border: 1px solid currentColor;
+    cursor: pointer;
+}
+
 /* Aviso de estado de una acción (resultado, error, advertencia). */
 .status-banner {
     padding: var(--space-3);
     border-radius: var(--radius);
     font-size: var(--font-size-sm);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     line-height: 1.4;
     white-space: pre-line;
 }
 
-/* UI-09: foco visible con teclado en todo control. */
-:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+/* Campos */
+.input {
+    min-height: var(--control-min-h);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius);
+    background: var(--bg);
+    color: var(--text);
+    font-size: var(--font-size-sm);
 }
 
-/* UI-09: diálogos modales (role="dialog"). */
+.input:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* Fila con casilla (CheckRow) */
+.select-row {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.select-row:hover {
+    background: var(--surface-hover);
+}
+
+.select-row:has(input:disabled) {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.list-row:last-child {
+    border-bottom: none;
+}
+
+/* Barra de progreso (ProgressBar) */
+.progress {
+    width: 100%;
+    height: var(--space-2);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width var(--duration-fast) var(--ease);
+}
+
+/* Diálogos modales (UI-09, role="dialog") */
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgb(0 0 0 / 0.72);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 9999;
+    z-index: var(--z-modal);
     padding: var(--space-5);
 }
 
@@ -468,14 +699,7 @@ html, body {
     flex-wrap: wrap;
 }
 
-.text-muted { color: var(--text-muted); }
-/* UI-18: --success, --warning, --danger y --accent son para fondos y bordes; el texto usa siempre --*-text. */
-.text-success { color: var(--success-text); }
-.text-warning { color: var(--warning-text); }
-.text-danger { color: var(--danger-text); }
-.text-accent { color: var(--accent-text); }
-.text-xs { font-size: var(--font-size-xs); }
-
+/* Estados de carga, vacío y error (LoadingState, EmptyState, ErrorState) */
 .state-container {
     text-align: center;
     padding: var(--space-5);
@@ -486,8 +710,13 @@ html, body {
 
 .state-title {
     font-size: var(--font-size-md);
-    font-weight: 600;
+    font-weight: var(--fw-semibold);
     margin-bottom: var(--space-1);
+}
+
+.state-desc {
+    font-size: var(--font-size-sm);
+    color: var(--text-muted);
 }
 
 .state-error {
@@ -510,11 +739,71 @@ html, body {
 
 @keyframes state-spin { to { transform: rotate(360deg); } }
 
-@media (prefers-reduced-motion: reduce) {
-    .state-spinner { animation: none; border-top-color: var(--border); border-right-color: var(--accent); }
+/* 6 · Utilidades ----------------------------------------------------------------------------------------------- */
+
+.stack-1 { display: flex; flex-direction: column; gap: var(--space-1); }
+.stack-2 { display: flex; flex-direction: column; gap: var(--space-2); }
+.stack-3 { display: flex; flex-direction: column; gap: var(--space-3); }
+.stack-4 { display: flex; flex-direction: column; gap: var(--space-4); }
+.row { display: flex; align-items: center; gap: var(--space-2); }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.row-end { display: flex; justify-content: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.text-xs { font-size: var(--font-size-xs); }
+.text-sm { font-size: var(--font-size-sm); }
+.text-xl { font-size: var(--font-size-xl); }
+.fw-semibold { font-weight: var(--fw-semibold); }
+.fw-bold { font-weight: var(--fw-bold); }
+.mono { font-family: var(--font-mono); }
+.text-muted { color: var(--text-muted); }
+.text-success { color: var(--success-text); }
+.text-warning { color: var(--warning-text); }
+.text-danger { color: var(--danger-text); }
+.text-accent { color: var(--accent-text); }
+
+/* 7 · Accesibilidad y medios ----------------------------------------------------------------------------------- */
+
+/* UI-09: foco visible con teclado en todo control. */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
 }
 
-.state-desc {
-    font-size: var(--font-size-sm);
-    color: var(--text-muted);
+/* TE-15: en el ancho mínimo (960px) se ahorra espacio en la barra superior. */
+@media (max-width: 1150px) {
+    .top-version { display: none; }
+    .top-nav-item { padding: var(--space-1) 6px; }
+}
+
+/* TE-09: sin animaciones si el sistema pide reducir el movimiento. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none;
+        animation: none;
+    }
+
+    .state-spinner { border-top-color: var(--border); border-right-color: var(--accent); }
+}
+
+/* Contraste alto de Windows: se respetan los colores del sistema. */
+@media (forced-colors: active) {
+    .btn,
+    .theme-toggle-btn,
+    .theme-select,
+    .input,
+    .select-row,
+    .card {
+        border: 1px solid CanvasText;
+    }
+
+    .top-nav-item.active,
+    .top-nav-item[aria-current="page"],
+    .segmented > button[aria-pressed="true"] {
+        outline: 2px solid Highlight;
+    }
 }

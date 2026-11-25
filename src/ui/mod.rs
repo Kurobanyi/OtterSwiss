@@ -3,6 +3,7 @@
 
 pub mod components;
 pub mod i18n;
+pub mod prefs;
 pub mod theme;
 pub mod views;
 
@@ -45,6 +46,41 @@ pub enum ActiveTab {
     Uninstaller,
     Hardware,
     Sensors,
+}
+
+impl ActiveTab {
+    /// Orden de la barra superior.
+    const ALL: [ActiveTab; 9] = [
+        Self::Dashboard,
+        Self::Cleaner,
+        Self::Debloater,
+        Self::Dns,
+        Self::Archiver,
+        Self::Tools,
+        Self::Uninstaller,
+        Self::Hardware,
+        Self::Sensors,
+    ];
+
+    fn label(self, en: bool) -> &'static str {
+        match (self, en) {
+            (Self::Dashboard, true) => "Home",
+            (Self::Dashboard, false) => "Inicio",
+            (Self::Cleaner, true) => "Cleaner",
+            (Self::Cleaner, false) => "Limpiador",
+            (Self::Debloater, _) => "Debloater",
+            (Self::Dns, _) => "DNS",
+            (Self::Archiver, true) => "Archiver",
+            (Self::Archiver, false) => "Archivos",
+            (Self::Tools, true) => "Tools & Store",
+            (Self::Tools, false) => "Herramientas",
+            (Self::Uninstaller, true) => "Uninstaller",
+            (Self::Uninstaller, false) => "Desinstalador",
+            (Self::Hardware, _) => "Hardware",
+            (Self::Sensors, true) => "Sensors",
+            (Self::Sensors, false) => "Sensores",
+        }
+    }
 }
 
 const KEEP_ALIVE_TABS: [ActiveTab; 7] = [
@@ -344,10 +380,11 @@ pub fn App() -> Element {
         }
     });
 
+    // TE-10: icono de 64 px (unos 5 KB); el GIF animado de 1,7 MB queda solo para el README.
     let logo_data_uri = use_hook(|| {
         format!(
-            "data:image/gif;base64,{}",
-            STANDARD.encode(include_bytes!("../../assets/logo.gif"))
+            "data:image/png;base64,{}",
+            STANDARD.encode(include_bytes!("../../assets/brand/icon-64.png"))
         )
     });
 
@@ -358,6 +395,14 @@ pub fn App() -> Element {
             tx,
             cancel_flag: Arc::clone(&cancel_flag),
         }
+    });
+
+    // TE-04 e IN-07: <html> lleva el tema (color-scheme, scrollbars) y el idioma (lectores de pantalla).
+    use_effect(move || {
+        sync_document_attrs(
+            current_theme.read().css_name(),
+            current_lang.read().html_code(),
+        );
     });
 
     provide_context(current_theme);
@@ -420,11 +465,9 @@ pub fn App() -> Element {
     };
 
     rsx! {
-        style { {include_str!("../../assets/main.css")} }
-
         div {
             class: "app-root-frameless",
-            "data-theme": "{theme_val.as_str()}",
+            "data-theme": "{theme_val.css_name()}",
 
             header {
                 class: "top-titlebar",
@@ -442,7 +485,6 @@ pub fn App() -> Element {
                     if let Some(upd) = update_info.read().as_ref() {
                         button {
                             class: "badge badge-warning",
-                            style: "cursor: pointer; margin-left: var(--space-2); padding: var(--space-1) var(--space-2); border: 1px solid var(--accent); font-size: var(--font-size-xs); font-weight: bold;",
                             onclick: move |_| show_update_modal.set(true),
                             "↑ v{upd.version}"
                         }
@@ -450,53 +492,19 @@ pub fn App() -> Element {
                 }
 
                 nav { class: "top-nav",
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Dashboard { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Dashboard),
-                        if en { "Home" } else { "Inicio" }
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Cleaner { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Cleaner),
-                        if en { "Cleaner" } else { "Limpiador" }
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Debloater { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Debloater),
-                        "Debloater"
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Dns { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Dns),
-                        "DNS"
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Archiver { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Archiver),
-                        if en { "Archiver" } else { "Archivos" }
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Tools { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| {
-                            active_tab.set(ActiveTab::Tools);
-                            refresh_tools_inventory(tools_state);
-                        },
-                        if en { "Tools & Store" } else { "Herramientas" }
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Uninstaller { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Uninstaller),
-                        if en { "Uninstaller" } else { "Desinstalador" }
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Hardware { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Hardware),
-                        "Hardware"
-                    }
-                    button {
-                        class: if *active_tab.read() == ActiveTab::Sensors { "top-nav-item active" } else { "top-nav-item" },
-                        onclick: move |_| active_tab.set(ActiveTab::Sensors),
-                        if en { "Sensors" } else { "Sensores" }
+                    for tab in ActiveTab::ALL {
+                        button {
+                            key: "{tab.label(false)}",
+                            class: "top-nav-item",
+                            "aria-current": if *active_tab.read() == tab { "page" } else { "false" },
+                            onclick: move |_| {
+                                active_tab.set(tab);
+                                if tab == ActiveTab::Tools {
+                                    refresh_tools_inventory(tools_state);
+                                }
+                            },
+                            "{tab.label(en)}"
+                        }
                     }
                 }
 
@@ -511,15 +519,20 @@ pub fn App() -> Element {
                         },
                         "{current_lang.read().code()}"
                     }
-                    button {
-                        class: "theme-toggle-btn",
-                        title: if en { "Change theme" } else { "Cambiar tema" },
-                        onclick: move |_| {
-                            let next = current_theme.read().next();
-                            current_theme.set(next);
-                            next.save_persisted();
+                    // TE-03: selector en vez de recorrer los temas uno por uno.
+                    select {
+                        class: "theme-select",
+                        title: if en { "Theme" } else { "Tema" },
+                        "aria-label": if en { "Theme" } else { "Tema" },
+                        onchange: move |evt| {
+                            if let Some(next) = Theme::from_key(&evt.value()) {
+                                current_theme.set(next);
+                                next.save_persisted();
+                            }
                         },
-                        "{theme_val.display_name(en)}"
+                        for t in Theme::ALL {
+                            option { key: "{t.key()}", value: "{t.key()}", selected: t == theme_val, "{t.display_name(en)}" }
+                        }
                     }
                     button {
                         class: "win-btn",
@@ -645,4 +658,11 @@ pub fn App() -> Element {
             }
         }
     }
+}
+
+/// Copia el tema y el idioma a `<html>`; la raíz de la app ya los lleva desde el primer render.
+pub fn sync_document_attrs(css_theme: &'static str, html_lang: &'static str) {
+    document::eval(&format!(
+        "document.documentElement.dataset.theme = '{css_theme}'; document.documentElement.lang = '{html_lang}';"
+    ));
 }

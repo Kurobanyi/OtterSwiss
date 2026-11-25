@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.gif" alt="OtterSwiss Logo" width="128" height="128" />
+  <img src="assets/brand/logo.gif" alt="OtterSwiss" width="228" height="128" />
   <h1>OtterSwiss v3.5.1</h1>
   <p><strong>Suite portable de optimización, diagnóstico y utilidades nativas para Windows 10 / 11 (x64)</strong></p>
 

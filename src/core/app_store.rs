@@ -36,10 +36,10 @@ fn localize_catalog_text(text: &str, spanish: bool) -> String {
     }
 }
 
+/// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá
+/// en el programa instalado.
 fn windows_ui_is_spanish() -> bool {
-    const LANG_SPANISH: u16 = 0x0a;
-    let lang_id = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
-    lang_id & 0x3ff == LANG_SPANISH
+    crate::core::win_common::user_ui_language_is_spanish()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
