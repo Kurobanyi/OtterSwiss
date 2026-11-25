@@ -3,14 +3,15 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY, KEY_WRITE};
-use winreg::{RegKey, RegValue};
+use winreg::enums::{KEY_READ, KEY_WRITE};
+use winreg::RegValue;
 
-use super::{DebloatRegEntry, DebloatRegHive, DebloaterManager, DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS};
+use super::{DebloatRegEntry, DebloaterManager, DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
+use crate::core::platform::registry::{RegHive, RegLocation};
 use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
@@ -18,7 +19,7 @@ const MAX_DEBLOAT_BACKUP_BYTES: u64 = 512 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DebloatRegSnapshot {
-    hive: DebloatRegHive,
+    hive: RegHive,
     subkey: String,
     value_name: String,
     existed: bool,
@@ -117,14 +118,8 @@ impl DebloaterManager {
                 continue;
             }
 
-            let root = RegKey::predef(match entry.hive {
-                DebloatRegHive::Hkcu => HKEY_CURRENT_USER,
-                DebloatRegHive::Hklm => HKEY_LOCAL_MACHINE,
-            });
-            let flags = match entry.hive {
-                DebloatRegHive::Hkcu => KEY_READ,
-                DebloatRegHive::Hklm => KEY_READ | KEY_WOW64_64KEY,
-            };
+            let root = RegLocation::native(entry.hive).root();
+            let flags = RegLocation::native(entry.hive).flags(KEY_READ);
 
             // Distinguir «no existe» de un error real: un error no puede guardarse como «no existía».
             let prev = match root.open_subkey_with_flags(entry.subkey, flags) {
@@ -169,14 +164,8 @@ impl DebloaterManager {
 
     pub(super) fn apply_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
         for entry in entries {
-            let root = RegKey::predef(match entry.hive {
-                DebloatRegHive::Hkcu => HKEY_CURRENT_USER,
-                DebloatRegHive::Hklm => HKEY_LOCAL_MACHINE,
-            });
-            let flags = match entry.hive {
-                DebloatRegHive::Hkcu => KEY_WRITE,
-                DebloatRegHive::Hklm => KEY_WRITE | KEY_WOW64_64KEY,
-            };
+            let root = RegLocation::native(entry.hive).root();
+            let flags = RegLocation::native(entry.hive).flags(KEY_WRITE);
             let (key, _) = root
                 .create_subkey_with_flags(entry.subkey, flags)
                 .map_err(|e| CoreError::Registry {
@@ -238,14 +227,8 @@ impl DebloaterManager {
         let entry = snap.catalog_entry().ok_or_else(|| {
             CoreError::Validation("Entrada fuera del catálogo del Debloater".into())
         })?;
-        let root = RegKey::predef(match entry.hive {
-            DebloatRegHive::Hkcu => HKEY_CURRENT_USER,
-            DebloatRegHive::Hklm => HKEY_LOCAL_MACHINE,
-        });
-        let flags = match entry.hive {
-            DebloatRegHive::Hkcu => KEY_READ | KEY_WRITE,
-            DebloatRegHive::Hklm => KEY_READ | KEY_WRITE | KEY_WOW64_64KEY,
-        };
+        let root = RegLocation::native(entry.hive).root();
+        let flags = RegLocation::native(entry.hive).flags(KEY_READ | KEY_WRITE);
 
         if snap.existed {
             let (key, _) = root.create_subkey_with_flags(entry.subkey, flags)?;

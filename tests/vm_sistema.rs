@@ -22,7 +22,7 @@ use std::sync::atomic::AtomicBool;
 
 use otter_swiss::core::archive::{resolve_extract_destination, ArchiveFormat, ArchiveManager};
 use otter_swiss::core::cleaner::SystemCleaner;
-use otter_swiss::core::debloat::{DebloatRegHive, DebloaterManager, DEBLOAT_REG_TWEAKS};
+use otter_swiss::core::debloat::{DebloaterManager, DEBLOAT_REG_TWEAKS};
 use otter_swiss::core::dns::{list_active_adapters, DnsManager};
 use otter_swiss::core::optimize::engine::{OptimizationEngine, OptimizationProfile};
 use otter_swiss::core::optimize::tweaks_catalog::{RegHive, REGISTRY_TWEAKS, SERVICE_TWEAKS};
@@ -105,7 +105,7 @@ fn debloat_snapshot() -> Vec<Option<(u32, Vec<u8>)>> {
     DEBLOAT_REG_TWEAKS
         .iter()
         .flat_map(|t| t.entries.iter())
-        .map(|e| raw_value(e.hive == DebloatRegHive::Hklm, e.subkey, e.value_name))
+        .map(|e| raw_value(e.hive == RegHive::Hklm, e.subkey, e.value_name))
         .collect()
 }
 
@@ -173,7 +173,7 @@ fn debloater(c: &mut Checks) {
         .iter()
         .flat_map(|t| t.entries.iter())
         .all(|e| {
-            raw_value(e.hive == DebloatRegHive::Hklm, e.subkey, e.value_name)
+            raw_value(e.hive == RegHive::Hklm, e.subkey, e.value_name)
                 .is_some_and(|(_, b)| b == e.target_dword.to_le_bytes())
         });
     c.check(applied, "todos los valores quedaron en su objetivo");

@@ -5,8 +5,8 @@ mod catalog;
 mod registry_backup;
 
 pub use catalog::{
-    DebloatAppSpec, DebloatCategory, DebloatRegEntry, DebloatRegHive, DebloatRegTweakSpec,
-    DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS,
+    DebloatAppSpec, DebloatCategory, DebloatRegEntry, DebloatRegTweakSpec, DEBLOAT_APP_CATALOG,
+    DEBLOAT_REG_TWEAKS,
 };
 
 use std::sync::atomic::{AtomicBool, Ordering};

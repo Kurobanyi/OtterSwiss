@@ -1,6 +1,6 @@
 //! Catálogo del Debloater: apps Appx que se pueden quitar y ajustes de registro de privacidad y telemetría.
 
-use serde::{Deserialize, Serialize};
+use crate::core::platform::registry::RegHive;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DebloatCategory {
@@ -266,15 +266,9 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
     },
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DebloatRegHive {
-    Hkcu,
-    Hklm,
-}
-
 #[derive(Debug, Clone)]
 pub struct DebloatRegEntry {
-    pub hive: DebloatRegHive,
+    pub hive: RegHive,
     pub subkey: &'static str,
     pub value_name: &'static str,
     pub target_dword: u32,
@@ -297,37 +291,37 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         default_selected: true,
         entries: &[
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SilentInstalledAppsEnabled",
                 target_dword: 0,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SystemPaneSuggestionsEnabled",
                 target_dword: 0,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SoftLandingEnabled",
                 target_dword: 0,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SubscribedContent-338388Enabled",
                 target_dword: 0,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SubscribedContent-338389Enabled",
                 target_dword: 0,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager",
                 value_name: "SubscribedContent-353698Enabled",
                 target_dword: 0,
@@ -341,13 +335,13 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         default_selected: true,
         entries: &[
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Policies\Microsoft\Windows\Explorer",
                 value_name: "DisableSearchBoxSuggestions",
                 target_dword: 1,
             },
             DebloatRegEntry {
-                hive: DebloatRegHive::Hkcu,
+                hive: RegHive::Hkcu,
                 subkey: r"Software\Microsoft\Windows\CurrentVersion\Search",
                 value_name: "BingSearchEnabled",
                 target_dword: 0,
@@ -360,7 +354,7 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         description: "Oculta y detiene el panel de noticias/clima en la barra de tareas",
         default_selected: true,
         entries: &[DebloatRegEntry {
-            hive: DebloatRegHive::Hklm,
+            hive: RegHive::Hklm,
             subkey: r"SOFTWARE\Policies\Microsoft\Dsh",
             value_name: "AllowNewsAndInterests",
             target_dword: 0,
@@ -372,7 +366,7 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         description: "Fija ShowSyncProviderNotifications=0 en el Explorador de archivos",
         default_selected: true,
         entries: &[DebloatRegEntry {
-            hive: DebloatRegHive::Hkcu,
+            hive: RegHive::Hkcu,
             subkey: r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced",
             value_name: "ShowSyncProviderNotifications",
             target_dword: 0,
@@ -384,7 +378,7 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         description: "Fija TurnOffWindowsCopilot=1 (reversible)",
         default_selected: true,
         entries: &[DebloatRegEntry {
-            hive: DebloatRegHive::Hkcu,
+            hive: RegHive::Hkcu,
             subkey: r"Software\Policies\Microsoft\Windows\WindowsCopilot",
             value_name: "TurnOffWindowsCopilot",
             target_dword: 1,
