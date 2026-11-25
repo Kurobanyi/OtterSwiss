@@ -1074,12 +1074,13 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sys-26"></a>
 ### SYS-26 · Un driver instalado desde la app no se puede revertir
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Pendiente
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Resuelto
 - **Qué pasa**: instalar (WUA, Catálogo o fabricante) no crea respaldo ni punto de restauración. «Respaldar Drivers OEM» exporta, pero no
   hay forma de restaurar ni de quitar el `oemNN.inf` agregado.
 - **Dónde**: `src/core/drivers.rs:855-887` (no hay función de restaurar).
 - **Propuesta**: punto de restauración o export antes de instalar; revertir con `pnputil /delete-driver` del INF añadido, registrado en
   el rollback.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): cada instalación (Windows Update, Catálogo, fabricante) compara `%WINDIR%\INF\oem*.inf` antes y después y guarda los paquetes agregados en `driver_installs.json` (carpeta solo-admin, leído con `read_backup` y filtrado a nombres `oemN.inf`). La pestaña Drivers lista lo instalado desde OtterSwiss y «Quitar» (con confirmación) corre `pnputil /delete-driver oemN.inf /uninstall /force`: los dispositivos vuelven al driver que quede. Solo acepta paquetes del historial propio (test `solo_paquetes_oem`). Verificado: `cargo test` (68) y `clippy --all-targets -- -D warnings` en verde; tarjeta y diálogo recorridos en la app sin elevar con datos ficticios; sin probar quitando un driver real en una VM. No crea punto de restauración.
 
 <a id="sys-27"></a>
 ### SYS-27 · El JSON de Intel puede ofrecer el paquete de otro dispositivo
@@ -1184,11 +1185,12 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="con-03"></a>
 ### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Parcial
 - **Qué pasa**: `Search`, `Download` e `Install` de WUA son síncronos; `install_driver_updates` repite la búsqueda online. La pestaña
   queda deshabilitada minutos sin botón de cancelar. (COM está bien: STA en hilo propio y `CoUninitialize` emparejado.)
 - **Dónde**: `src/core/drivers.rs:897-1017`, `1034-1197`; `src/ui/views/drivers.rs:88-161`.
 - **Propuesta**: `BeginSearch`/`EndSearch` con cancelación y reutilizar los `IUpdate` de la búsqueda.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): la búsqueda de Windows Update corre en su hilo con plazo de 4 minutos: pasado ese tiempo la pestaña deja de esperar y lo informa (la búsqueda solo lee, así que el hilo puede terminar después sin dejar nada a medias). La instalación sigue sin plazo ni cancelación a propósito: cortar una instalación de drivers a mitad es peor que esperar. Tampoco hay botón de cancelar la búsqueda. Verificado: `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ui-19"></a>
 ### UI-19 · Error de Windows Update y «no hay actualizaciones» a la vez
