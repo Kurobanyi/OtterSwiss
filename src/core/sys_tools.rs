@@ -1,19 +1,12 @@
 use std::path::Path;
 
 use windows::Win32::System::ProcessStatus::{EnumProcesses, K32EmptyWorkingSet};
+use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
 use windows::Win32::System::Threading::{
     GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
     PROCESS_SET_QUOTA, QueryFullProcessImageNameW,
 };
 use windows::core::PWSTR;
-
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn ProcessIdToSessionId(
-        dwprocessid: u32,
-        psessionid: *mut u32,
-    ) -> windows::Win32::Foundation::BOOL;
-}
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
@@ -101,7 +94,7 @@ impl SysTools {
             }
 
             let mut proc_session = 0u32;
-            if !unsafe { ProcessIdToSessionId(pid, &mut proc_session) }.as_bool()
+            if unsafe { ProcessIdToSessionId(pid, &mut proc_session) }.is_err()
                 || proc_session != current_session
             {
                 report.processes_skipped += 1;
