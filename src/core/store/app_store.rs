@@ -587,7 +587,7 @@ impl AppStoreManager {
         CURATED_CATALOG
     }
 
-    pub fn find_package(package_id: &str) -> Option<&'static CuratedPackage> {
+    fn find_package(package_id: &str) -> Option<&'static CuratedPackage> {
         CURATED_CATALOG
             .iter()
             .find(|p| p.id.eq_ignore_ascii_case(package_id))

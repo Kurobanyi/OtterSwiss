@@ -26,7 +26,6 @@ pub struct TrimWorkingSetsReport {
     pub processes_skipped: usize,
     pub errors_encountered: usize,
     pub trimmed_processes: Vec<String>,
-    pub explanatory_note: &'static str,
 }
 
 /// Abre el Explorador en `target` (o en su carpeta si es un archivo). El Explorador se toma de la carpeta de Windows
@@ -93,7 +92,6 @@ impl SysTools {
             processes_skipped: 0,
             errors_encountered: 0,
             trimmed_processes: Vec::new(),
-            explanatory_note: "Las páginas de memoria fueron transferidas a la lista Standby del Administrador de Memoria de Windows.",
         };
 
         for pid in pids {
