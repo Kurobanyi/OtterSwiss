@@ -15,8 +15,14 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 de ataque) y `docs/PRACTICAS-detalle.md` (expedientes): 17 P1, 49 P2, 21 P3. Los defectos van en `docs/BUGS.md`. También se
 devolvieron a su expediente siete líneas **Cierre** de `BUGS-detalle.md` que habían quedado bajo el título de la sección siguiente.
 
-**Siguiente paso:** el usuario decide si commitear el registro y qué atacar primero (sugerido: los cuatro defectos y las barandas
-de `PRACTICAS.md`, paso 1). Sigue pendiente, en un Windows completo: quitar una app Appx con el Debloater y ver la ventana chica.
+**Avance 24/11 (rama `auditoria/buenas-practicas`, commits locales sin push, pedido del usuario):** hechas las fases 1–3 y
+parte de la 4: defectos ERR-14/SEC-29/UI-17/UI-18; barandas (lints, CI, deny, .gitattributes, instalador en installer/);
+main.css reescrito con temas «Según Windows»; core en carpetas por capa (platform, security, hardware, optimize, debloat,
+uninstall, archive, store) y módulos grandes partidos; UI en app/installer/document y un componente por archivo; cli.rs;
+http.rs, StagedDownload, run_captured, UninstallOutcome; fuera sysinfo. 48 tests y clippy en verde.
+**Siguiente:** fase 4 restante (AR-15/AR-16 en vistas DNS/Debloater/Hardware/limpiador/Dashboard/sensores; CL-04 RegLocation;
+AR-02 respaldo del Debloater sobre registry; CL-05 funciones largas; AR-06 errores), fase 5 (UI: task.rs, Notice, ProgressBar,
+CheckRow, estilos inline a clases, catálogo i18n) y fase 6 (docs: cerrar IDs en PRACTICAS-detalle, README, AGENTS.md).
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
 núcleos y Windows 11 exige 2). La VM se borró; queda la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
