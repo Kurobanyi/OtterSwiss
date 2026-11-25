@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use std::ptr;
 
 use serde::{Deserialize, Serialize};
-use sysinfo::System;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
@@ -13,6 +12,9 @@ use windows::Win32::Storage::FileSystem::{
 use windows::Win32::System::Ioctl::{
     PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY,
     STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
+};
+use windows::Win32::System::SystemInformation::{
+    GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
 };
 use windows::Win32::System::IO::DeviceIoControl;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
@@ -46,43 +48,59 @@ pub struct HardwareProfile {
     pub storage_drives: Vec<String>,
 }
 
-impl HardwareProfile {
-    pub fn detect() -> Self {
-        let mut sys = System::new();
-        sys.refresh_memory();
-        sys.refresh_cpu_all();
-
-        let logical_cores = sys.cpus().len().max(1);
-        let total_ram_mb = sys.total_memory() / (1024 * 1024);
-        let is_laptop_or_battery = detect_battery_presence();
-
-        let tier = if logical_cores >= 8 && total_ram_mb >= 14_336 {
-            HardwareTier::HighEnd
+impl HardwareTier {
+    /// AR-04: el nivel solo depende de núcleos lógicos y RAM; no hace falta leer GPU ni discos para decidirlo.
+    pub fn from_cores_and_ram(logical_cores: usize, total_ram_mb: u64) -> Self {
+        if logical_cores >= 8 && total_ram_mb >= 14_336 {
+            Self::HighEnd
         } else if logical_cores >= 4 && total_ram_mb >= 7_168 {
-            HardwareTier::MidRange
+            Self::MidRange
         } else {
-            HardwareTier::LowEnd
-        };
-
-        let cpu_name = detect_cpu_name(&sys);
-        let gpu_names = detect_gpu_names();
-        let motherboard = detect_motherboard_name();
-        let storage_drives = detect_storage_drives();
-
-        Self {
-            logical_cores,
-            total_ram_mb,
-            is_laptop_or_battery,
-            tier,
-            cpu_name,
-            gpu_names,
-            motherboard,
-            storage_drives,
+            Self::LowEnd
         }
     }
 }
 
-fn detect_cpu_name(sys: &System) -> String {
+impl HardwareProfile {
+    pub fn detect() -> Self {
+        let logical_cores = logical_processor_count();
+        let total_ram_mb = total_physical_ram_mb();
+        Self {
+            logical_cores,
+            total_ram_mb,
+            is_laptop_or_battery: detect_battery_presence(),
+            tier: HardwareTier::from_cores_and_ram(logical_cores, total_ram_mb),
+            cpu_name: detect_cpu_name(),
+            gpu_names: detect_gpu_names(),
+            motherboard: detect_motherboard_name(),
+            storage_drives: detect_storage_drives(),
+        }
+    }
+}
+
+/// Procesadores lógicos del sistema (`GetSystemInfo`). AR-18: antes salía de `sysinfo`, que traía otra versión del
+/// crate `windows`.
+fn logical_processor_count() -> usize {
+    let mut info = SYSTEM_INFO::default();
+    // SAFETY: `info` es un SYSTEM_INFO válido que la función rellena.
+    unsafe { GetSystemInfo(&mut info) };
+    (info.dwNumberOfProcessors as usize).max(1)
+}
+
+/// RAM física total en MB (`GlobalMemoryStatusEx`). 0 si la consulta falla.
+fn total_physical_ram_mb() -> u64 {
+    let mut status = MEMORYSTATUSEX {
+        dwLength: std::mem::size_of::<MEMORYSTATUSEX>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `status` tiene `dwLength` puesto, como exige la API.
+    match unsafe { GlobalMemoryStatusEx(&mut status) } {
+        Ok(()) => status.ullTotalPhys / (1024 * 1024),
+        Err(_) => 0,
+    }
+}
+
+fn detect_cpu_name() -> String {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     if let Ok(k) = hklm.open_subkey_with_flags(
         r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
@@ -95,11 +113,7 @@ fn detect_cpu_name(sys: &System) -> String {
             }
         }
     }
-    sys.cpus()
-        .first()
-        .map(|c| c.brand().trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "Procesador x86_64".into())
+    "Procesador x86_64".into()
 }
 
 fn detect_motherboard_name() -> String {
@@ -242,4 +256,29 @@ fn detect_storage_drives() -> Vec<String> {
         drives.push(format!("[{}] {}", bus_label, model));
     }
     drives
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nivel_por_nucleos_y_ram() {
+        assert_eq!(
+            HardwareTier::from_cores_and_ram(16, 32_768),
+            HardwareTier::HighEnd
+        );
+        assert_eq!(
+            HardwareTier::from_cores_and_ram(16, 8_192),
+            HardwareTier::MidRange
+        );
+        assert_eq!(
+            HardwareTier::from_cores_and_ram(4, 7_168),
+            HardwareTier::MidRange
+        );
+        assert_eq!(
+            HardwareTier::from_cores_and_ram(2, 32_768),
+            HardwareTier::LowEnd
+        );
+    }
 }
