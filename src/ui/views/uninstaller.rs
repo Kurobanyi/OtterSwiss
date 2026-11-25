@@ -394,15 +394,15 @@ pub fn UninstallerView() -> Element {
     };
 
     let q = search_query.read().trim().to_ascii_lowercase();
-    let mut filtered: Vec<InstalledApp> = apps
-        .read()
+    // CL-16: referencias a la lista, no una copia de todas las apps en cada render.
+    let apps_guard = apps.read();
+    let mut filtered: Vec<&InstalledApp> = apps_guard
         .iter()
         .filter(|a| {
             q.is_empty()
                 || a.display_name.to_ascii_lowercase().contains(&q)
                 || a.publisher.to_ascii_lowercase().contains(&q)
         })
-        .cloned()
         .collect();
 
     match *sort_mode.read() {
@@ -721,7 +721,7 @@ pub fn UninstallerView() -> Element {
                         {
                             let app_for_uninst = app.clone();
                             let app_for_scan = app.clone();
-                            let size_lbl = effective_kb(&app)
+                            let size_lbl = effective_kb(app)
                                 .map(|kb| format_size_mb(kb.saturating_mul(1024)))
                                 .unwrap_or_else(|| "—".to_string());
 
