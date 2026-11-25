@@ -5,8 +5,11 @@ use std::ptr;
 
 use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Security::Cryptography::{
-    CERT_NAME_ATTR_TYPE, CERT_SHA1_HASH_PROP_ID, CertGetCertificateContextProperty,
-    CertGetNameStringW,
+    CERT_CHAIN_CONTEXT, CERT_CHAIN_PARA, CERT_CHAIN_POLICY_BASE,
+    CERT_CHAIN_POLICY_IGNORE_ALL_NOT_TIME_VALID_FLAGS, CERT_CHAIN_POLICY_PARA,
+    CERT_CHAIN_POLICY_STATUS, CERT_CONTEXT, CERT_NAME_ATTR_TYPE, CERT_SHA1_HASH_PROP_ID,
+    CertFreeCertificateChain, CertGetCertificateChain, CertGetCertificateContextProperty,
+    CertGetNameStringW, CertVerifyCertificateChainPolicy, HCERTCHAINENGINE,
 };
 use windows::Win32::Security::WinTrust::{
     WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0, WINTRUST_FILE_INFO,
@@ -18,6 +21,9 @@ use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::wide::to_wide_null;
+
+/// `HCCE_LOCAL_MACHINE` de wincrypt.h: motor de cadenas que solo usa los almacenes del equipo.
+const HCCE_LOCAL_MACHINE: HCERTCHAINENGINE = HCERTCHAINENGINE(1 as _);
 
 /// `szOID_COMMON_NAME` de wincrypt.h.
 const SZ_OID_COMMON_NAME_BYTES: &[u8] = b"2.5.4.3\0";
@@ -162,6 +168,8 @@ pub fn verify_authenticode_on_handle(
         });
     }
 
+    verify_chain_with_machine_roots(cert_ctx)?;
+
     if let Some(expected_tp) = expected_thumbprint_sha1 {
         let mut hash = [0u8; 20];
         let mut hash_len = hash.len() as u32;
@@ -194,4 +202,89 @@ pub fn verify_authenticode_on_handle(
     }
 
     Ok(())
+}
+
+/// SEC-32: WinVerifyTrust acepta raíces del almacén del usuario, y el proceso elevado comparte HKCU con él: un programa
+/// sin privilegios podría agregar su propia raíz y firmar un binario con el CN esperado. Se vuelve a construir la cadena
+/// del firmante con el motor de la máquina, que solo confía en las raíces de LocalMachine (que solo un administrador
+/// cambia). La vigencia y la revocación ya las comprobó WinVerifyTrust (con sello de tiempo), así que aquí se ignora
+/// el tiempo: un instalador firmado con un certificado ya vencido pero sellado sigue siendo válido.
+fn verify_chain_with_machine_roots(cert_ctx: *const CERT_CONTEXT) -> CoreResult<()> {
+    let chain_para = CERT_CHAIN_PARA {
+        cbSize: std::mem::size_of::<CERT_CHAIN_PARA>() as u32,
+        ..Default::default()
+    };
+    let mut chain: *mut CERT_CHAIN_CONTEXT = ptr::null_mut();
+    // SAFETY: `cert_ctx` es el certificado hoja válido mientras siga abierto el estado de WinVerifyTrust (lo garantiza
+    // quien llama); su almacén aporta los intermedios de la firma; la cadena devuelta se libera abajo.
+    unsafe {
+        CertGetCertificateChain(
+            Some(HCCE_LOCAL_MACHINE),
+            cert_ctx,
+            None,
+            Some((*cert_ctx).hCertStore),
+            &chain_para,
+            0,
+            None,
+            &mut chain,
+        )
+    }
+    .map_err(CoreError::trust(
+        "No se pudo construir la cadena del firmante: ",
+    ))?;
+
+    struct ChainGuard(*mut CERT_CHAIN_CONTEXT);
+    impl Drop for ChainGuard {
+        fn drop(&mut self) {
+            // SAFETY: la cadena la creó CertGetCertificateChain y solo se libera aquí.
+            unsafe { CertFreeCertificateChain(self.0) };
+        }
+    }
+    let _guard = ChainGuard(chain);
+
+    let policy_para = CERT_CHAIN_POLICY_PARA {
+        cbSize: std::mem::size_of::<CERT_CHAIN_POLICY_PARA>() as u32,
+        dwFlags: CERT_CHAIN_POLICY_IGNORE_ALL_NOT_TIME_VALID_FLAGS,
+        ..Default::default()
+    };
+    let mut status = CERT_CHAIN_POLICY_STATUS {
+        cbSize: std::mem::size_of::<CERT_CHAIN_POLICY_STATUS>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: la cadena es válida mientras viva `_guard`; las estructuras tienen su tamaño en `cbSize`.
+    let ok = unsafe {
+        CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_BASE, chain, &policy_para, &mut status)
+    }
+    .as_bool();
+    if !ok || status.dwError != 0 {
+        return Err(CoreError::Trust {
+            message: format!(
+                "La firma no encadena a una raíz de confianza del equipo (código 0x{:08X})",
+                status.dwError
+            ),
+            source: None,
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::windows::io::AsRawHandle;
+
+    use super::*;
+
+    /// Un binario de Windows con firma incrustada pasa la verificación completa (WinVerifyTrust y cadena con las
+    /// raíces del equipo, SEC-32) y no pasa con otro CN. Se salta si el equipo no tiene Edge.
+    #[test]
+    fn firma_de_edge_encadena_a_raiz_del_equipo() {
+        let path = Path::new(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");
+        let Ok(file) = std::fs::File::open(path) else {
+            return;
+        };
+        let handle = HANDLE(file.as_raw_handle());
+        verify_authenticode_on_handle(path, handle, "Microsoft Corporation", None)
+            .expect("firma de Edge válida");
+        assert!(verify_authenticode_on_handle(path, handle, "Otra Empresa", None).is_err());
+    }
 }
