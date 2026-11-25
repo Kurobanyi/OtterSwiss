@@ -436,7 +436,7 @@ mod tests {
         let hex = "a".repeat(64);
         assert_eq!(
             parse_sha256_digest(Some(&format!("sha256:{}", hex))),
-            Some(hex.clone())
+            Some(hex)
         );
         assert_eq!(parse_sha256_digest(Some("sha1:abcd")), None);
         assert_eq!(parse_sha256_digest(Some("sha256:xyz")), None);

@@ -164,7 +164,7 @@ fn MiniArchiveProgressApp() -> Element {
     let err_opt = error_msg.read().clone();
     let win_drag = window.clone();
     let win_close = window.clone();
-    let win_done = window.clone();
+    let win_done = window;
     let cancel_btn = Arc::clone(&cancel_flag);
     let cancel_close = Arc::clone(&cancel_flag);
 

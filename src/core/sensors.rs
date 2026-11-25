@@ -95,6 +95,12 @@ struct NvmlSession {
     get_threshold: Option<NvmlDeviceGetTempThresholdFn>,
 }
 
+// SAFETY: la sesión se crea y se usa solo desde el hilo de sondeo que la posee; NVML admite llamadas desde cualquier hilo
+// y los punteros a funciones no se comparten. Ningún `&NvmlSession` cruza hilos (no es `Sync`).
+#[allow(
+    clippy::non_send_fields_in_send_ty,
+    reason = "punteros de la DLL; ver SAFETY"
+)]
 unsafe impl Send for NvmlSession {}
 
 impl NvmlSession {
@@ -307,7 +313,8 @@ unsafe extern "system" fn adl_malloc(size: c_int) -> *mut c_void {
         Ok(l) => l,
         Err(_) => return ptr::null_mut(),
     };
-    std::alloc::alloc_zeroed(layout) as *mut c_void
+    // SAFETY: `layout` tiene tamaño > 0 (comprobado arriba) y alineación válida.
+    unsafe { std::alloc::alloc_zeroed(layout) as *mut c_void }
 }
 
 struct AdlSession {
@@ -321,6 +328,12 @@ struct AdlSession {
     od5_temp: Option<Adl2Od5TempFn>,
 }
 
+// SAFETY: el contexto ADL2 se crea, se usa y se destruye en el hilo de sondeo que posee la sesión; ADL2 admite un
+// contexto por hilo y la sesión no es `Sync`, así que nunca se usa desde dos hilos a la vez.
+#[allow(
+    clippy::non_send_fields_in_send_ty,
+    reason = "contexto y punteros de la DLL; ver SAFETY"
+)]
 unsafe impl Send for AdlSession {}
 
 impl AdlSession {
@@ -771,7 +784,7 @@ impl SensorSession {
                         break;
                     };
 
-                    let temp_c = unsafe { read_wmi_i32(&obj, "CurrentTemperature") }
+                    let temp_c = read_wmi_i32(&obj, "CurrentTemperature")
                         .map(|tenths_k| (tenths_k as f32 / 10.0) - 273.15);
 
                     let Some(c) = temp_c else {
@@ -781,11 +794,11 @@ impl SensorSession {
                         continue;
                     }
 
-                    let crit_c = unsafe { read_wmi_i32(&obj, "CriticalTripPoint") }
+                    let crit_c = read_wmi_i32(&obj, "CriticalTripPoint")
                         .map(|tenths_k| (tenths_k as f32 / 10.0) - 273.15)
                         .filter(|&v| v > 20.0 && v < 150.0);
 
-                    let instance_name = unsafe { read_wmi_string(&obj, "InstanceName") }
+                    let instance_name = read_wmi_string(&obj, "InstanceName")
                         .unwrap_or_else(|| format!("Zona ACPI {}", idx));
 
                     readings.push(SensorReading {
@@ -840,11 +853,11 @@ impl SensorSession {
                             break;
                         };
 
-                        let hp = unsafe { read_wmi_i32(&obj, "HighPrecisionTemperature") }
+                        let hp = read_wmi_i32(&obj, "HighPrecisionTemperature")
                             .map(|tk| (tk as f32 / 10.0) - 273.15)
                             .filter(|&c| c > 1.0 && c < 125.0);
 
-                        let std_k = unsafe { read_wmi_i32(&obj, "Temperature") }
+                        let std_k = read_wmi_i32(&obj, "Temperature")
                             .map(|k| k as f32 - 273.15)
                             .filter(|&c| c > 1.0 && c < 125.0);
 
@@ -852,7 +865,7 @@ impl SensorSession {
                             continue;
                         };
 
-                        let zone_name = unsafe { read_wmi_string(&obj, "Name") }
+                        let zone_name = read_wmi_string(&obj, "Name")
                             .unwrap_or_else(|| format!("ThermalZone {}", idx));
 
                         readings.push(SensorReading {
@@ -904,36 +917,43 @@ impl SensorSession {
     }
 }
 
-unsafe fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
+fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
     let w = to_wide_null(prop);
     let mut var = VARIANT::default();
-    if obj
-        .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
-        .is_err()
-    {
-        return None;
+    // SAFETY: `w` termina en NUL y vive hasta el final; `var` es un VARIANT inicializado que se libera abajo.
+    unsafe {
+        if obj
+            .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+            .is_err()
+        {
+            return None;
+        }
+        let val = VariantToInt32(&var).ok();
+        let _ = VariantClear(&mut var);
+        val
     }
-    let val = VariantToInt32(&var).ok();
-    let _ = VariantClear(&mut var);
-    val
 }
 
-unsafe fn read_wmi_string(obj: &IWbemClassObject, prop: &str) -> Option<String> {
+fn read_wmi_string(obj: &IWbemClassObject, prop: &str) -> Option<String> {
     let w = to_wide_null(prop);
     let mut var = VARIANT::default();
-    if obj
-        .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
-        .is_err()
-    {
-        return None;
+    // SAFETY: `w` termina en NUL y vive hasta el final; `var` se libera abajo y la cadena que devuelve
+    // `VariantToStringAlloc` se libera con `CoTaskMemFree` después de copiarla.
+    unsafe {
+        if obj
+            .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+            .is_err()
+        {
+            return None;
+        }
+        let res = VariantToStringAlloc(&var).ok().map(|pw| {
+            let s = pw.to_string().unwrap_or_default();
+            CoTaskMemFree(Some(pw.0 as *const _));
+            s
+        });
+        let _ = VariantClear(&mut var);
+        res.filter(|s| !s.trim().is_empty())
     }
-    let res = VariantToStringAlloc(&var).ok().map(|pw| {
-        let s = pw.to_string().unwrap_or_default();
-        CoTaskMemFree(Some(pw.0 as *const _));
-        s
-    });
-    let _ = VariantClear(&mut var);
-    res.filter(|s| !s.trim().is_empty())
 }
 
 impl Default for SensorSession {

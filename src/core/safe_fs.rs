@@ -1,7 +1,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::windows::fs::OpenOptionsExt;
-use std::os::windows::io::{AsRawHandle, FromRawHandle};
+use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf};
 
 use windows::core::PCWSTR;
@@ -479,12 +479,6 @@ pub fn write_zone_identifier_raw(target_file: &Path, content: &[u8]) -> CoreResu
         .open(PathBuf::from(ads_os))?;
     file.write_all(content)?;
     Ok(())
-}
-
-/// Abre un `File` existente desde `FILE_GENERIC_READ | FILE_GENERIC_WRITE` si es necesario.
-#[allow(dead_code)]
-pub fn duplicate_file_handle(raw: HANDLE) -> File {
-    unsafe { File::from_raw_handle(raw.0 as _) }
 }
 
 #[cfg(test)]

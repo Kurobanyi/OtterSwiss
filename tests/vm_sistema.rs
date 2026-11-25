@@ -1,3 +1,7 @@
+#![allow(
+    clippy::print_stdout,
+    reason = "el recorrido informa cada paso por consola"
+)]
 //! Recorrido de las acciones que cambian el sistema, contra Windows real y **como administrador**.
 //!
 //! Solo para una VM desechable: aplica ajustes, cambia el DNS, elimina una app Appx, borra temporales y

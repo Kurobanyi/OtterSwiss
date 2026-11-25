@@ -329,7 +329,10 @@ impl<'a> TelemetryCtx<'a> {
     }
 }
 
-#[allow(clippy::too_many_arguments)] // Estado de una extracción en curso; agruparlo no aclara nada.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "estado de una extracción en curso; se agrupa en CL-14"
+)]
 fn copy_with_quota<R: Read + ?Sized>(
     reader: &mut R,
     out_path: &Path,

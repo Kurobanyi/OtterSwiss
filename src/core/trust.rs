@@ -47,8 +47,8 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::safe_fs::{inspect_handle, write_zone_identifier};
 use crate::core::win_common::{to_wide_null, wide_ptr_to_string_and_free};
 
-#[allow(non_upper_case_globals)]
-const szOID_COMMON_NAME_BYTES: &[u8] = b"2.5.4.3\0";
+/// `szOID_COMMON_NAME` de wincrypt.h.
+const SZ_OID_COMMON_NAME_BYTES: &[u8] = b"2.5.4.3\0";
 
 struct WinInetHandle(*mut std::ffi::c_void);
 
@@ -853,7 +853,7 @@ pub fn verify_authenticode_on_handle(
             cert_ctx,
             CERT_NAME_ATTR_TYPE,
             0,
-            Some(szOID_COMMON_NAME_BYTES.as_ptr() as *const _),
+            Some(SZ_OID_COMMON_NAME_BYTES.as_ptr() as *const _),
             Some(&mut cn_buf),
         )
     };

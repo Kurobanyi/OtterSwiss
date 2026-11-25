@@ -1,0 +1,3 @@
+# HE-04: unwrap y expect se permiten en tests (en producción, `deny` en Cargo.toml).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

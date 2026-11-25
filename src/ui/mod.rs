@@ -1,4 +1,5 @@
-// src/ui/mod.rs
+// CL-01: toda la FFI vive en core; la UI no puede usar unsafe.
+#![forbid(unsafe_code)]
 
 pub mod components;
 pub mod i18n;
@@ -369,7 +370,7 @@ pub fn App() -> Element {
     let win_min = window.clone();
     let win_max = window.clone();
     let win_close = window.clone();
-    let win_drag = window.clone();
+    let win_drag = window;
 
     let pkg_ver = env!("CARGO_PKG_VERSION");
     let version_badge = if let Some(maj_min) = pkg_ver.strip_suffix(".0") {

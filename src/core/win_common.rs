@@ -189,7 +189,8 @@ impl SafeLibrary {
     /// de la función exportada antes de llamarla.
     pub unsafe fn get_proc(&self, symbol: &[u8]) -> Option<unsafe extern "system" fn() -> isize> {
         debug_assert!(symbol.ends_with(&[0]));
-        GetProcAddress(self.0, windows::core::PCSTR(symbol.as_ptr()))
+        // SAFETY: el módulo sigue cargado mientras viva `self` y `symbol` termina en NUL (contrato de la función).
+        unsafe { GetProcAddress(self.0, windows::core::PCSTR(symbol.as_ptr())) }
     }
 }
 

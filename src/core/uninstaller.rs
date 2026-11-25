@@ -638,7 +638,7 @@ impl UninstallerManager {
                     source: None,
                 });
             }
-            exe_path.clone()
+            exe_path
         };
 
         let mut args = raw_args.to_string();
@@ -656,7 +656,7 @@ impl UninstallerManager {
             format!("\"{}\" {}", application.display(), args.trim())
         };
         let working_dir = if is_msi {
-            sys32.clone()
+            sys32
         } else {
             application
                 .parent()

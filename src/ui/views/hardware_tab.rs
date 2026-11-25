@@ -23,7 +23,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
     let mut status_msg = use_signal(|| None::<String>);
 
     let Some(specs) = props.specs.clone() else {
-        if let Some(err) = props.error.clone() {
+        if let Some(err) = props.error {
             return rsx! {
                 ErrorState {
                     title: if en { "Could not read the hardware".to_string() } else { "No se pudo leer el hardware".to_string() },

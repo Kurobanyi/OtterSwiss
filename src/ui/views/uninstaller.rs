@@ -138,7 +138,10 @@ fn start_scan(
     });
 }
 
-#[allow(clippy::too_many_arguments)] // Señales de la vista; son `Copy` y no ganan nada agrupadas.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "señales de la vista; se agrupan en CL-14"
+)]
 fn start_uninstall_and_scan(
     app: InstalledApp,
     en: bool,

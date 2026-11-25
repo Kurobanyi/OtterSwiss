@@ -495,7 +495,7 @@ fn stage_copy_for_user(
     }
     let path = dir.join(file_name);
     let staged = UserStagedCopy {
-        dir: dir.clone(),
+        dir,
         path: path.clone(),
     };
     let mut src_file = File::open(src)?;
