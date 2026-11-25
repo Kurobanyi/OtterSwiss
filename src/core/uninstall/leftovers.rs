@@ -3,10 +3,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use winreg::enums::{
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
-};
-use winreg::RegKey;
+use winreg::enums::KEY_READ;
 
 use windows::Win32::UI::Shell::{FOLDERID_LocalAppData, FOLDERID_Public};
 
@@ -234,369 +231,332 @@ pub(super) fn reg_location(is_hkcu: bool, wow64_32: bool) -> RegLocation {
 
 impl UninstallerManager {
     pub fn scan_leftovers(app: &InstalledApp) -> CoreResult<Vec<LeftoverItem>> {
-        let mut items = Vec::new();
-        let mut seen_paths = HashSet::<String>::new();
-        let (tokens, publisher_tok) = build_app_tokens(app);
+        let mut scan = LeftoverScan::new(app);
+        scan.install_location();
+        scan.folders();
+        scan.shortcuts();
+        scan.software_keys();
+        scan.run_values();
+        Ok(scan.finish())
+    }
 
-        let other_apps_same_publisher = if let Some(ref pub_name) = publisher_tok {
-            Self::list_installed_apps()
+    /// `true` si la entrada Uninstall de la app sigue en el registro.
+    pub fn is_still_registered(app: &InstalledApp) -> bool {
+        let loc = reg_location(app.is_per_user, app.is_wow64);
+        loc.root()
+            .open_subkey_with_flags(&app.registry_subkey, loc.flags(KEY_READ))
+            .is_ok()
+    }
+}
+
+/// CL-05: estado de una búsqueda de restos. Cada fuente (carpetas, accesos directos, claves `Software`, valores
+/// `Run`) es un método; `finish` aplica las reglas de SYS-04 y marca los recomendados.
+struct LeftoverScan<'a> {
+    app: &'a InstalledApp,
+    tokens: Vec<String>,
+    publisher_tok: Option<String>,
+    /// Si otra app instalada comparte fabricante, su carpeta de fabricante no es un resto entero.
+    other_apps_same_publisher: bool,
+    /// Si la app sigue registrada (el desinstalador falló, se canceló o aún no se ejecutó), su carpeta de
+    /// instalación y su entrada Uninstall no son «rastros»: borrarlas rompería una app instalada.
+    still_registered: bool,
+    /// Una entrada de HKCU la puede crear cualquier proceso del usuario: no decide qué se borra fuera de su
+    /// propio perfil (Program Files, ProgramData, HKLM).
+    user_scope_only: bool,
+    items: Vec<LeftoverItem>,
+    seen_paths: HashSet<String>,
+    seen_reg: HashSet<String>,
+}
+
+impl<'a> LeftoverScan<'a> {
+    fn new(app: &'a InstalledApp) -> Self {
+        let (tokens, publisher_tok) = build_app_tokens(app);
+        let other_apps_same_publisher = match publisher_tok {
+            Some(ref pub_name) => UninstallerManager::list_installed_apps()
                 .unwrap_or_default()
                 .into_iter()
                 .any(|other| {
                     other.id != app.id
                         && sanitize_token(&other.publisher)
                             .is_some_and(|p| p.eq_ignore_ascii_case(pub_name))
-                })
-        } else {
-            true
+                }),
+            None => true,
         };
+        Self {
+            app,
+            tokens,
+            publisher_tok,
+            other_apps_same_publisher,
+            still_registered: UninstallerManager::is_still_registered(app),
+            user_scope_only: app.is_per_user,
+            items: Vec::new(),
+            seen_paths: HashSet::new(),
+            seen_reg: HashSet::new(),
+        }
+    }
 
-        // Si la app sigue registrada (el desinstalador falló, se canceló o aún no se ejecutó), su carpeta de
-        // instalación y su entrada Uninstall no son «rastros»: borrarlas rompería una app instalada.
-        let still_registered = Self::is_still_registered(app);
-        // Una entrada de HKCU la puede crear cualquier proceso del usuario: no decide qué se borra fuera de
-        // su propio perfil (Program Files, ProgramData, HKLM).
-        let user_scope_only = app.is_per_user;
+    fn push_dir(&mut self, category: &'static str, path: PathBuf) {
+        push_dir_candidate(category, path, &mut self.seen_paths, &mut self.items);
+    }
 
-        if let Some(loc) = app.install_location.as_ref().filter(|_| !still_registered) {
-            if loc.is_dir() && is_safe_non_root_dir(loc, 2) {
-                push_dir_candidate(
-                    "Carpeta de instalación",
-                    loc.clone(),
-                    &mut seen_paths,
-                    &mut items,
-                );
+    fn is_publisher_name(&self, name: &str) -> bool {
+        self.publisher_tok
+            .as_ref()
+            .is_some_and(|p| name.eq_ignore_ascii_case(p))
+    }
+
+    fn install_location(&mut self) {
+        if self.still_registered {
+            return;
+        }
+        if let Some(loc) = self.app.install_location.clone() {
+            if loc.is_dir() && is_safe_non_root_dir(&loc, 2) {
+                self.push_dir("Carpeta de instalación", loc);
             }
         }
+    }
 
-        let mut scan_roots: Vec<(&'static str, PathBuf)> = Vec::new();
-        if !user_scope_only {
+    /// Carpetas con el nombre de la app (o de su fabricante) en Program Files, ProgramData y AppData.
+    fn folders(&mut self) {
+        let mut roots: Vec<(&'static str, PathBuf)> = Vec::new();
+        if !self.user_scope_only {
             if let Some(pf) = program_files_dir() {
-                scan_roots.push(("Archivos de Programa (x64)", pf));
+                roots.push(("Archivos de Programa (x64)", pf));
             }
             if let Some(pf86) = program_files_x86_dir() {
-                scan_roots.push(("Archivos de Programa (x86)", pf86));
+                roots.push(("Archivos de Programa (x86)", pf86));
             }
             if let Ok(pd) = get_program_data_dir() {
-                scan_roots.push(("ProgramData", pd));
+                roots.push(("ProgramData", pd));
             }
         }
         if let Some(roaming) = dirs::config_dir() {
-            scan_roots.push(("AppData Roaming", roaming));
+            roots.push(("AppData Roaming", roaming));
         }
         if let Some(local) = known_folder(&FOLDERID_LocalAppData) {
-            scan_roots.push(("AppData Local", local));
+            roots.push(("AppData Local", local));
         }
 
-        for (cat, root) in scan_roots {
-            if !root.is_dir() {
+        for (cat, root) in roots {
+            let Ok(entries) = std::fs::read_dir(&root) else {
                 continue;
-            }
-            if let Ok(entries) = std::fs::read_dir(&root) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if !p.is_dir() {
-                        continue;
-                    }
-                    let fname = entry.file_name().to_string_lossy().into_owned();
-                    if is_protected_name(&fname) {
-                        continue;
-                    }
-                    if matches_any_token(&fname, &tokens) {
-                        push_dir_candidate(cat, p, &mut seen_paths, &mut items);
-                    } else if let Some(ref pub_tok) = publisher_tok {
-                        if fname.eq_ignore_ascii_case(pub_tok) {
-                            if !other_apps_same_publisher {
-                                push_dir_candidate(cat, p, &mut seen_paths, &mut items);
-                            } else if let Ok(sub_entries) = std::fs::read_dir(&p) {
-                                for sub in sub_entries.flatten() {
-                                    let sp = sub.path();
-                                    let sname = sub.file_name().to_string_lossy().into_owned();
-                                    if sp.is_dir() && matches_any_token(&sname, &tokens) {
-                                        push_dir_candidate(cat, sp, &mut seen_paths, &mut items);
-                                    }
-                                }
+            };
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let fname = entry.file_name().to_string_lossy().into_owned();
+                if !p.is_dir() || is_protected_name(&fname) {
+                    continue;
+                }
+                if matches_any_token(&fname, &self.tokens) {
+                    self.push_dir(cat, p);
+                } else if self.is_publisher_name(&fname) {
+                    if !self.other_apps_same_publisher {
+                        self.push_dir(cat, p);
+                    } else if let Ok(sub_entries) = std::fs::read_dir(&p) {
+                        for sub in sub_entries.flatten() {
+                            let sp = sub.path();
+                            let sname = sub.file_name().to_string_lossy().into_owned();
+                            if sp.is_dir() && matches_any_token(&sname, &self.tokens) {
+                                self.push_dir(cat, sp);
                             }
                         }
                     }
                 }
             }
         }
+    }
 
-        let mut shortcut_roots = Vec::new();
+    /// Accesos directos y carpetas del menú Inicio y del Escritorio.
+    fn shortcuts(&mut self) {
+        let mut roots = Vec::new();
         if let Some(desk) = dirs::desktop_dir() {
-            shortcut_roots.push(("Escritorio", desk));
+            roots.push(("Escritorio", desk));
         }
-        if let Some(pub_dir) = known_folder(&FOLDERID_Public).filter(|_| !user_scope_only) {
-            shortcut_roots.push(("Escritorio Público", pub_dir.join("Desktop")));
+        if let Some(pub_dir) = known_folder(&FOLDERID_Public).filter(|_| !self.user_scope_only) {
+            roots.push(("Escritorio Público", pub_dir.join("Desktop")));
         }
         if let Some(roaming) = dirs::config_dir() {
-            shortcut_roots.push((
+            roots.push((
                 "Menú Inicio (Usuario)",
                 roaming.join(r"Microsoft\Windows\Start Menu\Programs"),
             ));
         }
-        if let Some(pd) = get_program_data_dir().ok().filter(|_| !user_scope_only) {
-            shortcut_roots.push((
+        if let Some(pd) = get_program_data_dir()
+            .ok()
+            .filter(|_| !self.user_scope_only)
+        {
+            roots.push((
                 "Menú Inicio (Sistema)",
                 pd.join(r"Microsoft\Windows\Start Menu\Programs"),
             ));
         }
 
-        for (cat, sc_root) in shortcut_roots {
-            if !sc_root.is_dir() {
+        for (cat, root) in roots {
+            let Ok(entries) = std::fs::read_dir(&root) else {
                 continue;
-            }
-            if let Ok(entries) = std::fs::read_dir(&sc_root) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    let fname = entry.file_name().to_string_lossy().into_owned();
-                    let stem = p
-                        .file_stem()
-                        .map(|s| s.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| fname.clone());
-                    if p.is_dir() {
-                        if matches_any_token(&fname, &tokens) {
-                            push_dir_candidate(cat, p, &mut seen_paths, &mut items);
-                        }
-                    } else if fname.to_ascii_lowercase().ends_with(".lnk")
-                        && matches_any_token(&stem, &tokens)
-                    {
-                        let key = p.to_string_lossy().to_ascii_lowercase();
-                        if seen_paths.insert(key) {
-                            let sz = entry.metadata().map(|m| m.len()).unwrap_or(0);
-                            items.push(LeftoverItem {
-                                id: format!("file:{}", p.display()),
-                                kind: LeftoverKind::File,
-                                category: cat.to_string(),
-                                target_display: p.display().to_string(),
-                                path: Some(p),
-                                reg_location: reg_location(false, false),
-                                reg_subkey: None,
-                                reg_value_name: None,
-                                size_bytes: sz,
-                                recommended: true,
-                            });
-                        }
+            };
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let fname = entry.file_name().to_string_lossy().into_owned();
+                let stem = p
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| fname.clone());
+                if p.is_dir() {
+                    if matches_any_token(&fname, &self.tokens) {
+                        self.push_dir(cat, p);
                     }
+                } else if fname.to_ascii_lowercase().ends_with(".lnk")
+                    && matches_any_token(&stem, &self.tokens)
+                    && self
+                        .seen_paths
+                        .insert(p.to_string_lossy().to_ascii_lowercase())
+                {
+                    let sz = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    self.items.push(LeftoverItem {
+                        id: format!("file:{}", p.display()),
+                        kind: LeftoverKind::File,
+                        category: cat.to_string(),
+                        target_display: p.display().to_string(),
+                        path: Some(p),
+                        reg_location: reg_location(false, false),
+                        reg_subkey: None,
+                        reg_value_name: None,
+                        size_bytes: sz,
+                        recommended: true,
+                    });
                 }
             }
         }
+    }
 
-        let uninst_hive = if app.is_per_user {
-            HKEY_CURRENT_USER
-        } else {
-            HKEY_LOCAL_MACHINE
-        };
-        let uninst_flags = if app.is_per_user {
-            KEY_READ
-        } else if app.is_wow64 {
-            KEY_READ | KEY_WOW64_32KEY
-        } else {
-            KEY_READ | KEY_WOW64_64KEY
-        };
-        if !still_registered
-            && RegKey::predef(uninst_hive)
-                .open_subkey_with_flags(&app.registry_subkey, uninst_flags)
-                .is_ok()
-        {
-            items.push(LeftoverItem {
-                id: format!("reg_uninst:{}", app.id),
-                kind: LeftoverKind::RegistryKey,
-                category: "Registro (Entrada Uninstall)".into(),
-                target_display: format!(
-                    "{}\\{}",
-                    if app.is_per_user { "HKCU" } else { "HKLM" },
-                    app.registry_subkey
-                ),
-                path: None,
-                reg_location: reg_location(app.is_per_user, app.is_wow64),
-                reg_subkey: Some(app.registry_subkey.clone()),
-                reg_value_name: None,
-                size_bytes: 0,
-                recommended: true,
-            });
+    /// Una clave `Software\...` como resto, sin repetir.
+    fn push_reg_key(&mut self, loc: RegLocation, category: &str, subkey: String) {
+        let wow32 = loc.view == RegView::Wow64_32;
+        let is_hkcu = loc.hive == RegHive::Hkcu;
+        let uid = format!("{}:{}:{}", is_hkcu, wow32, subkey.to_ascii_lowercase());
+        if !self.seen_reg.insert(uid) {
+            return;
         }
+        self.items.push(LeftoverItem {
+            id: format!("reg:{}:{}:{}", is_hkcu, wow32, subkey),
+            kind: LeftoverKind::RegistryKey,
+            category: category.to_string(),
+            target_display: format!("{}\\{}", loc.hive.as_str(), subkey),
+            path: None,
+            reg_location: loc,
+            reg_subkey: Some(subkey),
+            reg_value_name: None,
+            size_bytes: 0,
+            recommended: true,
+        });
+    }
 
-        let reg_scopes = [
-            (true, false, "Registro HKCU\\Software", KEY_READ),
+    /// Claves `Software\<app>` (o `Software\<fabricante>\<app>`) en HKCU y en las dos vistas de HKLM.
+    fn software_keys(&mut self) {
+        let scopes = [
+            (reg_location(true, false), "Registro HKCU\\Software"),
+            (reg_location(false, false), "Registro HKLM\\SOFTWARE"),
             (
-                false,
-                false,
-                "Registro HKLM\\SOFTWARE",
-                KEY_READ | KEY_WOW64_64KEY,
-            ),
-            (
-                false,
-                true,
+                reg_location(false, true),
                 "Registro HKLM\\SOFTWARE (32-bit)",
-                KEY_READ | KEY_WOW64_32KEY,
             ),
         ];
-        let mut seen_reg = HashSet::<String>::new();
-
-        for (is_hkcu, wow32, cat, flags) in reg_scopes {
-            if user_scope_only && !is_hkcu {
+        for (loc, cat) in scopes {
+            if self.user_scope_only && loc.hive != RegHive::Hkcu {
                 continue;
             }
-            let root = RegKey::predef(if is_hkcu {
-                HKEY_CURRENT_USER
-            } else {
-                HKEY_LOCAL_MACHINE
-            });
-            if let Ok(sw) = root.open_subkey_with_flags("Software", flags) {
-                for key_name in sw.enum_keys().flatten() {
-                    if is_protected_name(&key_name)
-                        || key_name.eq_ignore_ascii_case("classes")
-                        || key_name.eq_ignore_ascii_case("policies")
-                        || key_name.eq_ignore_ascii_case("wow6432node")
-                    {
-                        continue;
-                    }
-
-                    let sub_path = format!(r"Software\{}", key_name);
-                    if matches_any_token(&key_name, &tokens) {
-                        let uid =
-                            format!("{}:{}:{}", is_hkcu, wow32, sub_path.to_ascii_lowercase());
-                        if seen_reg.insert(uid) {
-                            items.push(LeftoverItem {
-                                id: format!("reg:{}:{}:{}", is_hkcu, wow32, sub_path),
-                                kind: LeftoverKind::RegistryKey,
-                                category: cat.to_string(),
-                                target_display: format!(
-                                    "{}\\{}",
-                                    if is_hkcu { "HKCU" } else { "HKLM" },
-                                    sub_path
-                                ),
-                                path: None,
-                                reg_location: reg_location(is_hkcu, wow32),
-                                reg_subkey: Some(sub_path),
-                                reg_value_name: None,
-                                size_bytes: 0,
-                                recommended: true,
-                            });
-                        }
-                    } else if let Some(ref pub_tok) = publisher_tok {
-                        if key_name.eq_ignore_ascii_case(pub_tok) {
-                            if !other_apps_same_publisher {
-                                let uid = format!(
-                                    "{}:{}:{}",
-                                    is_hkcu,
-                                    wow32,
-                                    sub_path.to_ascii_lowercase()
-                                );
-                                if seen_reg.insert(uid) {
-                                    items.push(LeftoverItem {
-                                        id: format!("reg:{}:{}:{}", is_hkcu, wow32, sub_path),
-                                        kind: LeftoverKind::RegistryKey,
-                                        category: cat.to_string(),
-                                        target_display: format!(
-                                            "{}\\{}",
-                                            if is_hkcu { "HKCU" } else { "HKLM" },
-                                            sub_path
-                                        ),
-                                        path: None,
-                                        reg_location: reg_location(is_hkcu, wow32),
-                                        reg_subkey: Some(sub_path),
-                                        reg_value_name: None,
-                                        size_bytes: 0,
-                                        recommended: true,
-                                    });
-                                }
-                            } else if let Ok(pub_key) = sw.open_subkey_with_flags(&key_name, flags)
-                            {
-                                for sub_name in pub_key.enum_keys().flatten() {
-                                    if matches_any_token(&sub_name, &tokens) {
-                                        let full_sub = format!(r"{}\{}", sub_path, sub_name);
-                                        let uid = format!(
-                                            "{}:{}:{}",
-                                            is_hkcu,
-                                            wow32,
-                                            full_sub.to_ascii_lowercase()
-                                        );
-                                        if seen_reg.insert(uid) {
-                                            items.push(LeftoverItem {
-                                                id: format!(
-                                                    "reg:{}:{}:{}",
-                                                    is_hkcu, wow32, full_sub
-                                                ),
-                                                kind: LeftoverKind::RegistryKey,
-                                                category: cat.to_string(),
-                                                target_display: format!(
-                                                    "{}\\{}",
-                                                    if is_hkcu { "HKCU" } else { "HKLM" },
-                                                    full_sub
-                                                ),
-                                                path: None,
-                                                reg_location: reg_location(is_hkcu, wow32),
-                                                reg_subkey: Some(full_sub),
-                                                reg_value_name: None,
-                                                size_bytes: 0,
-                                                recommended: true,
-                                            });
-                                        }
-                                    }
-                                }
+            let flags = loc.flags(KEY_READ);
+            let Ok(sw) = loc.root().open_subkey_with_flags("Software", flags) else {
+                continue;
+            };
+            for key_name in sw.enum_keys().flatten() {
+                if is_protected_name(&key_name)
+                    || ["classes", "policies", "wow6432node"]
+                        .iter()
+                        .any(|k| key_name.eq_ignore_ascii_case(k))
+                {
+                    continue;
+                }
+                let sub_path = format!(r"Software\{}", key_name);
+                if matches_any_token(&key_name, &self.tokens) {
+                    self.push_reg_key(loc, cat, sub_path);
+                } else if self.is_publisher_name(&key_name) {
+                    if !self.other_apps_same_publisher {
+                        self.push_reg_key(loc, cat, sub_path);
+                    } else if let Ok(pub_key) = sw.open_subkey_with_flags(&key_name, flags) {
+                        for sub_name in pub_key.enum_keys().flatten() {
+                            if matches_any_token(&sub_name, &self.tokens) {
+                                self.push_reg_key(loc, cat, format!(r"{}\{}", sub_path, sub_name));
                             }
                         }
                     }
                 }
             }
         }
+    }
 
-        let run_path = r"Software\Microsoft\Windows\CurrentVersion\Run";
-        for (is_hkcu, wow32, flags) in [
-            (true, false, KEY_READ),
-            (false, false, KEY_READ | KEY_WOW64_64KEY),
-            (false, true, KEY_READ | KEY_WOW64_32KEY),
+    /// Valores de inicio automático (`Run`) que apuntan a la carpeta de la app o llevan su nombre.
+    fn run_values(&mut self) {
+        const RUN_PATH: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+        for loc in [
+            reg_location(true, false),
+            reg_location(false, false),
+            reg_location(false, true),
         ] {
-            if user_scope_only && !is_hkcu {
+            if self.user_scope_only && loc.hive != RegHive::Hkcu {
                 continue;
             }
-            let root = RegKey::predef(if is_hkcu {
-                HKEY_CURRENT_USER
-            } else {
-                HKEY_LOCAL_MACHINE
-            });
-            if let Ok(run_key) = root.open_subkey_with_flags(run_path, flags) {
-                for (val_name, val_data) in run_key.enum_values().flatten() {
-                    let cmd = val_data.to_string().to_ascii_lowercase();
-                    let loc_match = app.install_location.as_ref().is_some_and(|loc| {
-                        let ls = loc.to_string_lossy().to_ascii_lowercase();
-                        !ls.is_empty() && is_safe_non_root_dir(loc, 2) && cmd.contains(&ls)
+            let Ok(run_key) = loc
+                .root()
+                .open_subkey_with_flags(RUN_PATH, loc.flags(KEY_READ))
+            else {
+                continue;
+            };
+            for (val_name, val_data) in run_key.enum_values().flatten() {
+                let cmd = val_data.to_string().to_ascii_lowercase();
+                let loc_match = self.app.install_location.as_ref().is_some_and(|dir| {
+                    let ls = dir.to_string_lossy().to_ascii_lowercase();
+                    !ls.is_empty() && is_safe_non_root_dir(dir, 2) && cmd.contains(&ls)
+                });
+                if loc_match || matches_any_token(&val_name, &self.tokens) {
+                    self.items.push(LeftoverItem {
+                        id: format!(
+                            "run:{}:{}:{}",
+                            loc.hive == RegHive::Hkcu,
+                            loc.view == RegView::Wow64_32,
+                            val_name
+                        ),
+                        kind: LeftoverKind::RegistryValue,
+                        category: "Inicio automático (Run)".into(),
+                        target_display: format!(
+                            "{}\\{} -> {}",
+                            loc.hive.as_str(),
+                            RUN_PATH,
+                            val_name
+                        ),
+                        path: None,
+                        reg_location: loc,
+                        reg_subkey: Some(RUN_PATH.to_string()),
+                        reg_value_name: Some(val_name),
+                        size_bytes: 0,
+                        recommended: true,
                     });
-                    if loc_match || matches_any_token(&val_name, &tokens) {
-                        items.push(LeftoverItem {
-                            id: format!("run:{}:{}:{}", is_hkcu, wow32, val_name),
-                            kind: LeftoverKind::RegistryValue,
-                            category: "Inicio automático (Run)".into(),
-                            target_display: format!(
-                                "{}\\{} -> {}",
-                                if is_hkcu { "HKCU" } else { "HKLM" },
-                                run_path,
-                                val_name
-                            ),
-                            path: None,
-                            reg_location: reg_location(is_hkcu, wow32),
-                            reg_subkey: Some(run_path.to_string()),
-                            reg_value_name: Some(val_name),
-                            size_bytes: 0,
-                            recommended: true,
-                        });
-                    }
                 }
             }
         }
+    }
 
+    fn finish(mut self) -> Vec<LeftoverItem> {
         // SYS-04: con la app aún registrada, su carpeta de instalación (y lo que cuelga de ella) tampoco
         // puede entrar por el barrido de Program Files por nombre: borrarla rompería una app instalada.
-        if still_registered {
-            if let Some(loc) = app.install_location.as_ref() {
+        if self.still_registered {
+            if let Some(loc) = self.app.install_location.as_ref() {
                 let loc_low = loc
                     .to_string_lossy()
                     .trim_end_matches('\\')
                     .to_ascii_lowercase();
-                items.retain(|i| {
+                self.items.retain(|i| {
                     i.path.as_ref().is_none_or(|p| {
                         let p_low = p
                             .to_string_lossy()
@@ -608,26 +568,13 @@ impl UninstallerManager {
             }
         }
 
-        let app_tokens_low: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
-        let publisher_low = publisher_tok.as_ref().map(|p| p.to_ascii_lowercase());
-        for item in &mut items {
+        let app_tokens_low: Vec<String> =
+            self.tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
+        let publisher_low = self.publisher_tok.as_ref().map(|p| p.to_ascii_lowercase());
+        for item in &mut self.items {
             item.recommended =
                 is_recommended_leftover(item, &app_tokens_low, publisher_low.as_deref());
         }
-        Ok(items)
-    }
-
-    /// `true` si la entrada Uninstall de la app sigue en el registro.
-    pub fn is_still_registered(app: &InstalledApp) -> bool {
-        let (hive, flags) = if app.is_per_user {
-            (HKEY_CURRENT_USER, KEY_READ)
-        } else if app.is_wow64 {
-            (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_32KEY)
-        } else {
-            (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_64KEY)
-        };
-        RegKey::predef(hive)
-            .open_subkey_with_flags(&app.registry_subkey, flags)
-            .is_ok()
+        self.items
     }
 }
