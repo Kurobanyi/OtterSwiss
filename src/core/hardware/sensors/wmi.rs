@@ -140,14 +140,15 @@ fn poll_external_cpu_wmi(locator: &IWbemLocator) -> Vec<SensorReading> {
         let sensors = wmi_query(
             locator,
             namespace,
-            "SELECT Name, SensorType, Value, Max FROM Sensor WHERE SensorType = 'Temperature'",
+            "SELECT Name, Identifier, Value, Max FROM Sensor WHERE SensorType = 'Temperature'",
             256,
         );
         let out: Vec<SensorReading> = sensors
             .iter()
             .filter_map(|obj| {
                 let name = read_wmi_string(obj, "Name")?;
-                if !is_cpu_sensor_name(&name) {
+                let identifier = read_wmi_string(obj, "Identifier").unwrap_or_default();
+                if !is_cpu_temperature(&identifier, &name) {
                     return None;
                 }
                 let current = read_wmi_f32(obj, "Value").filter(|v| *v > 1.0 && *v < 125.0)?;
@@ -166,12 +167,25 @@ fn poll_external_cpu_wmi(locator: &IWbemLocator) -> Vec<SensorReading> {
     Vec::new()
 }
 
-/// Nombres de sensor de LibreHardwareMonitor que corresponden a la CPU.
-fn is_cpu_sensor_name(name: &str) -> bool {
+/// UI-22: `true` si el sensor de LibreHardwareMonitor es una temperatura de CPU. Se decide por `Identifier`
+/// (`/amdcpu/0/temperature/2`, `/intelcpu/0/temperature/0`), no por el nombre: «GPU Core» también contiene «core».
+/// Las «distancias a TjMax» son de tipo Temperature pero no son temperaturas.
+fn is_cpu_temperature(identifier: &str, name: &str) -> bool {
+    let id = identifier.to_ascii_lowercase();
     let low = name.to_ascii_lowercase();
-    ["cpu", "package", "core", "tctl", "tdie", "ccd"]
-        .iter()
-        .any(|k| low.contains(k))
+    if low.contains("distance") {
+        return false;
+    }
+    if !id.is_empty() {
+        return id.starts_with("/amdcpu/")
+            || id.starts_with("/intelcpu/")
+            || id.starts_with("/cpu/");
+    }
+    // Sin `Identifier` (versiones viejas): por nombre, descartando lo que es de la GPU.
+    !low.contains("gpu")
+        && ["cpu", "package", "core", "tctl", "tdie", "ccd"]
+            .iter()
+            .any(|k| low.contains(k))
 }
 
 impl SensorSession {
@@ -250,5 +264,32 @@ impl SensorSession {
             None
         };
         (readings, note)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sensor_gpu_no_cuenta_como_cpu() {
+        assert!(is_cpu_temperature(
+            "/amdcpu/0/temperature/2",
+            "Core (Tctl/Tdie)"
+        ));
+        assert!(is_cpu_temperature(
+            "/intelcpu/0/temperature/0",
+            "CPU Package"
+        ));
+        assert!(!is_cpu_temperature(
+            "/gpu-nvidia/0/temperature/0",
+            "GPU Core"
+        ));
+        assert!(!is_cpu_temperature(
+            "/intelcpu/0/temperature/5",
+            "CPU Core #1 Distance to TjMax"
+        ));
+        assert!(!is_cpu_temperature("", "GPU Core"));
+        assert!(is_cpu_temperature("", "CPU Package"));
     }
 }
