@@ -33,6 +33,9 @@ tokio = { version = "1", features = ["time", "rt-multi-thread", "sync"] }
 winreg = "0.52"
 zip = { version = "2.2", default-features = false, features = ["deflate", "time"] }
 dioxus = { version = "0.7", features = ["desktop"] }
+# ERR-13: ya llega por dioxus-desktop; se declara para preguntar al cargador de WebView2 si el runtime funciona
+# antes de abrir la ventana (misma versión que fija Cargo.lock, sin crates nuevos).
+webview2-com = "0.38"
 
 [dependencies.windows]
 version = "0.58"

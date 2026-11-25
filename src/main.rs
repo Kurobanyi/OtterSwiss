@@ -316,6 +316,119 @@ fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
     None
 }
 
+/// Muestra un cuadro de mensaje nativo (no depende de WebView2). Devuelve `true` si se eligió «Sí».
+fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> bool {
+    use otter_swiss::core::win_common::to_wide_null;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, IDYES, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO,
+    };
+    let title_w = to_wide_null(title);
+    let text_w = to_wide_null(text);
+    let mut style = if ask_yes_no { MB_YESNO } else { MB_OK };
+    style |= if is_error {
+        MB_ICONERROR
+    } else {
+        MB_ICONWARNING
+    };
+    let res = unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(text_w.as_ptr()),
+            PCWSTR(title_w.as_ptr()),
+            style,
+        )
+    };
+    res == IDYES
+}
+
+/// ERR-13: la interfaz se dibuja con Microsoft Edge WebView2. Sin él, dioxus-desktop termina con un `panic`
+/// antes de abrir la ventana, así que se comprueba aquí y se ofrece instalarlo con el instalador verificado.
+/// Devuelve `false` si no se puede continuar.
+fn ensure_webview2(en: bool) -> bool {
+    use otter_swiss::core::dependencies::DependencyManager;
+
+    if DependencyManager::is_webview2_installed() {
+        return true;
+    }
+    let (title, ask) = if en {
+        (
+            "OtterSwiss — WebView2 required",
+            "OtterSwiss needs the Microsoft Edge WebView2 Runtime to show its window, and it is not installed.\n\n\
+             Download and install it now from Microsoft? (about 2 MB, verified before running)",
+        )
+    } else {
+        (
+            "OtterSwiss — Falta WebView2",
+            "OtterSwiss necesita Microsoft Edge WebView2 Runtime para mostrar su ventana y no está instalado.\n\n\
+             ¿Descargarlo e instalarlo ahora desde Microsoft? (unos 2 MB, verificado antes de ejecutarse)",
+        )
+    };
+    if !native_message(title, ask, true, false) {
+        return false;
+    }
+    match DependencyManager::install_runtime("webview2") {
+        Ok(()) if DependencyManager::is_webview2_installed() => true,
+        Ok(()) => {
+            native_message(
+                title,
+                if en {
+                    "WebView2 was installed but is not detected yet. Restart OtterSwiss."
+                } else {
+                    "WebView2 se instaló pero todavía no se detecta. Vuelve a abrir OtterSwiss."
+                },
+                false,
+                false,
+            );
+            false
+        }
+        Err(e) => {
+            native_message(
+                title,
+                &if en {
+                    format!(
+                        "WebView2 could not be installed: {e}\n\nInstall it from \
+                         https://developer.microsoft.com/microsoft-edge/webview2/ and open OtterSwiss again."
+                    )
+                } else {
+                    format!(
+                        "No se pudo instalar WebView2: {e}\n\nInstálalo desde \
+                         https://developer.microsoft.com/microsoft-edge/webview2/ y vuelve a abrir OtterSwiss."
+                    )
+                },
+                false,
+                true,
+            );
+            false
+        }
+    }
+}
+
+/// Un `panic` (p. ej. dentro de dioxus-desktop al crear la ventana) se muestra en un cuadro nativo en vez de
+/// cerrar la app sin explicación: el binario es `windows_subsystem = "windows"` y no tiene consola.
+fn install_panic_dialog() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "error desconocido".into());
+        let place = info
+            .location()
+            .map(|l| format!(" ({}:{})", l.file(), l.line()))
+            .unwrap_or_default();
+        native_message(
+            "OtterSwiss — Error inesperado",
+            &format!("OtterSwiss se cerró por un error inesperado:\n\n{msg}{place}"),
+            false,
+            true,
+        );
+        default_hook(info);
+    }));
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -336,6 +449,11 @@ fn main() {
     if args.iter().any(|a| a == "--uninstall-context-menu") {
         let _ = ContextMenuManager::uninstall();
         return;
+    }
+
+    install_panic_dialog();
+    if !ensure_webview2(Lang::load_persisted().is_en()) {
+        std::process::exit(1);
     }
 
     let window_icon = icon_from_memory(include_bytes!("../assets/logo.png")).ok();

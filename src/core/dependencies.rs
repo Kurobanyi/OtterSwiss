@@ -1,9 +1,7 @@
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use winreg::enums::{
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
-};
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 use winreg::RegKey;
 
 use crate::core::elevation::ElevationManager;
@@ -14,9 +12,7 @@ use crate::core::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
     DownloadPolicy,
 };
-use crate::core::win_common::{
-    local_app_data_dir, program_files_dir, program_files_x86_dir, windows_dir,
-};
+use crate::core::win_common::{program_files_dir, program_files_x86_dir, windows_dir};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeDependency {
@@ -132,65 +128,26 @@ impl DependencyManager {
         RUNTIME_CATALOG
     }
 
+    /// `true` si WebView2 Runtime está instalado **y utilizable**. Se pregunta al cargador oficial
+    /// (`GetAvailableCoreWebView2BrowserVersionString`), el mismo que usa la ventana de la app: el registro y las
+    /// carpetas pueden quedar con restos de una instalación rota y dar un falso «instalado» (ERR-13).
     pub fn is_webview2_installed() -> bool {
-        let reg_checks = [
-            (
-                HKEY_LOCAL_MACHINE,
-                r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-F500-4197-9A05-C077E71C7328}",
-                KEY_READ | KEY_WOW64_64KEY,
-            ),
-            (
-                HKEY_LOCAL_MACHINE,
-                r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-F500-4197-9A05-C077E71C7328}",
-                KEY_READ | KEY_WOW64_32KEY,
-            ),
-            (
-                HKEY_LOCAL_MACHINE,
-                r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-F500-4197-9A05-C077E71C7328}",
-                KEY_READ | KEY_WOW64_64KEY,
-            ),
-            (
-                HKEY_CURRENT_USER,
-                r"Software\Microsoft\EdgeUpdate\Clients\{F3017226-F500-4197-9A05-C077E71C7328}",
-                KEY_READ,
-            ),
-        ];
+        use webview2_com::CoTaskMemPWSTR;
+        use webview2_com::Microsoft::Web::WebView2::Win32::GetAvailableCoreWebView2BrowserVersionString;
 
-        for (hive, subkey, flags) in reg_checks {
-            let root = RegKey::predef(hive);
-            if let Ok(key) = root.open_subkey_with_flags(subkey, flags) {
-                if let Ok(pv) = key.get_value::<String, _>("pv") {
-                    if !pv.trim().is_empty() && pv != "0.0.0.0" {
-                        return true;
-                    }
-                }
-            }
+        // Sin carpeta propia del navegador (null): se usa el runtime instalado en el sistema.
+        let no_browser_dir = CoTaskMemPWSTR::default();
+        let mut version = Default::default();
+        let ok = unsafe {
+            GetAvailableCoreWebView2BrowserVersionString(
+                *no_browser_dir.as_ref().as_pcwstr(),
+                &mut version,
+            )
         }
-
-        // Comprobación física en disco (EdgeWebView\Application\<version>\msedgewebview2.exe)
-        let mut app_dirs = Vec::new();
-        for base in [
-            program_files_x86_dir(),
-            program_files_dir(),
-            local_app_data_dir(),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            app_dirs.push(base.join(r"Microsoft\EdgeWebView\Application"));
-        }
-
-        for dir in app_dirs {
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    if entry.path().join("msedgewebview2.exe").is_file() {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
+        .is_ok();
+        // `CoTaskMemPWSTR` libera la cadena al soltarse.
+        let version = CoTaskMemPWSTR::from(version);
+        ok && !version.to_string().trim().is_empty()
     }
 
     pub fn is_vcredist_installed() -> bool {
@@ -325,7 +282,7 @@ impl DependencyManager {
             return Err(CoreError::SystemTool {
                 message: format!(
                     "Instalador runtime finalizó con código de error {}",
-                    exit.exit_code
+                    exit.code_display()
                 ),
                 source: None,
             });

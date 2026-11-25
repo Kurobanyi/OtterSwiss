@@ -772,7 +772,8 @@ impl AppStoreManager {
             return Err(CoreError::SystemTool {
                 message: format!(
                     "Instalador de '{}' terminó con código {}",
-                    pkg.name, exit.exit_code
+                    pkg.name,
+                    exit.code_display()
                 ),
                 source: None,
             });

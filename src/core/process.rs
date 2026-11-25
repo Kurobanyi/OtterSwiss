@@ -166,6 +166,16 @@ impl ProcessExit {
     pub fn is_success(&self) -> bool {
         matches!(self.exit_code, 0 | 3010 | 1641)
     }
+
+    /// Código para mostrar: los HRESULT (p. ej. `0x80040902` de EdgeUpdate) en hexadecimal, que es como se
+    /// buscan; los códigos chicos (1603, 3010…) en decimal.
+    pub fn code_display(&self) -> String {
+        if self.exit_code > 0xFFFF {
+            format!("0x{:08X}", self.exit_code)
+        } else {
+            self.exit_code.to_string()
+        }
+    }
 }
 
 fn active_processes(job: &JobObject) -> CoreResult<u32> {
@@ -319,5 +329,24 @@ pub fn run_in_job(
                 return Ok(ProcessExit { exit_code: code });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProcessExit;
+
+    #[test]
+    fn codigo_de_salida_legible() {
+        assert_eq!(ProcessExit { exit_code: 1603 }.code_display(), "1603");
+        assert_eq!(
+            ProcessExit {
+                exit_code: 2_147_748_098
+            }
+            .code_display(),
+            "0x80040902"
+        );
+        assert!(ProcessExit { exit_code: 3010 }.is_success());
+        assert!(!ProcessExit { exit_code: 1602 }.is_success());
     }
 }
