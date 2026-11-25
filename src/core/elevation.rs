@@ -12,7 +12,6 @@ use crate::core::win_common::{to_wide_null, SafeHandle};
 
 const ALLOWED_RELAUNCH_FLAGS: &[&str] = &[
     "--elevated",
-    "--apply-profile",
     "--rollback",
     "--install-context-menu",
     "--uninstall-context-menu",
