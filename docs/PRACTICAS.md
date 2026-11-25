@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **85 hechas, 11 parciales y 18 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **85 hechas, 11 parciales, 17 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -72,7 +72,7 @@ dependencias directas se usan.
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
 | [`AR-19`](PRACTICAS-detalle.md#ar-19) | Tres estilos de API en core | M | Pendiente |
-| [`HE-11`](PRACTICAS-detalle.md#he-11) | rustfmt no formatea `rsx!` | S | Pendiente |
+| [`HE-11`](PRACTICAS-detalle.md#he-11) | rustfmt no formatea `rsx!` | S | Descartada |
 | [`OR-07`](PRACTICAS-detalle.md#or-07) | Los iconos de la tienda viven dentro de `tools.rs` | S | Pendiente |
 | [`CL-24`](PRACTICAS-detalle.md#cl-24) | `read_wmi_f32` copia `read_wmi_i32`; umbrales mágicos y filtro de sensor por nombre | S | Pendiente |
 | [`IN-10`](PRACTICAS-detalle.md#in-10) | «...», «(s)», mayúsculas de título y «drivers/controladores» | S | Pendiente |
@@ -82,7 +82,7 @@ dependencias directas se usan.
 1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags` y `url_encode`) y el resto de `AR-24` (tabla PCI).
 2. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 3. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-4. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.
+4. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03`.
 
 ## Lo que hay que conservar
 

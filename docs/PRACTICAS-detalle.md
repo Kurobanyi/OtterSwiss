@@ -914,9 +914,10 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 
 <a id="he-11"></a>
 ### HE-11 · rustfmt no formatea el contenido de `rsx!`
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado (unas 171 líneas de más de 120 columnas en la UI) · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado (unas 171 líneas de más de 120 columnas en la UI) · **Estado**: Descartada
 - **Propuesta**: `dx fmt --check` (dioxus-cli 0.7) como paso opcional.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Necesita instalar dioxus-cli.
+- **Descartada** (2026-11-25): se instaló dioxus-cli 0.7.10 (decisión del autor) y `dx fmt` dejó `src/ui/app.rs` y `src/ui/views/dashboard.rs` sin compilar: dentro de un bloque `{ … }` de `rsx!` borra el `} else if en {` de una cadena `if`/`else if`/`else`. Un formateador que puede quitar una rama no se usa ni como paso opcional: si el resultado compilara, cambiaría la lógica sin avisar. Se revirtieron sus cambios. Volver a probar con una versión nueva de dioxus-cli, en un árbol limpio y compilando después. `dx` queda instalado en `~/.cargo/bin`.
 
 <a id="he-12"></a>
 ### HE-12 · Metadatos de `Cargo.toml` y features de `windows` que podrían sobrar

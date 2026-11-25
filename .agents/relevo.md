@@ -79,7 +79,8 @@ foco atrapado y Escape. Falta: acciones de sistema como admin (mejor en VM o Win
 - Tienda (`SEC-35`, `ERR-24`): las apps de descarga directa pasan a `winget download` (última versión, SHA-256 del manifiesto) más la
   verificación propia (firmante del fabricante, Job con plazo). Se acaban los enlaces y versiones a mano.
 - `IN-03`: los avisos guardan el evento y se traducen al mostrarse. `UI-11`/`AR-17`/`AR-26`: se hacen ahora, junto con `IN-03`.
-- `HE-11`: instalar dioxus-cli y usar `dx fmt` como paso opcional (sin CI).
+- `HE-11`: se instaló dioxus-cli 0.7.10, pero `dx fmt` borra ramas `else if` dentro de `rsx!` (rompió `app.rs` y `dashboard.rs`):
+  descartado y revertido. No usar `dx fmt` sin revisar el diff y compilar.
 
 ## Decisiones del usuario (2026-11-24)
 
