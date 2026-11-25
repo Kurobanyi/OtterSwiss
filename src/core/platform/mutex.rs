@@ -25,7 +25,7 @@ impl NamedMutex {
         let res = unsafe { CreateMutexW(Some(&sa), false, PCWSTR(wide.as_ptr())) };
         let raw = res.map_err(|e| CoreError::SystemTool {
             message: format!("Error creando mutex '{}': {}", name, e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
         SafeHandle::new(raw)
             .ok_or_else(|| CoreError::invalid_handle("CreateMutexW devolvió handle inválido"))

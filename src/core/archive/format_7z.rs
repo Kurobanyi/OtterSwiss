@@ -28,7 +28,7 @@ impl ArchiveManager {
         let mut reader =
             ArchiveReader::new(file, Password::empty()).map_err(|e| CoreError::Archive {
                 message: format!("Error abriendo archivo 7Z: {}", e),
-                source: None,
+                source: Some(Box::new(e)),
             })?;
 
         let total_files = reader.archive().files.len();
@@ -109,7 +109,7 @@ impl ArchiveManager {
 
         sevenz_rust2::compress_to_path(src_path, dest_archive).map_err(|e| CoreError::Archive {
             message: format!("Error comprimiendo en 7Z: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
         let sz = dest_archive.metadata().map(|m| m.len()).unwrap_or(0);
         tel.finish(sz, total_files);

@@ -56,7 +56,7 @@ impl SafeLibrary {
             unsafe { LoadLibraryExW(PCWSTR(wide.as_ptr()), None, LOAD_LIBRARY_SEARCH_SYSTEM32) }
                 .map_err(|e| CoreError::SystemTool {
                     message: format!("No se pudo cargar DLL del sistema '{}': {}", dll_name, e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
         Ok(Self(module))
     }
@@ -73,7 +73,7 @@ impl SafeLibrary {
         }
         .map_err(|e| CoreError::SystemTool {
             message: format!("No se pudo cargar DLL '{}': {}", path.display(), e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
         Ok(Self(module))
     }

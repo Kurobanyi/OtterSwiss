@@ -442,7 +442,7 @@ impl OptimizationEngine {
             .record_power_before_apply(profile_name, prep.snapshot.clone())
             .map_err(|e| CoreError::Backup {
                 message: e.to_string(),
-                source: None,
+                source: Some(Box::new(e)),
             });
         match recorded.and_then(|()| activate_prepared_power_scheme(&prep.snapshot)) {
             Err(e @ CoreError::Backup { .. }) => {

@@ -96,7 +96,7 @@ fn parse_ps_json(txt: &str, what: &str) -> CoreResult<Vec<PsAppxEntry>> {
     };
     parsed.map_err(|e| CoreError::SystemTool {
         message: format!("No se pudo interpretar la salida de {}: {}", what, e),
-        source: None,
+        source: Some(Box::new(e)),
     })
 }
 

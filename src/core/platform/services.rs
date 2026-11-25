@@ -100,7 +100,7 @@ pub(crate) fn query_service_start_config(
                 "No se pudo leer el inicio retrasado de '{}': {}",
                 service_name, e
             ),
-            source: None,
+            source: Some(Box::new(e)),
         });
         // Sin este dato, restaurar dejaría «Automático» donde había «Automático (inicio retrasado)».
         ok?;

@@ -53,7 +53,7 @@ impl UninstallerManager {
         unsafe { ExpandEnvironmentStringsForUserW(h, PCWSTR(wide.as_ptr()), &mut buf) }.map_err(
             |e| CoreError::Uninstaller {
                 message: format!("No se pudo expandir '{}': {}", raw, e),
-                source: None,
+                source: Some(Box::new(e)),
             },
         )?;
         let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());

@@ -56,7 +56,7 @@ pub fn reboot_system_now() -> CoreResult<()> {
     unsafe { AdjustTokenPrivileges(token.raw(), false, Some(&tp), 0, None, None) }.map_err(
         |e| CoreError::SystemTool {
             message: format!("AdjustTokenPrivileges(SE_SHUTDOWN_NAME) falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         },
     )?;
 

@@ -20,7 +20,7 @@ impl ElevationManager {
         unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) }.map_err(
             |e| CoreError::SystemTool {
                 message: format!("OpenProcessToken falló: {}", e),
-                source: None,
+                source: Some(Box::new(e)),
             },
         )?;
 

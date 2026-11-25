@@ -68,7 +68,7 @@ impl ArchiveManager {
         let res = (|| -> CoreResult<()> {
             let entries = tar.entries().map_err(|e| CoreError::Archive {
                 message: format!("Error leyendo entradas TAR: {}", e),
-                source: None,
+                source: Some(Box::new(e)),
             })?;
 
             for entry_res in entries {
@@ -77,7 +77,7 @@ impl ArchiveManager {
                 }
                 let mut entry = entry_res.map_err(|e| CoreError::Archive {
                     message: format!("Entrada TAR corrupta: {}", e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
 
                 let etype = entry.header().entry_type();
@@ -96,7 +96,7 @@ impl ArchiveManager {
 
                 let raw_path = entry.path().map_err(|e| CoreError::Archive {
                     message: format!("Ruta TAR inválida: {}", e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
                 let rel = sanitize_archive_rel_path(&raw_path.to_string_lossy())?;
                 let rel_display = rel.to_string_lossy().into_owned();
@@ -152,19 +152,19 @@ impl ArchiveManager {
             tar.append_file(name, &mut f)
                 .map_err(|e| CoreError::Archive {
                     message: format!("Error agregando archivo a TAR: {}", e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
         } else if src_path.is_dir() {
             tar.append_dir_all(".", src_path)
                 .map_err(|e| CoreError::Archive {
                     message: format!("Error empaquetando directorio TAR: {}", e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
         }
 
         tar.finish().map_err(|e| CoreError::Archive {
             message: format!("Error finalizando TAR.GZ: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
 
         let sz = dest_archive.metadata().map(|m| m.len()).unwrap_or(0);

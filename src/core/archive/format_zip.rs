@@ -30,7 +30,7 @@ impl ArchiveManager {
         let file = File::open(archive_path)?;
         let mut archive = zip::ZipArchive::new(file).map_err(|e| CoreError::Archive {
             message: format!("Error abriendo ZIP: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
 
         let total_files = archive.len();
@@ -52,7 +52,7 @@ impl ArchiveManager {
 
                 let mut entry = archive.by_index(i).map_err(|e| CoreError::Archive {
                     message: format!("Error leyendo entrada ZIP #{}: {}", i, e),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })?;
 
                 if entry
@@ -128,7 +128,7 @@ impl ArchiveManager {
                     .start_file(&rel_str, options)
                     .map_err(|e| CoreError::Archive {
                         message: format!("Error iniciando archivo ZIP: {}", e),
-                        source: None,
+                        source: Some(Box::new(e)),
                     })?;
                 let (mut f, _) = open_verified_file_read(&current, false, None)?;
                 let mut buf = [0u8; 64 * 1024];
@@ -168,7 +168,7 @@ impl ArchiveManager {
                         zip_writer.start_file(&rel_str, options).map_err(|e| {
                             CoreError::Archive {
                                 message: format!("Error escribiendo en ZIP: {}", e),
-                                source: None,
+                                source: Some(Box::new(e)),
                             }
                         })?;
                         let (mut f, _) = open_verified_file_read(&p, false, None)?;
@@ -194,7 +194,7 @@ impl ArchiveManager {
 
         zip_writer.finish().map_err(|e| CoreError::Archive {
             message: format!("Error finalizando ZIP: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
 
         tel.finish(total_bytes, files_done);

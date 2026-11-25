@@ -25,7 +25,7 @@ pub(super) fn read_dxgi_gpus() -> CoreResult<Vec<GpuSpecs>> {
     let factory: IDXGIFactory1 =
         unsafe { CreateDXGIFactory1() }.map_err(|e| CoreError::SystemTool {
             message: format!("Error inicializando DXGI: {e}"),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
 
     let mut gpus = Vec::new();

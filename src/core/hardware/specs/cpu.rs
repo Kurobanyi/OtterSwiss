@@ -151,7 +151,7 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
         )
         .map_err(|e| CoreError::SystemTool {
             message: format!("Error leyendo núcleos físicos: {e}"),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     }
 
@@ -213,7 +213,7 @@ fn read_cache_sizes() -> CoreResult<(u32, u32, u32)> {
         )
         .map_err(|e| CoreError::SystemTool {
             message: format!("Error leyendo cachés CPU: {e}"),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     }
 

@@ -115,7 +115,7 @@ pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
     unsafe { GetUserProfileDirectoryW(token.raw(), PWSTR(buf.as_mut_ptr()), &mut len) }.map_err(
         |e| CoreError::SystemTool {
             message: format!("GetUserProfileDirectoryW falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         },
     )?;
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
@@ -236,7 +236,7 @@ pub fn run_in_job(
                 launch.application.display(),
                 e
             ),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     } else {
         unsafe {
@@ -259,7 +259,7 @@ pub fn run_in_job(
                 launch.application.display(),
                 e
             ),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     }
 
