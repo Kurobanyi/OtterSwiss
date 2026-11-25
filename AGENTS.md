@@ -13,7 +13,8 @@ administrador (manifiesto `requireAdministrator` en `build.rs`).
     elevación, registro, servicios, JSON de respaldo).
   - `security/`: carpeta de datos solo-admin, ACL, cliente HTTPS, descargas verificadas, Authenticode.
   - funciones: `hardware/`, `optimize/`, `debloat/`, `uninstall/`, `archive/`, `store/`, `cleaner`, `dns`, `updater`,
-    `context_menu`, `sys_tools`, `rollback`. `drivers.rs` está sin uso por decisión del autor (ARQ-03).
+    `context_menu`, `sys_tools`, `rollback`, `drivers/` (dispositivos, Windows Update, Catálogo de Microsoft, NVIDIA e
+    Intel, instalación verificada e historial; `hwid` es puro).
 - `src/ui/`: `app.rs` (ventana), `installer.rs` (cola de instalación), `task.rs` (tareas largas con progreso), `document.rs`,
   `format.rs`, `theme.rs`, `prefs.rs`, `i18n/` (catálogo de textos), `components/` (un componente por archivo), `views/`.
 - `assets/main.css`: tokens por tema y clases; `assets/brand/`: logos. `installer/otterswiss.iss`: instalador.

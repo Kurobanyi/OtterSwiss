@@ -61,7 +61,8 @@ Elige la más específica.
 - **Limpiador**: `cleaner.rs` y su vista.
 - **Tienda**: `app_store.rs`, `dependencies.rs`, la vista de herramientas y la cola de instalación de `ui/mod.rs`.
 - **Actualizador**: `updater.rs` y su modal.
-- **Hardware**: `specs.rs`, `sensors.rs`, `drivers.rs` y sus vistas.
+- **Hardware**: `specs.rs`, `sensors.rs` y sus vistas.
+- **Drivers**: `core/drivers/` y su vista.
 - **UI**: componentes compartidos (`ui/components`), `assets/main.css`, temas, idioma y la navegación de `ui/mod.rs`, cuando
   el cambio no es de un área.
 - **Tests**: solo si el diff es únicamente tests. Si no, los tests van con el código que prueban.

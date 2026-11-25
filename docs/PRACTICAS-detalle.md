@@ -954,12 +954,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="or-06"></a>
 ### OR-06 · `drivers.rs` tiene 1857 líneas y seis responsabilidades
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: mezcla tipos y guardianes Win32, textos de problemas CM, enumeración SetupAPI, un cliente HTTP propio, parseo de
   HTML y versiones, Windows Update por COM, raspado del Catálogo, NVIDIA, Intel e instalación. No sigue el orden de `OR-04`.
 - **Dónde**: `src/core/drivers.rs`; `src/core/mod.rs:15-20`.
 - **Propuesta**: `core/drivers/{mod, devices, hwid, wua, catalog, install}.rs` y `vendor/{nvidia, intel}.rs`; `hwid` puro y con tests.
   Junto con `AR-21`…`AR-24`, que quitan unas 300 líneas.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `core/drivers/` con `mod.rs` (tipos públicos, fachada `DriverManager`, política del equipo y peticiones HTTPS comunes), `hwid.rs` (puro, con sus tests), `devices.rs`, `wua.rs`, `catalog.rs`, `history.rs`, `install.rs` y `vendor/{mod, nvidia, intel}.rs`; cada archivo tiene su `impl DriverManager` y sus tests, y la API pública no cambia. Sin cambios de lógica: se movió el código tal cual. El más largo queda en 360 líneas (`devices.rs`). Verificado: `cargo test` (69, los mismos 8 de drivers), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="or-07"></a>
 ### OR-07 · Los iconos de la tienda viven dentro de `tools.rs`

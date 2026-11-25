@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **83 hechas, 11 parciales y 20 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **84 hechas, 11 parciales y 19 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -40,7 +40,6 @@ dependencias directas se usan.
 | [`TE-02`](PRACTICAS-detalle.md#te-02) | 185 estilos inline: el CSS no tiene clases de layout ni de componente | M/L | Parcial |
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
-| [`OR-06`](PRACTICAS-detalle.md#or-06) | `drivers.rs` tiene 1857 líneas y seis responsabilidades | M | Pendiente |
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
 | [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Parcial |
@@ -81,8 +80,7 @@ dependencias directas se usan.
 
 ## Siguiente
 
-1. Código de v4.2.0, junto con los defectos de `docs/BUGS.md`: `OR-06` con `AR-21`…`AR-23` (cliente HTTP, descargas y procesos por
-   las primitivas de `security/` y `platform/`, que cierra de paso `SEC-30`, `SEC-33`, `SEC-34`, `ERR-19`, `ERR-22`) y `CL-22`.
+1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags`, `url_encode` y el JSON de Intel) y el resto de `AR-24` (tabla PCI).
 2. El freno a las regresiones de una fusión: `HE-14`.
 3. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 4. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
