@@ -4,7 +4,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::AsRawHandle;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use windows::Win32::Foundation::HANDLE;
@@ -13,8 +13,10 @@ use windows::Win32::Storage::FileSystem::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::platform::safe_fs::{inspect_handle, write_zone_identifier};
 use crate::core::security::authenticode::verify_authenticode_on_handle;
+use crate::core::security::data_dir::staging_dir;
 use crate::core::security::http::{self, Timeouts};
 
 #[derive(Debug, Clone)]
@@ -258,4 +260,50 @@ pub fn validate_https_host(url: &str, allowed_hosts: &[&str]) -> CoreResult<()> 
         });
     }
     Ok(())
+}
+
+/// AR-09: instalador descargado y verificado en la carpeta de staging. El archivo se borra al soltar el valor.
+pub struct StagedDownload {
+    path: PathBuf,
+    file_name: String,
+    nonce: u128,
+}
+
+impl StagedDownload {
+    /// Descarga `policy.url` a `staging/<stem>_<pid>_<nonce>.<ext>` y lo verifica (SHA-256 y Authenticode). Si
+    /// algo falla, no queda nada en disco.
+    pub fn download(stem: &str, ext: &str, policy: &DownloadPolicy<'_>) -> CoreResult<Self> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let file_name = format!("{stem}_{}_{nonce}.{ext}", std::process::id());
+        let path = staging_dir()?.join(&file_name);
+        let staged = Self {
+            path,
+            file_name,
+            nonce,
+        };
+        // Si la descarga falla, `staged` se suelta aquí y borra lo que se haya escrito.
+        drop(secure_download_and_verify(&staged.path, policy)?);
+        Ok(staged)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+
+    pub fn nonce(&self) -> u128 {
+        self.nonce
+    }
+}
+
+impl Drop for StagedDownload {
+    fn drop(&mut self) {
+        let _ = delete_verified_file(&self.path);
+    }
 }

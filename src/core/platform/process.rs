@@ -154,6 +154,12 @@ pub struct Launch<'a> {
     pub user_token: Option<&'a SafeHandle>,
 }
 
+/// AR-16: tiempo máximo que se espera a un instalador o desinstalador.
+pub const INSTALLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `ERROR_PRODUCT_VERSION` de Windows Installer: otra versión del producto ya está instalada.
+pub const ERROR_PRODUCT_VERSION: u32 = 1638;
+
 /// Resultado de un proceso que terminó dentro del tiempo.
 #[derive(Debug, Clone, Copy)]
 pub struct ProcessExit {
@@ -165,6 +171,11 @@ impl ProcessExit {
     /// (0, 3010 y 1641 = requiere reinicio).
     pub fn is_success(&self) -> bool {
         matches!(self.exit_code, 0 | 3010 | 1641)
+    }
+
+    /// Para un instalador: éxito, o que ya había otra versión instalada (`ERROR_PRODUCT_VERSION`).
+    pub fn is_installed_ok(&self) -> bool {
+        self.is_success() || self.exit_code == ERROR_PRODUCT_VERSION
     }
 
     /// Código para mostrar: los HRESULT (p. ej. `0x80040902` de EdgeUpdate) en hexadecimal, que es como se

@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 use winreg::RegKey;
@@ -7,12 +7,10 @@ use winreg::RegKey;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir, windows_dir};
-use crate::core::platform::process::{run_in_job, Launch, ProcessExit};
-use crate::core::platform::safe_fs::delete_verified_file;
-use crate::core::security::data_dir::ensure_admin_only_data_dir;
-use crate::core::security::download::{
-    reopen_verified_for_exec, secure_download_and_verify, DownloadPolicy,
-};
+use crate::core::platform::process::INSTALLER_TIMEOUT;
+use crate::core::platform::process::{run_in_job, Launch};
+use crate::core::security::download::StagedDownload;
+use crate::core::security::download::{reopen_verified_for_exec, DownloadPolicy};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeDependency {
@@ -226,19 +224,6 @@ impl DependencyManager {
                 ))
             })?;
 
-        let secure_dir = ensure_admin_only_data_dir()?.join("staging");
-        std::fs::create_dir_all(&secure_dir)?;
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let installer_path = secure_dir.join(format!(
-            "{}_{}_{}.exe",
-            runtime.id,
-            std::process::id(),
-            nonce
-        ));
-
         let policy = DownloadPolicy {
             url: runtime.url,
             allowed_final_hosts: runtime.allowed_hosts,
@@ -247,38 +232,22 @@ impl DependencyManager {
             expected_signer_cn: runtime.signer_cn,
             max_bytes: runtime.max_bytes,
         };
+        let installer = StagedDownload::download(runtime.id, "exe", &policy)?;
+        let installer_path = installer.path();
 
-        match secure_download_and_verify(&installer_path, &policy) {
-            Ok(f) => drop(f),
-            Err(e) => {
-                let _ = delete_verified_file(&installer_path);
-                return Err(e);
-            }
-        }
-
-        let run = (|| -> CoreResult<ProcessExit> {
-            // Mientras este handle viva nadie puede reemplazar el instalador (SEC-05).
-            let _exec_lock = reopen_verified_for_exec(&installer_path, &policy)?;
-            run_in_job(
-                &Launch {
-                    application: &installer_path,
-                    command_line: format!(
-                        "\"{}\" {}",
-                        installer_path.display(),
-                        runtime.silent_args
-                    ),
-                    working_dir: &secure_dir,
-                    user_token: None,
-                },
-                Duration::from_secs(300),
-                None,
-            )
-        })();
-        let _ = delete_verified_file(&installer_path);
-        let exit = run?;
-
-        // 1638 = otra versión del producto ya instalada.
-        if !exit.is_success() && exit.exit_code != 1638 {
+        // Mientras este handle viva nadie puede reemplazar el instalador (SEC-05).
+        let _exec_lock = reopen_verified_for_exec(installer_path, &policy)?;
+        let exit = run_in_job(
+            &Launch {
+                application: installer_path,
+                command_line: format!("\"{}\" {}", installer_path.display(), runtime.silent_args),
+                working_dir: installer_path.parent().unwrap_or(installer_path),
+                user_token: None,
+            },
+            INSTALLER_TIMEOUT,
+            None,
+        )?;
+        if !exit.is_installed_ok() {
             return Err(CoreError::SystemTool {
                 message: format!(
                     "Instalador runtime finalizó con código de error {}",

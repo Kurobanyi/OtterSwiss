@@ -20,7 +20,8 @@ use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_tree_verified, delete_verified_file_under, is_safe_non_root_dir,
     path_is_strictly_under,
 };
-use crate::core::security::data_dir::{ensure_admin_only_data_dir, get_program_data_dir};
+use crate::core::security::data_dir::get_program_data_dir;
+use crate::core::security::data_dir::reg_backups_dir;
 
 /// Exporta `subkey` con `reg.exe export` a `ProgramData\OtterSwiss\RegBackups`, para poder restaurarla
 /// con doble clic si se borró algo que no se debía.
@@ -32,8 +33,7 @@ pub(super) fn export_registry_key(
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-    let dir = ensure_admin_only_data_dir()?.join("RegBackups");
-    std::fs::create_dir_all(&dir)?;
+    let dir = reg_backups_dir()?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())

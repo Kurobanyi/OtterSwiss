@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 
 use dioxus::prelude::*;
 
+use crate::core::platform::process::INSTALLER_TIMEOUT;
 use crate::core::store::app_store::AppStoreManager;
 use crate::core::uninstall::{
     InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallerManager,
@@ -166,7 +166,7 @@ fn start_uninstall_and_scan(
     spawn(async move {
         let app_run = app.clone();
         let res = tokio::task::spawn_blocking(move || {
-            UninstallerManager::run_uninstaller(&app_run, Duration::from_secs(300))
+            UninstallerManager::run_uninstaller(&app_run, INSTALLER_TIMEOUT)
         })
         .await
         .map_err(|e| e.to_string())

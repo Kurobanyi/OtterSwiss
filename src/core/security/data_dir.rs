@@ -48,3 +48,17 @@ pub fn ensure_admin_only_data_dir() -> CoreResult<PathBuf> {
     verify_tree_owned_by_admins(&target, 8)?;
     Ok(target)
 }
+
+/// AR-07: carpeta donde se descargan los instaladores antes de ejecutarlos (dentro de la carpeta solo-admin).
+pub fn staging_dir() -> CoreResult<PathBuf> {
+    let dir = ensure_admin_only_data_dir()?.join("staging");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// AR-07: carpeta donde se exportan las claves de registro antes de borrarlas.
+pub fn reg_backups_dir() -> CoreResult<PathBuf> {
+    let dir = ensure_admin_only_data_dir()?.join("RegBackups");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}

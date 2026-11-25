@@ -3,7 +3,6 @@ use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
@@ -13,17 +12,16 @@ use winreg::RegKey;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::handles::SafeHandle;
+use crate::core::platform::process::INSTALLER_TIMEOUT;
 use crate::core::platform::process::{
     duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir, Launch,
 };
 use crate::core::platform::safe_fs::{
     canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
-    delete_verified_file, delete_verified_file_under, path_is_strictly_under,
+    delete_verified_file_under, path_is_strictly_under,
 };
-use crate::core::security::data_dir::ensure_admin_only_data_dir;
-use crate::core::security::download::{
-    reopen_verified_for_exec, secure_download_and_verify, DownloadPolicy,
-};
+use crate::core::security::download::StagedDownload;
+use crate::core::security::download::{reopen_verified_for_exec, DownloadPolicy};
 
 /// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se
 /// piden en inglés (Firefox `lang=en-US`, Battle.net `--lang=enUS`).
@@ -659,11 +657,6 @@ impl AppStoreManager {
         installed
     }
 
-    pub fn install_package(package_id: &str) -> CoreResult<()> {
-        let dummy_cancel = AtomicBool::new(false);
-        Self::install_package_cancellable(package_id, &dummy_cancel)
-    }
-
     pub fn install_package_cancellable(package_id: &str, cancel: &AtomicBool) -> CoreResult<()> {
         if cancel.load(Ordering::Acquire) {
             return Err(CoreError::Cancelled);
@@ -678,16 +671,6 @@ impl AppStoreManager {
             ))
         })?;
 
-        let staging = ensure_admin_only_data_dir()?.join("staging");
-        std::fs::create_dir_all(&staging)?;
-        let ext = if pkg.is_msi { "msi" } else { "exe" };
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let file_name = format!("{}_{}_{}.{}", pkg.id, std::process::id(), nonce, ext);
-        let installer_path = staging.join(&file_name);
-
         let url = localize_catalog_text(pkg.url, windows_ui_is_spanish());
         let policy = DownloadPolicy {
             url: &url,
@@ -697,29 +680,18 @@ impl AppStoreManager {
             expected_signer_cn: pkg.signer_cn,
             max_bytes: pkg.max_bytes,
         };
-
-        match secure_download_and_verify(&installer_path, &policy) {
-            Ok(f) => drop(f),
-            Err(e) => {
-                let _ = delete_verified_file(&installer_path);
-                return Err(e);
-            }
-        }
-
-        let result =
-            Self::run_verified_installer(pkg, &installer_path, &file_name, nonce, &policy, cancel);
-        let _ = delete_verified_file(&installer_path);
-        result
+        let installer =
+            StagedDownload::download(pkg.id, if pkg.is_msi { "msi" } else { "exe" }, &policy)?;
+        Self::run_verified_installer(pkg, &installer, &policy, cancel)
     }
 
     fn run_verified_installer(
         pkg: &CuratedPackage,
-        installer_path: &Path,
-        file_name: &str,
-        nonce: u128,
+        installer: &StagedDownload,
         policy: &DownloadPolicy<'_>,
         cancel: &AtomicBool,
     ) -> CoreResult<()> {
+        let installer_path = installer.path();
         if cancel.load(Ordering::Acquire) {
             return Err(CoreError::Cancelled);
         }
@@ -730,7 +702,12 @@ impl AppStoreManager {
             None
         };
         let user_copy = match user_token.as_ref() {
-            Some(tok) => Some(stage_copy_for_user(tok, installer_path, file_name, nonce)?),
+            Some(tok) => Some(stage_copy_for_user(
+                tok,
+                installer_path,
+                installer.file_name(),
+                installer.nonce(),
+            )?),
             None => None,
         };
         let run_path: &Path = user_copy
@@ -763,12 +740,11 @@ impl AppStoreManager {
                 working_dir,
                 user_token: user_token.as_ref(),
             },
-            Duration::from_secs(300),
+            INSTALLER_TIMEOUT,
             Some(cancel),
         )?;
 
-        // 1638 = otra versión del producto ya instalada.
-        if !exit.is_success() && exit.exit_code != 1638 {
+        if !exit.is_installed_ok() {
             return Err(CoreError::SystemTool {
                 message: format!(
                     "Instalador de '{}' terminó con código {}",
