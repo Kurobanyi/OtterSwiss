@@ -556,14 +556,10 @@ button {
     cursor: not-allowed;
 }
 
-/* Grupo de opciones excluyentes (TE-13): la elegida se marca con aria-pressed, no con btn-primary. */
-.segmented {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-}
-
-.segmented > button[aria-pressed="true"] {
+/* Opción elegida de un grupo (TE-13): se marca con aria-pressed, no alternando btn-primary. Así el lector de
+   pantalla anuncia «presionado» y el estado no depende solo del color. */
+.btn[aria-pressed="true"],
+.btn[aria-pressed="true"]:hover:not(:disabled) {
     background: color-mix(in srgb, var(--accent) 16%, var(--bg));
     border-color: var(--accent);
     color: var(--accent-text);
@@ -824,7 +820,7 @@ button.badge {
 
     .top-nav-item.active,
     .top-nav-item[aria-current="page"],
-    .segmented > button[aria-pressed="true"] {
+    .btn[aria-pressed="true"] {
         outline: 2px solid Highlight;
     }
 }

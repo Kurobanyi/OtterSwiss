@@ -117,7 +117,8 @@ pub fn SensorsView() -> Element {
                         "{reset_peaks_lbl}"
                     }
                     button {
-                        class: if *paused.read() { "btn btn-primary" } else { "btn btn-secondary" },
+                        class: "btn btn-secondary",
+                            "aria-pressed": if *paused.read() { "true" } else { "false" },
                         onclick: move |_| {
                             let next = !*paused.read();
                             paused.set(next);

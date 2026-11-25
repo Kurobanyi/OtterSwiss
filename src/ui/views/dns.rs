@@ -282,7 +282,8 @@ pub fn DnsView() -> Element {
                                 rsx! {
                                     button {
                                         key: "{p.id}",
-                                        class: if *selected_preset.read() == p.id { "btn btn-primary" } else { "btn btn-secondary" },
+                                        class: "btn btn-secondary",
+                            "aria-pressed": if *selected_preset.read() == p.id { "true" } else { "false" },
                                         onclick: move |_| selected_preset.set(p.id),
                                         "{p.name}"
                                         if let Some(res) = b {

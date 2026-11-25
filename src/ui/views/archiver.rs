@@ -160,13 +160,15 @@ pub fn ArchiverView() -> Element {
                 div { class: "stack-3",
                     div { class: "flex gap-2",
                         button {
-                            class: if *mode.read() == "extract" { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *mode.read() == "extract" { "true" } else { "false" },
                             disabled: *is_working.read(),
                             onclick: move |_| mode.set("extract"),
                             if en { "Extract" } else { "Descomprimir" }
                         }
                         button {
-                            class: if *mode.read() == "compress" { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *mode.read() == "compress" { "true" } else { "false" },
                             disabled: *is_working.read(),
                             onclick: move |_| mode.set("compress"),
                             if en { "Compress" } else { "Comprimir" }
@@ -214,19 +216,22 @@ pub fn ArchiverView() -> Element {
                             div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                                 span { class: "text-xs text-muted", if en { "Format:" } else { "Formato:" } }
                                 button {
-                                    class: if *selected_format.read() == ArchiveFormat::Zip { "btn btn-primary" } else { "btn btn-secondary" },
+                                    class: "btn btn-secondary",
+                            "aria-pressed": if *selected_format.read() == ArchiveFormat::Zip { "true" } else { "false" },
                                     disabled: *is_working.read(),
                                     onclick: move |_| selected_format.set(ArchiveFormat::Zip),
                                     ".ZIP"
                                 }
                                 button {
-                                    class: if *selected_format.read() == ArchiveFormat::SevenZip { "btn btn-primary" } else { "btn btn-secondary" },
+                                    class: "btn btn-secondary",
+                            "aria-pressed": if *selected_format.read() == ArchiveFormat::SevenZip { "true" } else { "false" },
                                     disabled: *is_working.read(),
                                     onclick: move |_| selected_format.set(ArchiveFormat::SevenZip),
                                     ".7Z"
                                 }
                                 button {
-                                    class: if *selected_format.read() == ArchiveFormat::TarGz { "btn btn-primary" } else { "btn btn-secondary" },
+                                    class: "btn btn-secondary",
+                            "aria-pressed": if *selected_format.read() == ArchiveFormat::TarGz { "true" } else { "false" },
                                     disabled: *is_working.read(),
                                     onclick: move |_| selected_format.set(ArchiveFormat::TarGz),
                                     ".TAR.GZ"

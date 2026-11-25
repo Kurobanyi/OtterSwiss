@@ -664,25 +664,29 @@ pub fn UninstallerView() -> Element {
                     div { class: "row wrap",
                         span { class: "text-xs text-muted", "{sort_lbl}" }
                         button {
-                            class: if *sort_mode.read() == SortMode::NameAsc { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *sort_mode.read() == SortMode::NameAsc { "true" } else { "false" },
                             style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameAsc),
                             "A - Z"
                         }
                         button {
-                            class: if *sort_mode.read() == SortMode::NameDesc { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *sort_mode.read() == SortMode::NameDesc { "true" } else { "false" },
                             style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameDesc),
                             "Z - A"
                         }
                         button {
-                            class: if *sort_mode.read() == SortMode::SizeDesc { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *sort_mode.read() == SortMode::SizeDesc { "true" } else { "false" },
                             style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeDesc),
                             "{sort_largest_lbl}"
                         }
                         button {
-                            class: if *sort_mode.read() == SortMode::SizeAsc { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary",
+                            "aria-pressed": if *sort_mode.read() == SortMode::SizeAsc { "true" } else { "false" },
                             style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeAsc),
                             "{sort_smallest_lbl}"
