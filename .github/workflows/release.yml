@@ -1,0 +1,36 @@
+name: release
+
+# HE-03: se publica al empujar un tag vX.Y.Z. El tag tiene que coincidir con la versión de Cargo.toml: el updater
+# compara el tag con CARGO_PKG_VERSION y, si no coinciden, la app ofrecería la misma actualización en bucle.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Comprobar que el tag coincide con Cargo.toml
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "El tag ${{ github.ref_name }} no coincide con la versión v$version de Cargo.toml"
+          }
+      - run: cargo test --locked
+      - run: cargo build --release --locked
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Generar el instalador
+        run: iscc installer\otterswiss.iss
+      - name: Publicar la release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # GitHub calcula el `digest` SHA-256 del asset, que el updater exige.
+        run: gh release create "${{ github.ref_name }}" dist\OtterSwiss-Setup-${{ github.ref_name }}.exe --title "OtterSwiss ${{ github.ref_name }}" --notes-file CHANGELOG.md

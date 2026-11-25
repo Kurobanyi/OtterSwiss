@@ -1,17 +1,27 @@
-; otterswiss.iss
+; Instalador de OtterSwiss (Inno Setup 6). Compilar desde la raíz del repo, después de `cargo build --release`:
+;   ISCC installer\otterswiss.iss
+; HE-03: la versión sale del .exe (winresource la toma de Cargo.toml); no se escribe a mano aquí.
+
+#define AppExe AddBackslash(SourcePath) + "..\target\release\otter_swiss.exe"
+#if !FileExists(AppExe)
+  #error "Falta target\release\otter_swiss.exe: corre `cargo build --release` antes."
+#endif
+#define AppVer GetStringFileInfo(AppExe, "ProductVersion")
 
 [Setup]
+; Las rutas de abajo son relativas a la raíz del repo.
+SourceDir=..
 AppId={{8D4F6A2E-9E3B-4E12-9F54-7A2C1B9E4401}
 AppName=OtterSwiss
-AppVersion=3.5.1
-AppVerName=OtterSwiss v3.5.1
+AppVersion={#AppVer}
+AppVerName=OtterSwiss v{#AppVer}
 AppPublisher=OtterSwiss
-VersionInfoVersion=3.5.1.0
+VersionInfoVersion={#GetVersionNumbersString(AppExe)}
 DefaultDirName={autopf}\OtterSwiss
 DefaultGroupName=OtterSwiss
 DisableProgramGroupPage=yes
 OutputDir=dist
-OutputBaseFilename=OtterSwiss-Setup-v3.5.1
+OutputBaseFilename=OtterSwiss-Setup-v{#AppVer}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\otter_swiss.exe
 Compression=lzma2/ultra64

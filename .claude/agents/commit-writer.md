@@ -66,7 +66,7 @@ Elige la más específica.
   el cambio no es de un área.
 - **Tests**: solo si el diff es únicamente tests. Si no, los tests van con el código que prueban.
 - **Dependencias**: `Cargo.toml` y `Cargo.lock` cuando el cambio es la dependencia en sí (con el código mínimo que la adapta).
-- **Instalador**: `otterswiss.iss` y `build.rs`.
+- **Instalador**: `installer/otterswiss.iss` y `build.rs`.
 - **Docs**: `docs/`, `CHANGELOG.md`, `AGENTS.md`.
 - **Mantenimiento**: agentes y scripts de `.claude/` y `.agents/`, `.gitignore`, limpieza sin cambio de comportamiento.
 - **Estilo**: `cargo fmt` o renombres sin cambio de comportamiento, siempre en un commit propio y al final.
