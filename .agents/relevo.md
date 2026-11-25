@@ -6,34 +6,24 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-24
 
-**Estado:** arreglos de la auditoría del 24/11 commiteados en **`fix/auditoria`** (15 commits sobre `11cb659`, cada árbol
-compilado por separado) y en revisión en el PR https://github.com/Kurobanyi/OtterSwiss/pull/1. 83 de 90 hallazgos resueltos;
-2 parciales (`TST-01`, `UI-11`), 4 diferidos (`SEC-17`, `SYS-24`, `ARQ-03`, `UX-02`) y 1 pendiente de decisión (`UX-03`).
-El repo no tiene CI.
+**Estado:** `fix/auditoria` fusionado en `main` (`adf794d`; PR #1 cerrado como fusionado). 85 de 96 hallazgos resueltos. Abiertos:
+`TST-01` y `UI-11` parciales, y los cuatro defectos nuevos de la auditoría de buenas prácticas (`ERR-14`, `SEC-29`, `UI-17`,
+`UI-18`). Diferidos `SEC-17`, `SYS-24`, `ARQ-03`, `UX-02`; `UX-03` pendiente de decisión. El repo no tiene CI.
 
-**Hecho el 24/11 (sin commitear, en `fix/auditoria`):**
-- `ARQ-04` resuelto: CRT estático (decisión del usuario). `.cargo/config.toml` vuelve a versionarse solo con `+crt-static` para
-  `x86_64-pc-windows-msvc`; las rutas propias de `--remap-path-prefix` van en el `~/.cargo/config.toml` de cada equipo (Cargo une los
-  arrays). `dumpbin /dependents`: sin `VCRUNTIME140*`/`ucrtbase`. Probado en Sandbox sin DLL de VC.
-- `ERR-13` resuelto: `main.rs` comprueba WebView2 antes de Dioxus y ofrece instalarlo con un `MessageBoxW` nativo; hook de `panic` con
-  cuadro nativo. `is_webview2_installed` usa `GetAvailableCoreWebView2BrowserVersionString` (dependencia directa `webview2-com` 0.38, ya
-  estaba en el árbol): el registro del Sandbox daba un falso «instalado». `ProcessExit::code_display` muestra HRESULT en hex.
-- `SYS-04` reabierto y cerrado: con la app registrada, el barrido de Program Files ya no ofrece su carpeta.
-- `tests/vm_sistema.rs` (`#[ignore]`): recorrido del núcleo como admin. Corrido en Windows Sandbox: **0 fallos** (ver `docs/BUGS.md`,
-  Resumen). Sin probar: quitar una app Appx y la ventana chica.
+**Auditoría de buenas prácticas (24/11, rama `auditoria/buenas-practicas`, sin commitear):** cuatro pasadas en paralelo
+(arquitectura; código limpio; temas, tokens y CSS; i18n, linters y herramientas). 87 mejoras en `docs/PRACTICAS.md` (índice, orden
+de ataque) y `docs/PRACTICAS-detalle.md` (expedientes): 17 P1, 49 P2, 21 P3. Los defectos van en `docs/BUGS.md`. También se
+devolvieron a su expediente siete líneas **Cierre** de `BUGS-detalle.md` que habían quedado bajo el título de la sección siguiente.
 
-**Siguiente paso:** el usuario decide si commitear estos cambios en `fix/auditoria` (no commitear ni hacer push sin pedido). Luego, en un
-Windows completo: quitar una app Appx con el Debloater y ver la ventana en tamaño chico.
+**Siguiente paso:** el usuario decide si commitear el registro y qué atacar primero (sugerido: los cuatro defectos y las barandas
+de `PRACTICAS.md`, paso 1). Sigue pendiente, en un Windows completo: quitar una app Appx con el Debloater y ver la ventana chica.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
-núcleos y Windows 11 exige 2). Quedan `D:\VMs\OtterTest-Win11` (VM apagada) y la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
-(SHA-256 oficial `8F344BEA…E4C584`); el usuario decide si borrarlas. Para un Windows completo: activar Hyper-V (pide reinicio).
+núcleos y Windows 11 exige 2). La VM se borró; queda la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
+(SHA-256 oficial `8F344BEA…E4C584`) por decisión del usuario. Para un Windows completo: activar Hyper-V (pide reinicio).
 
 **Windows Sandbox (si se reusa):** característica ya activada. Lanzar con `WindowsSandbox.exe <wsb>`. NUNCA matar sus procesos (deja VMs
 huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta el UAC dentro. El control de pantalla no ve esa ventana.
-
-**Después de los bugs (pedido del usuario):** auditoría de buenas prácticas: arquitectura y orden del código, código limpio y
-reutilizable, temas claro/oscuro y tokens bien hechos, i18n, linters y similares. Va en una tarea propia, no en este PR.
 
 ## Cómo verificar
 

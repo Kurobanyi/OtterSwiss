@@ -333,9 +333,19 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Afecta**: Desarrollador · **Severidad**: Baja · **Origen**: security-auditor, code-auditor · **Evidencia**: observado · **Estado**: Resuelto
 - **Dónde**: `src/core/win_common.rs:477,497`; `src/core/dns.rs:205,231`; `src/core/drivers.rs:104`; `src/core/specs.rs:321`; `src/core/services.rs:183`.
 - **Propuesta**: `read_unaligned` o buffers alineados.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): `win_common::AlignedBuf` en dns, drivers, services, sensors, specs y win_common. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
+
+<a id="sec-29"></a>
+### SEC-29 · La lista blanca de relanzamiento elevado acepta `--apply-profile`, que ningún código maneja
+- **Afecta**: Desarrollador, Sistema · **Severidad**: Baja · **Origen**: auditoría de buenas prácticas 24/11 (arquitectura) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: `ALLOWED_RELAUNCH_FLAGS` incluye `"--apply-profile"`, pero `main.rs` solo atiende `--extract`, `--compress-zip`,
+  `--rollback`, `--install-context-menu` y `--uninstall-context-menu`. Hoy no tiene efecto, pero la lista blanca es la barrera de lo
+  que se puede pedir con elevación: un flag permitido sin dueño es una puerta que alguien puede conectar sin revisar.
+- **Dónde**: `src/core/elevation.rs:15`; `src/main.rs:291,303,435,444,449`.
+- **Propuesta**: quitarlo de la lista. A futuro, un `enum CliCommand` único que usen `elevation`, `main.rs`, `context_menu` y la UI
+  (`AR-12` en `docs/PRACTICAS.md`), para que un flag permitido y su manejador no puedan separarse.
 
 # Expedientes · Cambios al sistema y rollback (`SYS-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): `win_common::AlignedBuf` en dns, drivers, services, sensors, specs y win_common. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 
 <a id="sys-01"></a>
@@ -559,9 +569,9 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Afecta**: Usuario · **Severidad**: Baja · **Origen**: code-auditor, design-challenger · **Evidencia**: inferido · **Estado**: Diferido
 - **Dónde**: `src/core/registry.rs:266-270`; `src/core/debloater.rs:838-841`.
 - **Propuesta**: aplicar HKCU con el token del shell o avisar. Se resuelve con `SEC-17`.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): Depende de `SEC-17` (diferido por decisión del autor).
 
 # Expedientes · Manejo de errores y procesos (`ERR-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Depende de `SEC-17` (diferido por decisión del autor).
 
 
 <a id="err-01"></a>
@@ -671,9 +681,19 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Propuesta**: antes de lanzar Dioxus, comprobar WebView2; si falta, mostrar un `MessageBoxW` nativo que explique el problema y
   ofrezca instalarlo con el instalador verificado de `dependencies.rs`, y relanzar al terminar.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): `main.rs` comprueba WebView2 antes de lanzar Dioxus y, si falta, muestra un `MessageBoxW` nativo que ofrece instalarlo con `install_runtime("webview2")`; si la instalación falla lo dice con el código en hexadecimal (`ProcessExit::code_display`). `is_webview2_installed` pregunta al cargador oficial (`GetAvailableCoreWebView2BrowserVersionString` vía `webview2-com`, ya presente en el árbol): el registro daba un falso «instalado» con restos de una instalación rota. Un hook de `panic` muestra cualquier otro error en un cuadro nativo. Verificado en Windows Sandbox: sin WebView2 aparece «Falta WebView2» con Sí/No y, al fallar la instalación (EdgeUpdate `0x80040902`, limitación del Sandbox), el error se explica; `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): Buffer SMBIOS acotado a lo reservado, voltaje leído en 0x26, velocidad configurada antes que la nominal y módulos < 1 GB en MB. Tests `voltaje_configurado_en_0x26`, `estructura_truncada_no_entra_en_panico`, `capacidad_de_modulos_pequenos`. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
+
+<a id="err-14"></a>
+### ERR-14 · `build.rs` ignora el fallo al incrustar el manifiesto y el `.exe` puede salir sin `requireAdministrator`
+- **Afecta**: Usuario, Desarrollador · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (herramientas) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: `let _ = res.compile_for("otter_swiss");` descarta el error. Si falta `rc.exe` o el SDK de Windows, el build termina
+  bien pero el ejecutable sale sin manifiesto (`requireAdministrator`, `supportedOS`) ni icono, y el problema solo aparece al usarlo:
+  las acciones de sistema fallan con acceso denegado.
+- **Dónde**: `build.rs:25`.
+- **Propuesta**: `res.compile_for("otter_swiss").expect("no se pudo incrustar el manifiesto y el icono")`; en un `build.rs` el
+  `panic` aborta el build, que es lo correcto.
 
 # Expedientes · Concurrencia (`CON-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Buffer SMBIOS acotado a lo reservado, voltaje leído en 0x26, velocidad configurada antes que la nominal y módulos < 1 GB en MB. Tests `voltaje_configurado_en_0x26`, `estructura_truncada_no_entra_en_panico`, `capacidad_de_modulos_pequenos`. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 
 <a id="con-01"></a>
@@ -689,9 +709,9 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Afecta**: Usuario · **Severidad**: Media · **Origen**: code-auditor, design-challenger · **Evidencia**: derivado · **Estado**: Resuelto
 - **Dónde**: `src/ui/mod.rs:549-566`; `src/ui/views/archiver.rs:25,54-76`; `src/ui/views/cleaner.rs:31,53-63`; dashboard y debloater.
 - **Propuesta**: estado de trabajo en curso global (o en core, con lock por destino) y resultados que sobrevivan al desmontaje.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): Las pestañas con tareas se montan al visitarlas y siguen vivas ocultas (`KEEP_ALIVE_TABS` en `ui/mod.rs`): la tarea en curso conserva su resultado y su botón sigue deshabilitado. Sensores se desmonta para no sondear. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 # Expedientes · Arquitectura y repositorio (`ARQ-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Las pestañas con tareas se montan al visitarlas y siguen vivas ocultas (`KEEP_ALIVE_TABS` en `ui/mod.rs`): la tarea en curso conserva su resultado y su botón sigue deshabilitado. Sensores se desmonta para no sondear. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 
 <a id="arq-01"></a>
@@ -725,9 +745,9 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Propuesta**: compilar con CRT estático (el `.exe` no depende de ninguna DLL de VC y sirve también portable) o incluir y
   ejecutar `vc_redist.x64.exe` en el instalador. Decide el autor.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): decisión del autor, CRT estático. `.cargo/config.toml` vuelve a versionarse solo con `target-feature=+crt-static` para `x86_64-pc-windows-msvc` (las rutas propias de `--remap-path-prefix`, ARQ-01, van en el `~/.cargo/config.toml` de cada equipo). `dumpbin /dependents` del release ya no lista `VCRUNTIME140*.dll` ni `ucrtbase.dll`; el `.exe` pesa 9,2 MB. Verificado en Windows Sandbox sin ninguna DLL de VC: `--uninstall-context-menu` sale con 0 y la app abre.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): se usará para actualizar drivers desde la app.
 
 # Expedientes · Interfaz (`UI-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): se usará para actualizar drivers desde la app.
 
 
 <a id="ui-01"></a>
@@ -858,9 +878,33 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Dónde**: `src/core/specs.rs` (`read_dxgi_gpus`).
 - **Propuesta**: descartar el render de software de Microsoft y unir las entradas con el mismo hardware. Contra: dos GPU idénticas
   reales (multi-GPU del mismo modelo) se verían como una.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): `keep_gpu_adapter` descarta el render de software de Microsoft y une las entradas con el mismo hardware; test `gpu_repetida_y_render_de_software_se_descartan`. Comprobado en la app: Hardware muestra una sola RX 7800 XT. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
+
+<a id="ui-17"></a>
+### UI-17 · `LoadingState` no muestra el spinner y `ErrorState` se ve igual que «no hay datos»
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: los componentes usan las clases `state-spinner` y `state-error`, que no están definidas en `assets/main.css`. El div
+  del spinner queda vacío y sin tamaño (Dashboard, DNS, Hardware y Desinstalador solo muestran el texto), y un error usa el mismo
+  borde punteado neutro que el estado vacío.
+- **Dónde**: `src/ui/components/mod.rs:25,44`; `assets/main.css` (sin esas reglas).
+- **Propuesta**: `.state-spinner` de 24px con `border-top-color: var(--accent)` y `@keyframes`, quieto bajo
+  `prefers-reduced-motion`; `.state-error` con borde sólido `var(--danger)` y título en `var(--danger-text)`.
+
+<a id="ui-18"></a>
+### UI-18 · Texto en colores de estado y acento por debajo de 4,5:1 (fuera del alcance de UI-08)
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: derivado (fórmula WCAG sobre los hex de `main.css`, recalculada por el agente principal) · **Estado**: Pendiente
+- **Qué pasa**: UI-08 creó `--*-text` para texto, pero quedan usos del color de relleno como texto y estados no calibrados:
+  - `--danger` como texto sobre `--surface` en Nord: 2,46:1 (Sensores, Herramientas, Desinstalador); `--warning` en Claro: 3,19:1.
+  - Pestaña activa del menú superior (`color: var(--accent)` sobre su fondo al 16 %, 11px): Oscuro 3,81 · Nord 3,76 · Claro 4,13 ·
+    Carmesí 4,17. Es el control que siempre está en pantalla.
+  - `--on-accent` sobre `--accent-hover` (hover de `.btn-primary`): Oscuro 3,64 · Carmesí 4,18.
+- **Dónde**: `src/ui/views/sensors.rs:179-183`, `tools.rs:211,491`, `uninstaller.rs:673`, `cleaner.rs:252`; `assets/main.css:239-242`
+  (`.top-nav-item.active`) y `--accent-hover` de cada tema.
+- **Propuesta**: regla «`--success`, `--warning`, `--danger` y `--accent` solo para fondos y bordes; texto siempre con `--*-text`»,
+  con clases `.text-success|warning|danger|accent`; `.top-nav-item.active { color: var(--accent-text) }`; recalcular
+  `--accent-hover` por tema hasta ≥ 4,5:1 con `--on-accent`.
 
 # Expedientes · Diseño y producto (`UX-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): `keep_gpu_adapter` descarta el render de software de Microsoft y une las entradas con el mismo hardware; test `gpu_repetida_y_render_de_software_se_descartan`. Comprobado en la app: Hardware muestra una sola RX 7800 XT. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 
 <a id="ux-01"></a>
@@ -901,9 +945,9 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Qué pasa**: rompe DNS de dominio en PCs de empresa o un Pi-hole; `privacy_notice` existe por preset pero no se usa en `src/ui`.
 - **Dónde**: `src/ui/views/dns.rs:92-96`; `src/core/dns.rs:43-72`.
 - **Propuesta**: confirmar mostrando los adaptadores afectados y el aviso de privacidad.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): Confirmación con los adaptadores físicos afectados, el aviso de privacidad del preset y el riesgo en redes de empresa. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 # Expedientes · Pruebas (`TST-`)
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Confirmación con los adaptadores físicos afectados, el aviso de privacidad del preset y el riesgo en redes de empresa. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
 
 <a id="tst-01"></a>
