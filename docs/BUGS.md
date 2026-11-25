@@ -25,15 +25,18 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
-| Seguridad (`SEC-`) | 29 | 0 | 1 | 0 | 28 |
-| Sistema y rollback (`SYS-`) | 24 | 0 | 1 | 0 | 23 |
-| Errores y procesos (`ERR-`) | 14 | 0 | 0 | 0 | 14 |
-| Concurrencia (`CON-`) | 2 | 0 | 0 | 0 | 2 |
-| Arquitectura (`ARQ-`) | 4 | 0 | 1 | 0 | 3 |
-| Interfaz (`UI-`) | 18 | 1 | 0 | 0 | 17 |
+| Seguridad (`SEC-`) | 37 | 8 | 1 | 0 | 28 |
+| Sistema y rollback (`SYS-`) | 27 | 3 | 1 | 0 | 23 |
+| Errores y procesos (`ERR-`) | 24 | 10 | 0 | 0 | 14 |
+| Concurrencia (`CON-`) | 3 | 1 | 0 | 0 | 2 |
+| Arquitectura (`ARQ-`) | 5 | 1 | 0 | 0 | 4 |
+| Interfaz (`UI-`) | 22 | 5 | 0 | 0 | 17 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
-| Pruebas (`TST-`) | 1 | 1 | 0 | 0 | 0 |
-| **Total** | **96** | **2** | **4** | **1** | **89** |
+| Pruebas (`TST-`) | 2 | 2 | 0 | 0 | 0 |
+| **Total** | **124** | **30** | **3** | **1** | **90** |
+
+Los 28 abiertos nuevos vienen de la auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`). Tres son de
+seguridad alta (`SEC-30`, `SEC-31`, `SEC-32`): hasta cerrarlos, la pestaña Drivers y el restaurador UWP no deberían publicarse.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -44,6 +47,34 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 |---|---|---|---|---|
 | [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Parcial |
+| [`SEC-30`](BUGS-detalle.md#sec-30) | El ZIP de drivers Intel se ejecuta e instala sin firma ni hash | Sistema | Alta | Pendiente |
+| [`SEC-31`](BUGS-detalle.md#sec-31) | `winget.exe` sale de una carpeta del usuario y, si falla el token del Explorador, corre elevado | Sistema | Alta | Pendiente |
+| [`SEC-32`](BUGS-detalle.md#sec-32) | Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN | Sistema | Alta | Pendiente |
+| [`SEC-33`](BUGS-detalle.md#sec-33) | El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL | Sistema | Media | Pendiente |
+| [`SEC-34`](BUGS-detalle.md#sec-34) | `DriverCache` no se borra nunca y puede bloquear la carpeta de datos | Sistema, Usuario | Media | Pendiente |
+| [`SEC-35`](BUGS-detalle.md#sec-35) | Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar | Sistema | Baja | Pendiente |
+| [`SEC-36`](BUGS-detalle.md#sec-36) | El parser del Catálogo corta el HTML por bytes y puede entrar en pánico | Usuario | Baja | Pendiente |
+| [`SEC-37`](BUGS-detalle.md#sec-37) | Drivers, firmware y paquetes de fabricante se instalan con un clic, sin confirmar ni respaldar | Sistema, Usuario | Media | Pendiente |
+| [`SYS-25`](BUGS-detalle.md#sys-25) | El escaneo de drivers se salta la política de exclusión y WSUS | Sistema | Alta | Pendiente |
+| [`SYS-26`](BUGS-detalle.md#sys-26) | Un driver instalado desde la app no se puede revertir | Sistema, Usuario | Media | Pendiente |
+| [`SYS-27`](BUGS-detalle.md#sys-27) | El JSON de Intel puede ofrecer el paquete de otro dispositivo | Sistema, Usuario | Media | Pendiente |
+| [`ERR-15`](BUGS-detalle.md#err-15) | Winget toma como éxito «no se encontró la app» | Usuario | Alta | Pendiente |
+| [`ERR-16`](BUGS-detalle.md#err-16) | LibreWolf, BleachBit y VSCodium no se instalan nunca | Usuario | Alta | Pendiente |
+| [`ERR-17`](BUGS-detalle.md#err-17) | Cinco apps de GitHub fallan por la lista de hosts | Usuario | Alta | Pendiente |
+| [`ERR-18`](BUGS-detalle.md#err-18) | El informe de instalación de WUA inventa los contadores | Usuario | Media | Pendiente |
+| [`ERR-19`](BUGS-detalle.md#err-19) | Lecturas HTTP cortadas a la mitad se toman como completas | Usuario | Media | Pendiente |
+| [`ERR-20`](BUGS-detalle.md#err-20) | Sin red o con un feed caído, el escaneo de drivers dice «completo» sin avisar | Usuario | Media | Pendiente |
+| [`ERR-21`](BUGS-detalle.md#err-21) | `pnputil` recibe un comodín que no admite | Usuario | Media | Pendiente |
+| [`ERR-22`](BUGS-detalle.md#err-22) | CAB y ZIP de drivers enteros en RAM; se bajan `.msu` y `.exe` para rechazarlos después | Usuario | Baja | Pendiente |
+| [`ERR-23`](BUGS-detalle.md#err-23) | Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre | Usuario | Baja | Pendiente |
+| [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Pendiente |
+| [`CON-03`](BUGS-detalle.md#con-03) | Windows Update se consulta e instala sin plazo ni cancelación | Usuario | Media | Pendiente |
+| [`UI-19`](BUGS-detalle.md#ui-19) | Error de Windows Update y «no hay actualizaciones» a la vez | Usuario | Media | Pendiente |
+| [`UI-20`](BUGS-detalle.md#ui-20) | Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse | Usuario | Media | Pendiente |
+| [`UI-21`](BUGS-detalle.md#ui-21) | «Instalar (N)» incluye apps que el filtro oculta | Usuario | Baja | Pendiente |
+| [`UI-22`](BUGS-detalle.md#ui-22) | Temperaturas de GPU o distancias a TjMax mostradas como CPU | Usuario | Media | Pendiente |
+| [`ARQ-05`](BUGS-detalle.md#arq-05) | La vista de drivers detecta el reinicio buscando una palabra en el mensaje | Usuario | Baja | Pendiente |
+| [`TST-02`](BUGS-detalle.md#tst-02) | El código nuevo de drivers, tienda y sensores no tiene tests | Desarrollador | Media | Pendiente |
 
 ## Diferidos y pendientes de decisión
 
@@ -52,17 +83,18 @@ Conservan su expediente; se retoman por decisión del autor.
 | ID | Título | Afecta | Sev. | Estado |
 |---|---|---|---|---|
 | [`SYS-24`](BUGS-detalle.md#sys-24) | Con elevación «sobre el hombro», los tweaks HKCU van al perfil del admin | Usuario | Baja | Diferido |
-| [`ARQ-03`](BUGS-detalle.md#arq-03) | `drivers.rs` es código muerto | Desarrollador | Baja | Diferido |
 | [`SEC-17`](BUGS-detalle.md#sec-17) | Todo el programa corre como administrador aunque la mitad de las funciones no lo necesitan | Sistema, Usuario | Media | Diferido |
 | [`UX-02`](BUGS-detalle.md#ux-02) | «Optimizar Sistema» aplica sin confirmar tweaks sin base o mal descritos | Usuario, Sistema | Media | Diferido |
 | [`UX-03`](BUGS-detalle.md#ux-03) | «Optimizar RAM» es una práctica desacreditada | Usuario | Media | Pendiente de decisión |
 
 ## Siguiente
 
-1. Mejoras de `docs/PRACTICAS.md`, en el orden de ataque que propone.
-2. En un Windows completo: quitar una app Appx con el Debloater y ver la ventana en tamaño chico.
-3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`, que necesitan registro y archivos de respaldo.
-4. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (y con él `SYS-24`), `UI-11` en el núcleo.
+1. Seguridad del código de v4.2.0: `SEC-30`, `SEC-31`, `SEC-32`, luego `SEC-33`, `SEC-37` y `SYS-25`.
+2. Tienda que no funciona: `ERR-15`, `ERR-16`, `ERR-17`, `UI-20`, con un test invariante del catálogo (`TST-02`).
+3. Resto de drivers (`ERR-18`…`ERR-23`, `SYS-26`, `SYS-27`, `CON-03`, `UI-19`, `ARQ-05`) junto con el reordenamiento `OR-06`/`AR-21`…`AR-23`
+   de `docs/PRACTICAS.md`, que reemplaza el cliente HTTP y las descargas propias por las primitivas de `security/`.
+4. En una VM: argumentos silenciosos e IDs de la Store (`ERR-24`), instalar drivers y quitar una app Appx.
+5. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`), `UI-11`.
 
 ## Patrones
 
@@ -72,10 +104,11 @@ hallazgo, busca las demás instancias del mismo patrón.
 | # | Patrón | Evidencia | Qué comprobar |
 |---|---|---|---|
 | 1 | Efecto irreversible antes de la validación | `SEC-01`, `SEC-25`, `SYS-17` | Que ningún handle se abra con `DELETE_ON_CLOSE`, `CREATE_ALWAYS` o `TRUNCATE`, ni se cambie un estado del sistema, antes de validar; la validación va sobre el handle y el efecto después. |
-| 2 | Una ruta de descarga o ejecución que esquiva `trust.rs`, o que verifica y luego reabre por ruta | `SEC-02`, `SEC-05`, `SEC-14` | Que todo binario descargado o ejecutado pase por `secure_download_and_verify` y se ejecute desde el mismo handle verificado. Buscar `File::create`, `InternetOpenUrlW`, `Command::new` y `CreateProcessW` fuera de `trust.rs`. |
+| 2 | Una ruta de descarga o ejecución que esquiva `security/download.rs`, o que verifica y luego reabre por ruta | `SEC-02`, `SEC-05`, `SEC-14`, `SEC-30`, `SEC-33` | Que todo binario descargado o ejecutado pase por `secure_download_and_verify` y se ejecute desde el mismo handle verificado. Buscar `File::create`, `InternetOpenUrlW`, `Command::new` y `CreateProcessW` fuera de `trust.rs`. |
 | 3 | Proceso hijo con pipes que no se leen mientras corre, o del que solo se espera al padre | `ERR-01`, `SYS-05`, `ERR-11` | Que cada `Stdio::piped()` tenga un lector concurrente o use `output()`; que la espera sea por el Job completo. |
 | 4 | Un JSON de `ProgramData` que se aplica como admin sin validar su contenido ni su dueño | `SEC-03`, `SEC-09`, `SEC-10`, `SEC-04` | Que cada entrada leída de un respaldo se compare con el catálogo embebido antes de escribir registro, DNS o servicios, y que el archivo sea de Administradores o SYSTEM. |
 | 5 | Rutas privilegiadas tomadas de variables de entorno, HKCU o comparación léxica | `SEC-06`, `SEC-07`, `SEC-11`, `SEC-19`, `SEC-20` | Usar `SHGetKnownFolderPath`, canonizar ambos lados antes de comparar, rechazar reparse points en cada componente y no fiarse de HKCU para decidir qué tocar fuera del perfil. |
 | 6 | Un error tragado que acaba sobrescribiendo o borrando el estado original | `SYS-06`, `SYS-09`, `SYS-10`, `SYS-11` | Buscar `let _ =`, `.ok()`, `if let Ok` y `unwrap_or_default()` en respaldo y rollback: si falla leer el original, se aborta, nunca se asume «vacío». |
-| 7 | La UI anuncia éxito sin mirar el resultado real | `UI-01`, `UI-02`, `ERR-07`, `ERR-10`, `SYS-02`, `SYS-16` | Que cada banner y contador salga de los campos de fallo del informe (`failed_items`, `error`, exit code) y no solo del `Ok`. |
-| 8 | Acción destructiva sin confirmación y con todo preseleccionado | `UX-01`, `SYS-20`, `SYS-03`, `ERR-07`, `SYS-01`, `UX-04` | Toda acción irreversible pide confirmación con la lista concreta y deja sin marcar lo que no es seguro por defecto. |
+| 7 | La UI anuncia éxito sin mirar el resultado real | `UI-01`, `UI-02`, `ERR-07`, `ERR-10`, `SYS-02`, `SYS-16`, `ERR-15`, `ERR-18`, `ERR-20` | Que cada banner y contador salga de los campos de fallo del informe (`failed_items`, `error`, exit code) y no solo del `Ok`. |
+| 8 | Acción destructiva sin confirmación y con todo preseleccionado | `UX-01`, `SYS-20`, `SYS-03`, `ERR-07`, `SYS-01`, `UX-04`, `SEC-37` | Toda acción irreversible pide confirmación con la lista concreta y deja sin marcar lo que no es seguro por defecto. |
+| 9 | Binario que se ejecuta elevado desde una ruta que el usuario puede escribir, o con un token que puede fallar en silencio | `SEC-31`, `SEC-06` | Rutas absolutas bajo System32 o Program Files, nunca `LocalAppData` ni nombres relativos; si el token del usuario falla, abortar en vez de elevar. |

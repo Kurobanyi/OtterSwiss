@@ -934,3 +934,258 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 - **Qué pasa / propuesta**: `.editorconfig` sí conviene para `.iss`, `.ps1`, `.md` y `.css`, que rustfmt no cubre (`README.md` no
   termina en salto de línea). `typos` aporta poco con textos en español; `taplo` tampoco con dos TOML.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): .editorconfig. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+
+## Código de v4.2.0 (25/11/2026)
+
+Misma auditoría sobre el código nuevo del commit `0a0f5ec` (fusionado en `4767abf`): `core/drivers.rs` y su vista, la tienda ampliada,
+los cuatro temas nuevos y el puente de LibreHardwareMonitor. Conteos con `grep` sobre `4767abf` frente a `b80c8ef`:
+
+| Medida | Antes | Ahora |
+|---|---|---|
+| `unsafe` sin `// SAFETY:` | 0 (fuera de `drivers.rs`) | 65, todos en `drivers.rs` |
+| `source: None` | 96 | 142 |
+| `style:` en `src/ui` | 50 | 95 |
+| `if en {…}` en `src/ui` | 206 | 249 |
+| Comentarios en `core/drivers.rs` + `views/drivers.rs` (2742 líneas) | — | 0 |
+| Tests de lógica pura nueva | — | 0 |
+
+Lo que está bien: `drivers.rs` solo importa de `platform` y `security`; no hay `unwrap`, `expect` ni mojibake; los temas nuevos pasan AA.
+Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
+
+<a id="or-06"></a>
+### OR-06 · `drivers.rs` tiene 1857 líneas y seis responsabilidades
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: mezcla tipos y guardianes Win32, textos de problemas CM, enumeración SetupAPI, un cliente HTTP propio, parseo de
+  HTML y versiones, Windows Update por COM, raspado del Catálogo, NVIDIA, Intel e instalación. No sigue el orden de `OR-04`.
+- **Dónde**: `src/core/drivers.rs`; `src/core/mod.rs:15-20`.
+- **Propuesta**: `core/drivers/{mod, devices, hwid, wua, catalog, install}.rs` y `vendor/{nvidia, intel}.rs`; `hwid` puro y con tests.
+  Junto con `AR-21`…`AR-24`, que quitan unas 300 líneas.
+
+<a id="or-07"></a>
+### OR-07 · Los iconos de la tienda viven dentro de `tools.rs`
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `render_generic_icon` (85 líneas, 20 trazados SVG) es una `fn -> Element` dentro de la vista, estilada inline.
+- **Dónde**: `src/ui/views/tools.rs:19-103`.
+- **Propuesta**: `ui/components/icon.rs` con `#[component] AppIconBadge`, trazados en una tabla `const` y clase `.app-icon`.
+
+<a id="ar-21"></a>
+### AR-21 · `drivers.rs` reimplementa el cliente HTTPS
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `wininet_get_bytes` (102 líneas) copia `security::http::get` + `read_to_end_capped`; `wininet_post_form` (91) agrega un
+  POST que `http.rs` no tiene y corta en silencio a 4 MiB. Ninguno comprueba `final_url` contra una lista de hosts. User agents fijos
+  (`OtterSwiss-Catalog/4.0`…) y `NvBackend/36.0.0.0` haciéndose pasar por el cliente de NVIDIA.
+- **Dónde**: `src/core/drivers.rs:470-663`.
+- **Propuesta**: `http::get` y un `http::post_form` nuevo en `security/http.rs`; cada llamador valida `final_url`. Causa de `ERR-19`.
+
+<a id="ar-22"></a>
+### AR-22 · Descargas, caché y ZIP de drivers fuera de `StagedDownload`, `DownloadPolicy` y `ArchiveManager`
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: el .cab y el .zip se bajan a memoria y se escriben sin hash ni firma; la rama .exe arma a mano lo que ya hacen
+  `StagedDownload` + `run_in_job`; el ZIP se extrae con `ZipArchive::extract`; la caché no se limpia. Causa de `SEC-30`, `SEC-33`,
+  `SEC-34` y `ERR-22`.
+- **Dónde**: `src/core/drivers.rs:1325-1350`, `1565-1673`.
+- **Propuesta**: todo instalador por `StagedDownload::download` con política que exige firma; extracción con `ArchiveManager`; caché que
+  se borra al soltarse.
+
+<a id="ar-23"></a>
+### AR-23 · Procesos con `Command` directo y rutas de System32 a mano
+- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: 6 `Command::new` en `drivers.rs`: tres `.output()` sin el timeout de `run_captured` y tres `.spawn()` sin Job ni espera.
+  `get_system32_tool` duplica `process::system32_dir` con un `C:\Windows\System32` literal; `CREATE_NO_WINDOW` redefinido;
+  `resolve_winget_binary` acaba en `"winget.exe"` relativo (`SEC-31`).
+- **Dónde**: `src/core/drivers.rs:51`, `364-372`, `868`, `1357`, `1382`, `1619`, `1628`, `1668`; `src/core/store/app_store.rs:1444-1458`.
+- **Propuesta**: `run_captured` para herramientas de consola, `run_in_job` con `INSTALLER_TIMEOUT` para instaladores, `Err` si no hay
+  ruta absoluta.
+
+<a id="ar-24"></a>
+### AR-24 · Guardianes y helpers Win32 duplicados
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `ComApartmentGuard::new_sta` repite `ComGuard`; `DevInfoGuard` es RAII de plataforma dentro de una función de producto;
+  `is_system_laptop` duplica `power::detect_battery_presence` con otro criterio; `decoded_vendor_name` es una segunda tabla PCI;
+  `read_windows_build` inventa `"22631"` si falla.
+- **Dónde**: `src/core/drivers.rs:137-160`, `266-307`, `716-733`.
+- **Propuesta**: `ComGuard::init_sta()`, `DevInfoList` en `platform/handles.rs`, `power::detect_battery_presence`, tabla PCI compartida
+  con `specs::gpu`, build como `Option<u32>`.
+
+<a id="ar-25"></a>
+### AR-25 · Tres comparadores de versiones con semánticas distintas
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `drivers::is_version_newer` (da «más nueva» si la actual no es numérica), `app_store::parse_numeric_version` (quita
+  ceros finales) y `updater::parse_version` (semver). `1.2.0` y `1.2` son iguales en uno y distintas en otro; solo uno tiene tests.
+- **Dónde**: `src/core/drivers.rs:686-714`; `src/core/store/app_store.rs:1478-1496`; `src/core/updater.rs:106-131`.
+- **Propuesta**: `core::version::NumericVersion: Ord` con tests e `is_newer -> Option<bool>`.
+
+<a id="ar-26"></a>
+### AR-26 · Core arma textos y la UI los vuelve a leer como datos
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `describe_cm_problem(code, en)` bilingüe en core (contra `AR-17`); rellenos en un idioma dentro de campos de datos
+  («Desconocida», «Sin driver», «Latest», «Oficial Intel»); `install_*` devuelve `CoreResult<String>` y la vista busca «Reinicio» en el
+  texto (`ARQ-05`); en sensores, `sensor_type` y la nota larga en español.
+- **Dónde**: `src/core/drivers.rs:71-76`, `309-339`, `1186-1189`, `1397-1405`, `1780-1800`; `src/ui/views/drivers.rs:619-621`;
+  `src/core/hardware/sensors/wmi.rs`.
+- **Propuesta**: `CmProblem(u32)` y `Option<String>` en core, textos en `strings`; `DriverInstallOutcome`; `SensorSource` enum.
+
+<a id="ar-27"></a>
+### AR-27 · Booleanos y centinelas donde corresponde un enum
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `CuratedPackage` suma `is_winget` + `winget_id: Option`; las 15 UWP rellenan `url: ""`, `allowed_hosts: &[]`,
+  `version: "Store"` y repiten 11 campos (unas 360 líneas). Se puede escribir un paquete directo sin verificación (`ERR-16`). `version`
+  usa las cadenas mágicas «Evergreen» y «Store»; los códigos winget no tienen nombre. En drivers, `has_problem` + `problem_code`.
+- **Dónde**: `src/core/store/app_store.rs:113-126`, `998-1357`, `1588-1625`; `src/core/drivers.rs:53-68`, `240-254`.
+- **Propuesta**: `enum InstallSource { Direct { …, verify: Verify }, Store { id } }` con `enum Verify { Sha256, Signer }` para que «sin
+  verificación» no compile; `enum CatalogVersion`; constantes para los códigos; `const fn store_app(...)`.
+
+<a id="ar-28"></a>
+### AR-28 · API pública de drivers más ancha de lo que usa la UI, y campos muertos
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `check_nvidia_updates`, `check_intel_updates`, `search_driver_updates` y `extract_ven_dev` son `pub` sin uso fuera;
+  `driver_model`, `driver_manufacturer`, `is_downloaded`, `is_optional`, `products`, `classification` y `succeeded_count` no se leen;
+  `notes` siempre está vacío.
+- **Dónde**: `src/core/drivers.rs:112`, `205-264`, `889`, `1427`, `1522`, `1720`.
+- **Propuesta**: `pub(crate)` solo para la fachada; borrar o mostrar los campos.
+
+<a id="ar-29"></a>
+### AR-29 · La vista de drivers repite el ciclo de tareas en vez de usar `ui::task::run_blocking`
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: 9 `spawn_blocking` directos, cada uno con su `match` y un «Error de hilo: {}» fijo en español.
+- **Dónde**: `src/ui/views/drivers.rs:36`, `104`, `187`, `201`, `233`, `552`, `613`, `623`, `844`.
+- **Propuesta**: `run_blocking` y un helper local que maneje `is_working` y el aviso.
+
+<a id="cl-19"></a>
+### CL-19 · 65 `unsafe` sin `// SAFETY:` tapados por un `#[allow]` con motivo obsoleto
+- **Prioridad**: P1 · **Esfuerzo**: S/M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `core/mod.rs` exime a `drivers` de `undocumented_unsafe_blocks` porque «ARQ-03: módulo sin uso». Ya se usa. Reparto:
+  44 COM/WUA, 10 WinInet, 7 SetupAPI y guardianes, 4 resto.
+- **Dónde**: `src/core/mod.rs:15-19`; `src/core/drivers.rs`.
+- **Propuesta**: quitar el `#[allow]`; con `AR-21`, `AR-23` y `AR-24` desaparecen unos 20; los de COM se documentan en helpers.
+
+<a id="cl-20"></a>
+### CL-20 · 46 `source: None` nuevos en `drivers.rs`
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (96 → 142) · **Estado**: Pendiente
+- **Qué pasa**: 25 tienen el error en la mano y lo pierden; `SystemTool` como cajón de sastre (37 veces); `Trust` para errores HTTP.
+- **Dónde**: `src/core/drivers.rs` (por ejemplo `764-767`, `901-931`, `1037-1167`, `1607-1616`).
+- **Propuesta**: `CoreError::sys`/`trust` (`AR-06`), `Validation` para IDs inválidos.
+
+<a id="cl-21"></a>
+### CL-21 · Funciones largas y bloques copiados (`DriversView` de 825 líneas)
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `DriversView` 825 líneas con 30 `let x = if en {…}` seguidos y 6 copias del bloque de tarea; `BatchAppStoreCard` 235;
+  en core, `install_driver_updates` 179, `install_catalog_driver` 154 y cinco más de 80 a 130; apertura de sesión WUA copiada.
+- **Dónde**: `src/ui/views/drivers.rs:61-885`; `src/ui/views/tools.rs:425-660`; `src/core/drivers.rs`.
+- **Propuesta**: subcomponentes (`DriverToolbar`, `VendorUpdatesCard`, `CatalogCard`, `WuaCard`, `DeviceList`), `open_wua_searcher()`,
+  y separar descarga, extracción e instalación.
+
+<a id="cl-22"></a>
+### CL-22 · Lógica pura nueva sin tests
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: sin tests `short_hw_id`, `extract_ven_dev`, `friendly_gpu_version`, `is_version_newer`, `url_encode`, `strip_html_tags`,
+  los parsers del Catálogo, NVIDIA e Intel, `is_cpu_sensor_name`, ni invariantes del catálogo (IDs únicos, verificación, `winget_id`).
+- **Dónde**: `src/core/drivers.rs`; `src/core/hardware/sensors/wmi.rs`; `src/core/store/app_store.rs`.
+- **Propuesta**: tests junto al código (`id_pci_se_acorta_a_ven_dev`, `catalogo_directo_siempre_verificado`,
+  `sensor_gpu_no_cuenta_como_cpu`) y fixtures chicos en `tests/fixtures/`. Ver `TST-02`.
+
+<a id="cl-23"></a>
+### CL-23 · Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Qué pasa**: 0 comentarios en 2742 líneas de drivers. El commit original quitaba además los comentarios con ID (SEC-12, SEC-05,
+  ERR-09, UI-15…) de los archivos que tocaba.
+- **Dónde**: `src/core/drivers.rs`, `src/ui/views/drivers.rs`; `src/core/store/app_store.rs`, `src/core/optimize/registry_tweaks.rs`.
+- **Propuesta**: documentar las funciones con invariantes (`get_device_property`, `short_hw_id`, `ComApartmentGuard`,
+  `collect_intel_matches`).
+- **Cierre parcial** (2026-11-25, fusión `4767abf`): la fusión conservó los comentarios de la rama en los archivos ya existentes
+  (`registry_tweaks.rs`, archivador, debloater, `security/`); en `app_store.rs` se restauraron los de UI-15 e IN-01. Faltan los de
+  drivers y los doc comments de `stage_copy_for_user`, `display_name_matches`, `parse_numeric_version` y `find_newer_curated_version`.
+
+<a id="cl-24"></a>
+### CL-24 · `read_wmi_f32` copia `read_wmi_i32`; umbrales mágicos y filtro de sensor por nombre
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: dos lectores con el mismo cuerpo; rangos `1.0..125.0`, `..150.0` y tope 256 sueltos; filtro por subcadena del nombre
+  (`UI-22`) aunque LHM expone `Identifier`.
+- **Dónde**: `src/core/hardware/sensors/wmi.rs`.
+- **Propuesta**: `read_wmi<T>(obj, prop, conv)`, constantes con nombre y filtro por `Identifier`.
+
+<a id="cl-25"></a>
+### CL-25 · Componentes y clases que ya existen no se usan
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: instalar drivers, firmware o un .cab sin `ConfirmDialog` (`SEC-37`); escaneo sin `LoadingState`; filtros sin resultados
+  sin `EmptyState`; la fila con checkbox rehecha 5 veces; los buscadores reimplementan `.input` inline.
+- **Dónde**: `src/ui/views/drivers.rs:537-880`; `src/ui/views/tools.rs:516-655`.
+- **Propuesta**: `ConfirmDialog`, `LoadingState`, `EmptyState`, un `CheckRow` y `class: "input grow"`.
+
+<a id="te-25"></a>
+### TE-25 · 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado (`style:` 50 → 95) · **Estado**: Pendiente
+- **Qué pasa**: 31 `style:` en drivers que equivalen a `.stack-*`, `.row .wrap`, `.fw-semibold`, `.input`, `.btn-sm`; la tarjeta de ítem
+  copiada 5 veces. La tienda reemplazó `stack-3`, `row-between gap-3 wrap`, `flex gap-2`, `row gap-3` y `text-sm fw-semibold` por `style:`
+  (regresión de `TE-02`).
+- **Dónde**: `src/ui/views/drivers.rs:473-827`; `src/ui/views/tools.rs:513-648`.
+- **Propuesta**: volver a las utilidades y crear `.item-row`; `style:` solo para valores calculados.
+
+<a id="te-26"></a>
+### TE-26 · `px` y colores derivados escritos en Rust
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `min-width: 240px`, `max-height: 460px`/`480px`, `28px`, `16px`, `1px solid` y `color-mix(…)` inline (regla §2 de
+  `ui-temas.md`).
+- **Dónde**: `src/ui/views/drivers.rs:524-794`; `src/ui/views/tools.rs:90-92`, `519`, `580`, `626`.
+- **Propuesta**: `.app-icon`, `.list-scroll` con token de alto y `--control-min-width`.
+
+<a id="te-27"></a>
+### TE-27 · Texto de error de la tienda con `--danger` (regresión de UI-18)
+- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Dónde**: `src/ui/views/tools.rs:648`.
+- **Propuesta**: `class: "text-xs text-danger"`.
+
+<a id="te-28"></a>
+### TE-28 · Filtros marcados alternando `btn-primary` (regresión de TE-13)
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: los 3 filtros de dispositivos y los 7 de categoría cambian de clase en vez de usar `aria-pressed`.
+- **Dónde**: `src/ui/views/drivers.rs:736-748`; `src/ui/views/tools.rs:523`, `532`.
+- **Propuesta**: `btn btn-secondary btn-sm` con `aria_pressed`.
+
+<a id="te-29"></a>
+### TE-29 · Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (WCAG sobre los hex) · **Estado**: Pendiente
+- **Qué pasa**: las paletas del compañero no pasaban AA (texto secundario de Dracula, Tokyo Night y Solarized, acento de Solarized). Al
+  fusionar se subieron hasta 4,5:1 y se completaron los tokens que faltaban (`color-scheme`, `--surface-active`, `--surface-subtle`,
+  `--control-border`, `--danger-hover`), pero quedó:
+  - Solarized: `--text` y `--text-muted` casi iguales (1,01:1): no hay jerarquía. Con esa base, el muted no llega a 4,5:1 sin acercarse
+    al texto; hay que subir `--text`.
+  - Sakura: `--danger` = `--accent` (#eb6f92) y `--warning` = `--accent-hover`.
+  - Dracula y Tokyo Night: `--surface` más oscuro que `--bg`, al revés que los demás temas oscuros.
+  - Sakura es la paleta Rosé Pine: nombrarla así o dar el crédito. «Lo que hay que conservar» ya no son seis temas.
+- **Dónde**: `assets/main.css` (bloques `dracula`, `tokyonight`, `solarized`, `sakura`).
+- **Propuesta**: subir `--text` de Solarized, `--danger` propio en Sakura, `--surface` sobre `--bg`; test de distancia mínima entre
+  `--danger` y `--accent` y entre `--text` y `--text-muted`.
+
+<a id="in-08"></a>
+### IN-08 · 43 `if en` nuevos fuera del catálogo y regresión de `strings(en)` en la tienda
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado (206 → 249) · **Estado**: Pendiente
+- **Qué pasa**: 39 en drivers sin ninguna cadena en `strings.rs`; la tienda volvió de `strings(en).installed_app`/`installing` a texto
+  suelto; `describe_cm_problem` lleva el idioma a core.
+- **Dónde**: `src/ui/views/drivers.rs`; `src/ui/views/tools.rs:464-489`, `592`, `634-640`; `src/core/drivers.rs:309`.
+- **Propuesta**: bloque `drivers` en `Strings` con `plural()` y volver a `strings(en)` en la tienda.
+
+<a id="in-09"></a>
+### IN-09 · Textos en un solo idioma o mezclados
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: «Error de hilo» (7 veces), «FIRMWARE / BIOS», «OK», «MS Store» fijos; textos de core en los dos idiomas (`AR-26`); los 15
+  nombres UWP solo en español; avisos guardados con el idioma del momento (`IN-03`).
+- **Dónde**: `src/ui/views/drivers.rs`; `src/core/store/app_store.rs:999-1357`; `src/ui/views/tools.rs:590`.
+- **Propuesta**: todo en `strings`; `name_en` para las UWP.
+
+<a id="in-10"></a>
+### IN-10 · «...», «(s)», mayúsculas de título y «drivers/controladores»
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: 18 `...`, 10 plurales con `(s)` (`IN-04`), mayúsculas de título («Escaneo Completo de Drivers», «App Store Silenciosa y
+  Restaurador UWP»…), «drivers» y «controladores» mezclados, anglicismos sin explicar («Feeds», «WHQL», «Backup»).
+- **Dónde**: `src/ui/views/drivers.rs:26-466`; `src/core/store/app_store.rs:55-74`; `src/ui/views/tools.rs:464-489`.
+- **Propuesta**: corregir al mover a `strings` y elegir un término.
+
+<a id="he-14"></a>
+### HE-14 · Nada frena las regresiones de una fusión
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: el `#[allow]` de `CL-19` sigue; nada impidió que `style:` (50 → 95), `if en` (206 → 249) y `source: None` (96 → 142)
+  subieran ni que se borraran comentarios con ID.
+- **Dónde**: `src/core/mod.rs:15-19`; CI (`.github/workflows/ci.yml`).
+- **Propuesta**: script en `.agents/scripts/` (o test) que cuente `style:`, `if en` y `source: None` y falle si suben del umbral;
+  `clippy::too_many_lines` en `warn` para core.

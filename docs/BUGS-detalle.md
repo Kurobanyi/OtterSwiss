@@ -734,8 +734,9 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="arq-03"></a>
 ### ARQ-03 · `drivers.rs` es código muerto y devuelve siempre `None` en versión y fecha
-- **Afecta**: Desarrollador · **Severidad**: Baja · **Origen**: code-auditor · **Evidencia**: observado · **Estado**: Diferido
+- **Afecta**: Desarrollador · **Severidad**: Baja · **Origen**: code-auditor · **Evidencia**: observado · **Estado**: Resuelto
 - **Dónde**: `src/core/drivers.rs:15,54`; sin uso fuera del módulo.
+- **Cierre** (2026-11-25, fusión de v4.2.0 en `4767abf`): el compañero completó `drivers.rs` (pestaña Drivers). El código nuevo se auditó aparte: `SEC-30`…`SEC-37`, `SYS-25`…`SYS-27`, `ERR-15`…`ERR-24`, `CON-03`, `UI-19`…`UI-22`, `ARQ-05`, `TST-02`.
 
 <a id="arq-04"></a>
 ### ARQ-04 · En un Windows limpio `otter_swiss.exe` no abre: falta `VCRUNTIME140_1.dll`
@@ -962,3 +963,259 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
   `parse_cmd_exe_and_args`, `is_safe_registry_subkey_to_delete`, `find_newer_curated_version`, `parse_version_tuple`, `parse_smbios_type17`;
   luego los de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12` y el de `SEC-01`.
 - **Cierre parcial** (2026-11-24, rama `fix/auditoria`): 36 tests en 14 archivos (funciones puras de la lista, `SEC-01`, `SYS-01`, `SEC-03/10`, `SYS-02/20`, `UI-02/14/15/16`, `ERR-12`), en verde con `cargo test` en Windows. Se comprobó que protegen: al romper la validación de raíz de `SEC-01` y el destino libre de `SYS-01`, sus tests fallan. `build.rs` aplica el manifiesto de administrador solo al ejecutable (`compile_for`) y el binario tiene `test = false`, para que `cargo test` corra sin elevación. Pendiente: tests de `SYS-06/07/10/12`, que necesitan registro y respaldos.
+
+## Auditoría del código de v4.2.0 (25/11/2026)
+
+Código nuevo del commit `0a0f5ec` (v4.2.0, pestaña Drivers, 34 apps nuevas en la tienda con restaurador UWP, temas y puente de
+LibreHardwareMonitor), fusionado sobre `auditoria/buenas-practicas` en `4767abf`. Tres pasadas estáticas en paralelo (seguridad,
+corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que dos pasadas encontraron por separado quedó en un solo ID.
+
+<a id="sec-30"></a>
+### SEC-30 · El ZIP de drivers Intel se ejecuta e instala sin firma ni hash
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (camino leído) · **Estado**: Pendiente
+- **Qué pasa**: la rama ZIP de `install_vendor_update` baja el archivo con el cliente propio (`wininet_get_bytes`), sin
+  `secure_download_and_verify`, sin `allowed_hosts` (solo `contains("downloadmirror.intel.com")`, una subcadena) y sin hash ni firma.
+  Lo extrae con `zip::ZipArchive::extract` (sin el saneo del archivador, ver SEC-26) y ejecuta `setup.exe`/`installer.exe`/`igxpin.exe`
+  como administrador con `Command::spawn`, fuera de un Job. Sin ejecutable, `pnputil /install` instala cualquier driver firmado del ZIP,
+  incluido uno viejo y vulnerable (BYOVD).
+- **Dónde**: `src/core/drivers.rs:1589-1636`, `1841-1849`, `470-571`.
+- **Propuesta**: `StagedDownload` con `DownloadPolicy` de hosts exactos; extraer con `ArchiveManager`; ejecutar solo tras
+  `verify_authenticode_on_handle` con CN de Intel y dentro de `run_in_job`.
+
+<a id="sec-31"></a>
+### SEC-31 · `winget.exe` sale de una carpeta del usuario y, si falla el token del Explorador, corre elevado
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; derivado que el fallo del token se provoque · **Estado**: Pendiente
+- **Qué pasa**: `resolve_winget_binary` prueba `%LocalAppData%\Microsoft\WindowsApps\winget.exe` (escribible por el usuario), luego
+  System32 y al final `winget.exe` relativo. `duplicate_desktop_shell_primary_token().ok()` convierte el fallo en `None` y `run_in_job`
+  lanza el binario con el token de administrador. Un malware del mismo usuario planta su `winget.exe`, mata `explorer.exe` y espera a
+  que se pulse «Restaurar UWP»: pasa de integridad media a alta.
+- **Dónde**: `src/core/store/app_store.rs:1444-1458`, `1597-1610`.
+- **Propuesta**: exigir el token (si falla, abortar); resolver winget solo desde el paquete firmado `Microsoft.DesktopAppInstaller`
+  bajo `Program Files\WindowsApps` con Authenticode de Microsoft; quitar el último recurso relativo.
+
+<a id="sec-32"></a>
+### SEC-32 · Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (comportamiento documentado de Windows, no probado) · **Estado**: Pendiente
+- **Qué pasa**: el proceso elevado comparte HKCU con el usuario. Un malware del usuario fija un proxy en `Internet Settings` y planta una
+  raíz en `HKCU\Software\Microsoft\SystemCertificates\Root`. WinInet (`INTERNET_OPEN_TYPE_PRECONFIG`) y WinVerifyTrust confían en el
+  almacén del usuario: el atacante sirve los JSON/HTML/ZIP de drivers (SEC-30, SEC-33) y firma un `.exe` con CN «NVIDIA Corporation» o
+  «Intel Corporation» que pasa la verificación por CN. Las entradas de la tienda con SHA-256 fijo quedan a salvo. La causa es anterior
+  a v4.2.0 (primitivas de `security/`), pero el código nuevo es lo más expuesto.
+- **Dónde**: `src/core/drivers.rs:475`, `578`; `src/core/security/http.rs:49`; `src/core/security/authenticode.rs:57-70`, `150`.
+- **Propuesta**: `INTERNET_OPEN_TYPE_DIRECT` o proxy leído de HKLM; fijar thumbprint o raíz además del CN, o validar la cadena con un
+  motor que use solo las raíces de LocalMachine.
+
+<a id="sec-33"></a>
+### SEC-33 · El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL
+- **Afecta**: Sistema · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; explotable con SEC-32 · **Estado**: Pendiente
+- **Qué pasa**: la URL del CAB se acepta si contiene `download.windowsupdate.com`; el último segmento se usa como nombre de archivo
+  (acepta `..\` y rutas absolutas: crear una DLL nueva en System32 como administrador). El `update_id` del HTML solo rechaza
+  `\ / . espacio`, así que admite `:` y comillas, que llegan al JSON del POST y a `cache_root.join`. No se usa el digest que publica el
+  propio Catálogo, y `pnputil` instala cualquier driver firmado del CAB.
+- **Dónde**: `src/core/drivers.rs:1272-1282`, `1290-1350`.
+- **Propuesta**: `validate_https_host` exacto sobre la URL final, nombre fijo (`driver.cab`), `update_id` parseado como GUID y
+  verificación del digest antes de `expand`.
+
+<a id="sec-34"></a>
+### SEC-34 · `DriverCache` no se borra nunca y puede bloquear la carpeta de datos
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (crecimiento); probable (bloqueo) · **Estado**: Pendiente
+- **Qué pasa**: el `.cab` y `extracted/` del Catálogo, el `.exe` de NVIDIA (~700 MB por versión) y `ext_<nonce>` del ZIP de Intel quedan
+  en `ProgramData\OtterSwiss\DriverCache` para siempre (solo se borra el `.zip` en una rama). Además `verify_tree_owned_by_admins`
+  falla por profundidad mayor que 8: un paquete con muchos niveles hace fallar todo `ensure_admin_only_data_dir()` posterior, y con
+  él respaldos, rollback y descargas de toda la app.
+- **Dónde**: `src/core/drivers.rs:1325-1350`, `1602-1651`, `1664-1678`; `src/core/security/data_dir.rs:48`; `src/core/security/acl.rs:147-155`.
+- **Propuesta**: extraer en un staging que se borre al soltarse (como `StagedDownload`) o excluir `DriverCache` del recorrido. Test: la
+  carpeta queda vacía tras instalar.
+
+<a id="sec-35"></a>
+### SEC-35 · Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar
+- **Afecta**: Sistema · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lectura); desconocido si los CN son reales · **Estado**: Pendiente
+- **Qué pasa**: Moonlight, ShareX, PowerToys, Rufus, VLC, Everything, Sublime, Node, Python y GOG tienen versión fija y solo CN, contra
+  el cierre de SEC-12 («fijar SHA-256 en todo paquete versionado»); con SEC-32 el CN es falsificable. Sin confirmar: «Cameron Gutman»,
+  «ShareX Team|Jaex» y «David Carpenter» como CN reales (si no lo son, fallan de forma segura).
+- **Dónde**: `src/core/store/app_store.rs` (entradas nuevas frente a `adf794d`).
+- **Propuesta**: fijar SHA-256 en cada entrada con versión; test de catálogo que lo exija.
+
+<a id="sec-36"></a>
+### SEC-36 · El parser del Catálogo corta el HTML por bytes y puede entrar en pánico
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: probable · **Estado**: Pendiente
+- **Qué pasa**: `&html[abs_pos-64..abs_pos]` cae en medio de un carácter UTF-8 (por ejemplo «®» en un título): pánico, `run_full_scan`
+  aborta y la vista muestra «Error de hilo».
+- **Dónde**: `src/core/drivers.rs:1214`.
+- **Propuesta**: `get(..)` con `floor_char_boundary`, o trabajar sobre bytes.
+
+<a id="sec-37"></a>
+### SEC-37 · Drivers, firmware y paquetes de fabricante se instalan con un clic, sin confirmar ni respaldar
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 (seguridad y corrección) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: los drivers WUA que no son firmware quedan preseleccionados, incluidos los opcionales (`BrowseOnly`, `is_optional` se
+  calcula y no se usa). Los botones de fabricante y Catálogo instalan sin `ConfirmDialog`, sin punto de restauración y sin
+  `export_driver_store_backup`; firmware y BIOS también con un clic. `AcceptEula()` se llama solo y winget pasa
+  `--accept-package-agreements`. La vista entrega al core el `VendorDriverUpdate` completo, URL incluida. Es el patrón 8.
+- **Dónde**: `src/ui/views/drivers.rs:109-121`, `164-188`, `540-553`, `600-614`; `src/core/drivers.rs:1101-1106`; `src/core/store/app_store.rs:1595`.
+- **Propuesta**: no preseleccionar opcionales; confirmar con la lista concreta (obligatorio si hay firmware); ofrecer respaldo antes;
+  que el core reciba solo un ID y resuelva la URL.
+
+<a id="sys-25"></a>
+### SYS-25 · El escaneo de drivers se salta la política de exclusión y WSUS
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: observado (la política solo alimenta un aviso); inferido que WUA devuelva drivers · **Estado**: Pendiente
+- **Qué pasa**: con `ExcludeWUDriversInQualityUpdate=1` o un servidor WSUS, la búsqueda fuerza `ssWindowsUpdate`, ofrece e instala
+  drivers igual, y el aviso «la política está bloqueando drivers» aparece junto a la lista. En equipos gestionados se salta al administrador.
+- **Dónde**: `src/core/drivers.rs:916-918`, `1053-1055`, `1682-1684`; `src/ui/views/drivers.rs:120`, `353-357`.
+- **Propuesta**: con la política activa, no buscar ni instalar (o pedir confirmación explícita); usar `ssDefault`.
+
+<a id="sys-26"></a>
+### SYS-26 · Un driver instalado desde la app no se puede revertir
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: instalar (WUA, Catálogo o fabricante) no crea respaldo ni punto de restauración. «Respaldar Drivers OEM» exporta, pero no
+  hay forma de restaurar ni de quitar el `oemNN.inf` agregado.
+- **Dónde**: `src/core/drivers.rs:855-887` (no hay función de restaurar).
+- **Propuesta**: punto de restauración o export antes de instalar; revertir con `pnputil /delete-driver` del INF añadido, registrado en
+  el rollback.
+
+<a id="sys-27"></a>
+### SYS-27 · El JSON de Intel puede ofrecer el paquete de otro dispositivo
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: derivado (formato de `dsadata` desconocido) · **Estado**: Pendiente
+- **Qué pasa**: el primer objeto que contiene `VEN_x&DEV_y` en algún descendiente (puede ser la raíz) toma la primera URL de todo el
+  subárbol. `seen_urls.insert` consume la URL aunque no se ofrezca. Serializa cada subárbol de un JSON de 32 MB por objeto: lento.
+- **Dónde**: `src/core/drivers.rs:1755-1777`.
+- **Propuesta**: emparejar a nivel de paquete (objeto con URL e IDs propios). Test con un fixture de dos paquetes.
+
+<a id="err-15"></a>
+### ERR-15 · Winget toma como éxito «no se encontró la app»
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (tabla de códigos de winget) · **Estado**: Pendiente
+- **Qué pasa**: se acepta `0x8A150014` (`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`): un ID inexistente o la fuente msstore caída
+  se informan como «Listo». Falta `0x8A150061` (ya instalada). El timeout de 420 s no es `INSTALLER_TIMEOUT`.
+- **Dónde**: `src/core/store/app_store.rs:1612`.
+- **Propuesta**: constantes con nombre, quitar `0x8A150014` y test de la función que clasifica el código.
+
+<a id="err-16"></a>
+### ERR-16 · LibreWolf, BleachBit y VSCodium no se instalan nunca
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: no tienen SHA-256 ni firmante; `secure_download_and_verify` rechaza la política («Política de descarga inválida»).
+- **Dónde**: `src/core/store/app_store.rs` (`librewolf`, `bleachbit`, `vscodium`); `src/core/security/download.rs:55-60`.
+- **Propuesta**: fijar SHA-256 o CN; test que recorra `CURATED_CATALOG` y exija verificación en todo paquete directo.
+
+<a id="err-17"></a>
+### ERR-17 · Cinco apps de GitHub fallan por la lista de hosts
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Pendiente
+- **Qué pasa**: Moonlight, ShareX, PowerToys, Rufus y VSCodium solo permiten `github.com` y `objects.githubusercontent.com`; GitHub
+  redirige los assets a `release-assets.githubusercontent.com`, que las demás entradas y el actualizador sí tienen.
+- **Dónde**: `allowed_hosts` de esas entradas en `src/core/store/app_store.rs`.
+- **Propuesta**: constante compartida `GITHUB_DOWNLOAD_HOSTS` y test que la exija.
+
+<a id="err-18"></a>
+### ERR-18 · El informe de instalación de WUA inventa los contadores
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: con `orcSucceededWithErrors` se informa «OK: n-1, Fallos: 1»; si `ResultCode()` falla se asume ese valor; los fallos de
+  `Add` se ignoran pero suman a `matched`; tras instalar la lista se vacía aunque haya fallos y se muestra el número crudo del enum.
+- **Dónde**: `src/core/drivers.rs:1145`, `1169-1180`; `src/ui/views/drivers.rs:205-206`.
+- **Propuesta**: contar con `IInstallationResult::GetUpdateResult(i)` y conservar los fallidos en la lista.
+
+<a id="err-19"></a>
+### ERR-19 · Lecturas HTTP cortadas a la mitad se toman como completas
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: si `InternetReadFile` falla a mitad se hace `break` y se devuelve `Ok` con datos truncados (un CAB cortado sale como
+  «Error extrayendo», un JSON de NVIDIA cortado como «sin actualización»). `wininet_post_form` no fija timeouts, no mira el estado HTTP
+  y corta en silencio a los 4 MiB.
+- **Dónde**: `src/core/drivers.rs:558-559`, `573-663`.
+- **Propuesta**: usar `security::http` (ver `AR-21` de PRACTICAS): `Err` al fallar, tope que falla, timeouts y estado en el POST.
+
+<a id="err-20"></a>
+### ERR-20 · Sin red o con un feed caído, el escaneo de drivers dice «completo» sin avisar
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: NVIDIA, Intel y Catálogo devuelven vacío en silencio; `notes` siempre es `Vec::new()`; si WUA falla pero hay resultados
+  de fabricante, `wua_note` se descarta y la vista dice «Escaneo completo».
+- **Dónde**: `src/core/drivers.rs:1469-1477`, `1547-1557`, `1704`, `1720`; `src/ui/views/drivers.rs:127-154`.
+- **Propuesta**: propagar cada error a `notes` y mostrarlos siempre.
+
+<a id="err-21"></a>
+### ERR-21 · `pnputil` recibe un comodín que no admite
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Pendiente
+- **Qué pasa**: `pnputil /add-driver "<dir>\**\*.inf" /subdirs`: `**` no es un comodín de pnputil, así que falla siempre después de
+  bajar y extraer hasta 900 MB.
+- **Dónde**: `src/core/drivers.rs:1626-1636`.
+- **Propuesta**: `"<dir>\*.inf" /subdirs`.
+
+<a id="err-22"></a>
+### ERR-22 · CAB y ZIP de drivers enteros en RAM; se bajan `.msu` y `.exe` para rechazarlos después
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: hasta 350 MB (CAB) y 900 MB (ZIP) en memoria; una URL `.msu` o `.exe` se descarga entera y luego se rechaza con «no es
+  un .CAB estándar».
+- **Dónde**: `src/core/drivers.rs:1300-1303`, `1343-1344`, `1352`, `1418`, `1590-1594`.
+- **Propuesta**: descarga a archivo por streaming (`StagedDownload`) y filtrar la URL antes de bajar.
+
+<a id="err-23"></a>
+### ERR-23 · Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lógica) · **Estado**: Pendiente
+- **Qué pasa**: con `ACPI\VEN_INT&DEV_33A0`, `ven` sale `"INT&"` y el ID corto `VEN_INT&&DEV_…`. Si `friendly_gpu_version` devuelve
+  `None` se compara `32.0.15.x` contra `566.xx`; con versión «Desconocida», `is_version_newer` da `true`: NVIDIA se ofrece siempre. La
+  build `"22631"` inventada entra en la consulta a NVIDIA.
+- **Dónde**: `src/core/drivers.rs:85-135`, `686-714`, `716-733`, `1489-1494`.
+- **Propuesta**: cortar VEN/DEV en `&`; `is_newer -> Option<bool>` (`None` si no es numérica); build como `Option`. Tests de los parsers.
+
+<a id="err-24"></a>
+### ERR-24 · Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Pendiente
+- **Qué pasa**: Moonlight usa `/S` pero su instalador es WiX Burn (`/quiet`): abriría la UI y esperaría hasta el timeout. GOG está como
+  `Evergreen` con URL fija 2.0.75.1: la UI dice «última» y es falso. IDs msstore sospechosos: Calculadora `9WZDNCRFJ364` (la
+  Calculadora es `9WZDNCRFHVN5`), Fotos `9NBLGGH42THS`, Enlace Móvil `9NBLGGH4S547`.
+- **Dónde**: `src/core/store/app_store.rs` (entradas citadas).
+- **Propuesta**: verificar cada uno con `winget show --id X --source msstore` y probar los instaladores en una VM.
+
+<a id="con-03"></a>
+### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: `Search`, `Download` e `Install` de WUA son síncronos; `install_driver_updates` repite la búsqueda online. La pestaña
+  queda deshabilitada minutos sin botón de cancelar. (COM está bien: STA en hilo propio y `CoUninitialize` emparejado.)
+- **Dónde**: `src/core/drivers.rs:897-1017`, `1034-1197`; `src/ui/views/drivers.rs:88-161`.
+- **Propuesta**: `BeginSearch`/`EndSearch` con cancelación y reutilizar los `IUpdate` de la búsqueda.
+
+<a id="ui-19"></a>
+### UI-19 · Error de Windows Update y «no hay actualizaciones» a la vez
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: si WUA falla y no hay nada más, aparece el aviso de error junto al banner verde «No se encontraron actualizaciones».
+- **Dónde**: `src/ui/views/drivers.rs:127-129`, `719-721`.
+- **Propuesta**: «sin actualizaciones» solo si no hubo errores.
+
+<a id="ui-20"></a>
+### UI-20 · Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado; DisplayName exactos inferidos · **Estado**: Pendiente
+- **Qué pasa**: las 15 UWP se buscan en `Uninstall` del registro, donde la Store no las registra. Python: `Python 3.12.8 (64-bit)` frente
+  al prefijo `Python 3.12` deja `.8` y no coincide. Rufus es portable: se ejecuta su GUI como «instalador», el exe se borra y se muestra
+  «Listo». Moonlight probablemente tampoco coincide.
+- **Dónde**: `src/core/store/app_store.rs:1530-1572`.
+- **Propuesta**: UWP con `PackageManager`/`Get-AppxPackage`; prefijo `Python 3.12.`; sacar Rufus o tratarlo como portable; test de
+  `display_name_matches` con nombres reales.
+
+<a id="ui-21"></a>
+### UI-21 · «Instalar (N)» incluye apps que el filtro oculta
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: la selección sobrevive al filtro y a la búsqueda, no se limpia tras el lote y deja reinstalar apps ya instaladas.
+- **Dónde**: `src/ui/views/tools.rs:448-452`, `460`, `494-507`.
+- **Propuesta**: contar e instalar solo lo visible (o mostrar lo oculto) y limpiar al terminar.
+
+<a id="ui-22"></a>
+### UI-22 · Temperaturas de GPU o distancias a TjMax mostradas como CPU
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: lógica confirmada; nombres de LHM inferidos · **Estado**: Pendiente
+- **Qué pasa**: `is_cpu_sensor_name` acepta «GPU Core» (contiene `core`) y «CPU Core #n Distance to TjMax» (tipo Temperature, valor
+  1-125): se muestran como «CPU (LibreHardwareMonitor)».
+- **Dónde**: `src/core/hardware/sensors/wmi.rs:144-175`.
+- **Propuesta**: filtrar por `Identifier`/`Parent` (`/intelcpu/`, `/amdcpu/`) y excluir «Distance». Test con nombres reales.
+
+<a id="arq-05"></a>
+### ARQ-05 · La vista de drivers detecta el reinicio buscando una palabra en el mensaje
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Qué pasa**: `msg.contains("Reinicio") || msg.contains("Reboot")` sobre un texto que arma el core en español; «Reboot» nunca se
+  produce y cualquier cambio de redacción rompe el aviso. El instalador de fabricante se lanza sin esperar y el aviso dice «iniciado»
+  como si fuera éxito.
+- **Dónde**: `src/ui/views/drivers.rs:619-621`; `src/core/drivers.rs:1668-1678`.
+- **Propuesta**: devolver `DriverInstallOutcome { Installed { reboot_required }, InstallerLaunched }` (ver `AR-26` de PRACTICAS).
+
+<a id="tst-02"></a>
+### TST-02 · El código nuevo de drivers, tienda y sensores no tiene tests
+- **Afecta**: Desarrollador · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Pendiente
+- **Qué pasa**: `short_hw_id`, `extract_ven_dev`, `is_version_newer`, `friendly_gpu_version`, el parser HTML del Catálogo,
+  `collect_intel_matches` e `is_cpu_sensor_name` no tienen ni un test, ni hay un test invariante del catálogo (verificación, hosts de
+  GitHub, IDs únicos) que habría atrapado ERR-16 y ERR-17.
+- **Dónde**: `src/core/drivers.rs`; `src/core/store/app_store.rs:1711-1746`; `src/core/hardware/sensors/wmi.rs`.
+- **Propuesta**: ver `CL-22` de PRACTICAS.

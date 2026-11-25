@@ -21,7 +21,13 @@ ordenada, catálogo de textos, edición 2024, CI y lints, SAFETY en todo bloque 
 y clippy en verde; recorrido visual de Inicio, Hardware, Herramientas, Desinstalador, temas y mini ventana. Sin probar como
 administrador desde que se partieron el motor y la búsqueda de restos (la salida de restos y de discos se comparó igual en esta PC).
 `windows` 0.61 (`AR-18`) está en la rama aparte `tmp/windows-061` (`db8c18c`), en verde y sin unir.
-**Siguiente:** el usuario decide si sube la rama y abre PR; luego lo de «Siguiente» en `docs/PRACTICAS.md`.
+**Fusión de v4.2.0 (25/11, `4767abf`):** el compañero publicó v4.2.0 en `main` (`0a0f5ec`: pestaña Drivers, 50 apps con
+restaurador UWP por winget, 4 temas, puente de LibreHardwareMonitor, dependencias nuevas). Se fusionó sobre esta rama portando sus
+cambios a la arquitectura por capas (tienda reconstruida desde su catálogo; `drivers.rs` tal cual, con rutas nuevas; temas completados
+y ajustados a AA). 57 tests y clippy en verde. Su código se auditó en tres pasadas: 28 defectos (`SEC-30`…`TST-02` en
+`docs/BUGS.md`, tres de seguridad alta: ZIP de Intel sin verificar, winget desde LocalAppData, proxy y raíces de HKCU) y 27 mejoras
+(`OR-06`…`HE-14` en `docs/PRACTICAS.md`). Nada de eso está arreglado todavía.
+**Siguiente:** arreglar `SEC-30`, `SEC-31`, `SEC-32` y la tienda que no instala (`ERR-15`…`ERR-17`) antes de publicar; luego el orden de «Siguiente» en `docs/BUGS.md`.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
 núcleos y Windows 11 exige 2). La VM se borró; queda la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
