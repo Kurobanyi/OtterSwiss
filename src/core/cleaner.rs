@@ -17,7 +17,7 @@ use crate::core::platform::safe_fs::{
 };
 use crate::core::platform::services::is_service_stopped;
 use crate::core::platform::wide::wide_ptr_to_string_and_free;
-use crate::core::progress::step_percent;
+use crate::core::progress::{StepProgress, report_step};
 
 #[derive(Debug, Clone, Default)]
 pub struct CategoryCleanResult {
@@ -36,6 +36,16 @@ pub struct CleanProgress {
     pub percent: u8,
     pub bytes_freed_so_far: u64,
     pub files_removed_so_far: usize,
+}
+
+impl StepProgress for CleanProgress {
+    fn set_step(&mut self, step: usize, total: usize, label: &str, percent: u8) {
+        self.current_step = step;
+        self.total_steps = total;
+        self.current_category = label.to_string();
+        // El 100 % se marca al terminar, después del último paso.
+        self.percent = percent.min(99);
+    }
 }
 
 pub struct SystemCleaner;
@@ -284,17 +294,8 @@ impl SystemCleaner {
         }
 
         let total_steps = targets.len() + usize::from(clean_recycle);
-        let update_step = |step: usize, label: &str| {
-            if let Some(p_arc) = progress
-                && let Ok(mut p) = p_arc.lock()
-            {
-                p.current_step = step;
-                p.total_steps = total_steps.max(1);
-                p.current_category = label.to_string();
-                // El 100 % se marca al terminar, después del último paso.
-                p.percent = step_percent(step, total_steps).min(99);
-            }
-        };
+        let update_step =
+            |step: usize, label: &str| report_step(progress, step, total_steps, label);
 
         for (idx, (cat_name, path, min_comp)) in targets.into_iter().enumerate() {
             if cancel.load(Ordering::Relaxed) {

@@ -21,7 +21,7 @@ use crate::core::optimize::service_tweaks::{
 use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::progress::step_percent;
+use crate::core::progress::{StepProgress, report_step};
 
 const ENGINE_MUTEX_NAME: &str = r"Global\OtterSwiss_Engine_Execution";
 
@@ -55,6 +55,15 @@ pub struct EngineProgress {
     pub current_label: String,
     pub percent: u8,
     pub completed_steps: Vec<OptimizationStepResult>,
+}
+
+impl StepProgress for EngineProgress {
+    fn set_step(&mut self, step: usize, total: usize, label: &str, percent: u8) {
+        self.current_step = step;
+        self.total_steps = total;
+        self.current_label = label.to_string();
+        self.percent = percent;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -494,16 +503,7 @@ impl OptimizationEngine {
             (backup.power_history.len() + backup.services.len() + backup.registry.len()).max(1);
         let mut step_idx = 0usize;
 
-        let push_rb = |idx: usize, label: &str| {
-            if let Some(p_arc) = progress
-                && let Ok(mut p) = p_arc.lock()
-            {
-                p.current_step = idx;
-                p.total_steps = total_steps;
-                p.current_label = label.to_string();
-                p.percent = step_percent(idx, total_steps);
-            }
-        };
+        let push_rb = |idx: usize, label: &str| report_step(progress, idx, total_steps, label);
 
         for power_snap in backup.power_history.iter().rev() {
             step_idx += 1;
@@ -600,14 +600,9 @@ impl<'a> StepRecorder<'a> {
     }
 
     fn publish(&self, step: usize, label: &str, done: Option<&OptimizationStepResult>) {
-        if let Some(Ok(mut p)) = self.progress.map(|p| p.lock()) {
-            p.current_step = step;
-            p.total_steps = self.total_steps;
-            p.current_label = label.to_string();
-            p.percent = step_percent(step, self.total_steps);
-            if let Some(item) = done {
-                p.completed_steps.push(item.clone());
-            }
+        report_step(self.progress, step, self.total_steps, label);
+        if let (Some(item), Some(Ok(mut p))) = (done, self.progress.map(|p| p.lock())) {
+            p.completed_steps.push(item.clone());
         }
     }
 

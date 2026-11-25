@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use crate::core::error::CoreResult;
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::progress::step_percent;
+use crate::core::progress::{StepProgress, report_step};
 use appx::{get_powershell_path, is_valid_package_ident, run_ps};
 
 pub(crate) const DEBLOAT_MUTEX: &str = r"Global\OtterSwiss_Debloat_Lock";
@@ -71,6 +71,15 @@ pub struct DebloatProgress {
     pub percent: u8,
 }
 
+impl StepProgress for DebloatProgress {
+    fn set_step(&mut self, step: usize, total: usize, label: &str, percent: u8) {
+        self.current_step = step;
+        self.total_steps = total;
+        self.current_label = label.to_string();
+        self.percent = percent;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DebloatItemOutcome {
     pub label: String,
@@ -105,16 +114,7 @@ impl DebloaterManager {
         let total_steps = (apps_to_remove.len() + reg_tweak_ids.len()).max(1);
         let mut step_idx = 0usize;
 
-        let push_prog = |idx: usize, label: &str| {
-            if let Some(p_arc) = progress
-                && let Ok(mut p) = p_arc.lock()
-            {
-                p.current_step = idx;
-                p.total_steps = total_steps;
-                p.current_label = label.to_string();
-                p.percent = step_percent(idx, total_steps);
-            }
-        };
+        let push_prog = |idx: usize, label: &str| report_step(progress, idx, total_steps, label);
 
         for app in apps_to_remove {
             if cancel.load(Ordering::Acquire) {
