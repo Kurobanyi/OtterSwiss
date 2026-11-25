@@ -6,8 +6,8 @@ use windows::Win32::System::Power::{
     PowerSetActiveScheme,
 };
 
-use crate::core::backup::PowerSnapshot;
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::optimize::backup::PowerSnapshot;
 
 /// GUIDs integrados estándar de Windows.
 pub const GUID_BALANCED: &str = "381b4222-f694-41f0-9685-ff5bb260df2e";

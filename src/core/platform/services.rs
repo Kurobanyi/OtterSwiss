@@ -15,12 +15,12 @@ use windows::Win32::System::Services::{
     SERVICE_STATUS_PROCESS, SERVICE_STOP, SERVICE_STOPPED, SERVICE_STOP_PENDING,
 };
 
-use crate::core::backup::ServiceSnapshot;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::tweaks_catalog::{
+use crate::core::optimize::backup::ServiceSnapshot;
+use crate::core::optimize::tweaks_catalog::{
     is_allowed_service_name, is_valid_service_start_type, ServiceTargetAction, ServiceTweakSpec,
 };
-use crate::core::win_common::{to_wide_null, AlignedBuf, ScHandle};
+use crate::core::platform::win32::{to_wide_null, AlignedBuf, ScHandle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceOpOutcome {

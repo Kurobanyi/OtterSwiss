@@ -1,4 +1,4 @@
-use crate::core::win_common::HardwareTier;
+use crate::core::platform::win32::HardwareTier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

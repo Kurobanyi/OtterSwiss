@@ -1,12 +1,10 @@
-// src/ui/views/uninstaller.rs
-
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::app_store::AppStoreManager;
-use crate::core::uninstaller::{
+use crate::core::store::app_store::AppStoreManager;
+use crate::core::uninstall::{
     InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallerManager,
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};

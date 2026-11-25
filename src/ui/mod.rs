@@ -27,9 +27,9 @@ use views::sensors::SensorsView;
 use views::tools::ToolsView;
 use views::uninstaller::UninstallerView;
 
-use crate::core::app_store::AppStoreManager;
-use crate::core::dependencies::DependencyManager;
 use crate::core::error::CoreError;
+use crate::core::store::app_store::AppStoreManager;
+use crate::core::store::dependencies::DependencyManager;
 use crate::core::updater::{
     check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
 };
@@ -355,11 +355,12 @@ pub fn App() -> Element {
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
     let window = use_window();
 
-    let mut system_specs = use_signal(|| None::<crate::core::specs::SystemSpecs>);
+    let mut system_specs = use_signal(|| None::<crate::core::hardware::specs::SystemSpecs>);
     let mut specs_error = use_signal(|| None::<String>);
     use_future(move || async move {
         // UI-06: un fallo se muestra en la pestaña en vez de dejarla «Analizando...» para siempre.
-        match tokio::task::spawn_blocking(crate::core::specs::collect_system_specs).await {
+        match tokio::task::spawn_blocking(crate::core::hardware::specs::collect_system_specs).await
+        {
             Ok(Ok(data)) => system_specs.set(Some(data)),
             Ok(Err(e)) => specs_error.set(Some(e.to_string())),
             Err(e) => specs_error.set(Some(e.to_string())),

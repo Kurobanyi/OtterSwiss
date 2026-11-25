@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::app_store::{AppCategory, AppStoreManager};
 use crate::core::context_menu::ContextMenuManager;
-use crate::core::dependencies::DependencyManager;
-use crate::core::elevation::ElevationManager;
 use crate::core::error::CoreError;
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::store::app_store::{AppCategory, AppStoreManager};
+use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;

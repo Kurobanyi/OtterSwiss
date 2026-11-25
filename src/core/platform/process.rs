@@ -1,4 +1,3 @@
-// src/core/process.rs
 //
 // Lanzamiento de procesos externos (instaladores, desinstaladores, runtimes) desde el proceso elevado.
 //
@@ -34,7 +33,7 @@ use windows::Win32::UI::Shell::GetUserProfileDirectoryW;
 use windows::Win32::UI::WindowsAndMessaging::{GetShellWindow, GetWindowThreadProcessId};
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::win_common::{to_wide_null, JobObject, SafeHandle};
+use crate::core::platform::win32::{to_wide_null, JobObject, SafeHandle};
 
 /// Carpeta `System32` real, sin depender de variables de entorno.
 pub fn system32_dir() -> CoreResult<PathBuf> {

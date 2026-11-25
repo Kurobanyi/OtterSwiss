@@ -11,12 +11,12 @@ use windows::Win32::UI::Shell::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::safe_fs::{
+use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_verified_empty_dir_under, delete_verified_file_under,
     is_safe_non_root_dir,
 };
-use crate::core::services::is_service_stopped;
-use crate::core::win_common::wide_ptr_to_string_and_free;
+use crate::core::platform::services::is_service_stopped;
+use crate::core::platform::win32::wide_ptr_to_string_and_free;
 
 #[derive(Debug, Clone, Default)]
 pub struct CategoryCleanResult {

@@ -1,5 +1,3 @@
-// src/main.rs
-
 #![windows_subsystem = "windows"]
 #![cfg(windows)]
 
@@ -11,7 +9,7 @@ use std::time::Duration;
 
 use dioxus::desktop::{icon_from_memory, use_window, Config, WindowBuilder};
 use dioxus::prelude::*;
-use otter_swiss::core::archiver::{
+use otter_swiss::core::archive::{
     resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
 };
 use otter_swiss::core::context_menu::ContextMenuManager;
@@ -325,7 +323,7 @@ fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
 
 /// Muestra un cuadro de mensaje nativo (no depende de WebView2). Devuelve `true` si se eligió «Sí».
 fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> bool {
-    use otter_swiss::core::win_common::to_wide_null;
+    use otter_swiss::core::platform::win32::to_wide_null;
     use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, IDYES, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO,
@@ -353,7 +351,7 @@ fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> 
 /// antes de abrir la ventana, así que se comprueba aquí y se ofrece instalarlo con el instalador verificado.
 /// Devuelve `false` si no se puede continuar.
 fn ensure_webview2(en: bool) -> bool {
-    use otter_swiss::core::dependencies::DependencyManager;
+    use otter_swiss::core::store::dependencies::DependencyManager;
 
     if DependencyManager::is_webview2_installed() {
         return true;
@@ -454,7 +452,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.iter().any(|a| a == "--rollback") {
-        let code = match otter_swiss::core::uninstaller::UninstallerManager::revert_all_changes() {
+        let code = match otter_swiss::core::uninstall::UninstallerManager::revert_all_changes() {
             Ok(report) if report.is_complete() => 0,
             Ok(_) => 2,
             Err(_) => 1,

@@ -1,12 +1,10 @@
-// src/ui/views/sensors.rs
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::sensors::{SensorMonitor, SensorReading, SystemSensorsSnapshot};
+use crate::core::hardware::sensors::{SensorMonitor, SensorReading, SystemSensorsSnapshot};
 use crate::ui::components::{Card, EmptyState};
 use crate::ui::i18n::Lang;
 

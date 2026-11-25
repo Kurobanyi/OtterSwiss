@@ -4,15 +4,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 use winreg::RegKey;
 
-use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::process::{run_in_job, Launch, ProcessExit};
-use crate::core::safe_fs::delete_verified_file;
-use crate::core::trust::{
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::process::{run_in_job, Launch, ProcessExit};
+use crate::core::platform::safe_fs::delete_verified_file;
+use crate::core::platform::win32::{program_files_dir, program_files_x86_dir, windows_dir};
+use crate::core::security::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
     DownloadPolicy,
 };
-use crate::core::win_common::{program_files_dir, program_files_x86_dir, windows_dir};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeDependency {

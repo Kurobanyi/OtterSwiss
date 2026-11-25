@@ -15,22 +15,22 @@ use windows::Win32::UI::Shell::{
     SHGetKnownFolderPath, KF_FLAG_DEFAULT,
 };
 
-use crate::core::debloater::DebloaterManager;
+use crate::core::debloat::DebloaterManager;
 use crate::core::dns::DnsManager;
-use crate::core::elevation::ElevationManager;
-use crate::core::engine::{OptimizationEngine, RollbackReport};
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::process::{
+use crate::core::optimize::engine::{OptimizationEngine, RollbackReport};
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::process::{
     duplicate_desktop_shell_primary_token, run_in_job, system32_dir, Launch,
 };
-use crate::core::safe_fs::{
+use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_tree_verified, delete_verified_file_under, is_safe_non_root_dir,
     path_is_strictly_under,
 };
-use crate::core::trust::{ensure_admin_only_data_dir, get_program_data_dir};
-use crate::core::win_common::{
+use crate::core::platform::win32::{
     program_files_dir, program_files_x86_dir, to_wide_null, wide_ptr_to_string_and_free, SafeHandle,
 };
+use crate::core::security::trust::{ensure_admin_only_data_dir, get_program_data_dir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {

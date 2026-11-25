@@ -15,7 +15,7 @@ use windows::Win32::Storage::FileSystem::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::win_common::{to_wide_null, SafeHandle};
+use crate::core::platform::win32::{to_wide_null, SafeHandle};
 
 #[derive(Debug, Clone)]
 pub struct VerifiedHandleInfo {

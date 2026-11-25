@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::debloater::{
+use crate::core::debloat::{
     DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult, DebloaterManager,
     DetectedBloatApp, DEBLOAT_REG_TWEAKS,
 };

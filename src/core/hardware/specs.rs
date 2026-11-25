@@ -24,8 +24,8 @@ use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::RegKey;
 
 use crate::core::error::CoreError;
-use crate::core::safe_fs;
-use crate::core::win_common::AlignedBuf;
+use crate::core::platform::safe_fs;
+use crate::core::platform::win32::AlignedBuf;
 
 const RSMB_PROVIDER: FIRMWARE_TABLE_PROVIDER = FIRMWARE_TABLE_PROVIDER(0x5253_4D42);
 

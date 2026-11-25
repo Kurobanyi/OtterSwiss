@@ -1,4 +1,3 @@
-// src/core/updater.rs
 //
 // Auto-actualización desde GitHub Releases. El instalador se ejecuta como administrador, así que pasa por la
 // misma cadena de confianza que la tienda (SEC-02):
@@ -24,12 +23,12 @@ use windows::Win32::Networking::WinInet::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::safe_fs::delete_verified_file;
-use crate::core::trust::{
+use crate::core::platform::safe_fs::delete_verified_file;
+use crate::core::platform::win32::to_wide_null;
+use crate::core::security::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify_with_progress,
     DownloadPolicy,
 };
-use crate::core::win_common::to_wide_null;
 
 const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/Kurobanyi/OtterSwiss/releases/latest";

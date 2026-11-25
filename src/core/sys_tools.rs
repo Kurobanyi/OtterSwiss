@@ -15,9 +15,9 @@ extern "system" {
     ) -> windows::Win32::Foundation::BOOL;
 }
 
-use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::win_common::SafeHandle;
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::win32::SafeHandle;
 
 #[derive(Debug, Clone, Default)]
 pub struct TrimWorkingSetsReport {

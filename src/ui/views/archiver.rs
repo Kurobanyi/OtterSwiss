@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::archiver::{
+use crate::core::archive::{
     resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
 };
 use crate::ui::components::{Card, Modal};

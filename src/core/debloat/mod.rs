@@ -11,12 +11,12 @@ use serde::{Deserialize, Serialize};
 use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY, KEY_WRITE};
 use winreg::{RegKey, RegValue};
 
-use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::registry::{reg_type_to_u32, u32_to_reg_type};
-use crate::core::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::trust::ensure_admin_only_data_dir;
-use crate::core::win_common::NamedMutex;
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
+use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
+use crate::core::platform::win32::NamedMutex;
+use crate::core::security::trust::ensure_admin_only_data_dir;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DEBLOAT_MUTEX: &str = r"Global\OtterSwiss_Debloat_Lock";

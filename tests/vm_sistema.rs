@@ -20,14 +20,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
-use otter_swiss::core::archiver::{resolve_extract_destination, ArchiveFormat, ArchiveManager};
+use otter_swiss::core::archive::{resolve_extract_destination, ArchiveFormat, ArchiveManager};
 use otter_swiss::core::cleaner::SystemCleaner;
-use otter_swiss::core::debloater::{DebloatRegHive, DebloaterManager, DEBLOAT_REG_TWEAKS};
+use otter_swiss::core::debloat::{DebloatRegHive, DebloaterManager, DEBLOAT_REG_TWEAKS};
 use otter_swiss::core::dns::{list_active_adapters, DnsManager};
-use otter_swiss::core::engine::{OptimizationEngine, OptimizationProfile};
-use otter_swiss::core::trust::ensure_admin_only_data_dir;
-use otter_swiss::core::tweaks_catalog::{RegHive, REGISTRY_TWEAKS, SERVICE_TWEAKS};
-use otter_swiss::core::uninstaller::{LeftoverKind, UninstallerManager};
+use otter_swiss::core::optimize::engine::{OptimizationEngine, OptimizationProfile};
+use otter_swiss::core::optimize::tweaks_catalog::{RegHive, REGISTRY_TWEAKS, SERVICE_TWEAKS};
+use otter_swiss::core::security::trust::ensure_admin_only_data_dir;
+use otter_swiss::core::uninstall::{LeftoverKind, UninstallerManager};
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_64KEY,
 };

@@ -3,10 +3,10 @@ use windows::Win32::UI::Shell::{SHChangeNotify, SHCNE_ASSOCCHANGED, SHCNF_IDLIST
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY, KEY_WRITE};
 use winreg::RegKey;
 
-use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::safe_fs::{canonical_dos_path, path_is_strictly_under};
-use crate::core::win_common::{program_files_dir, program_files_x86_dir};
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::safe_fs::{canonical_dos_path, path_is_strictly_under};
+use crate::core::platform::win32::{program_files_dir, program_files_x86_dir};
 
 pub struct ContextMenuManager;
 

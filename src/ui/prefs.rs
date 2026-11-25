@@ -3,7 +3,7 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crate::core::safe_fs::{read_bounded_bytes, write_file_inside};
+use crate::core::platform::safe_fs::{read_bounded_bytes, write_file_inside};
 
 const PREFS_DIR: &str = "OtterSwiss";
 /// Una preferencia es un valor corto; más que esto es un archivo ajeno o dañado.

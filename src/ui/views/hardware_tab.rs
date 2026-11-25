@@ -1,4 +1,4 @@
-use crate::core::specs::SystemSpecs;
+use crate::core::hardware::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 use dioxus::prelude::*;
@@ -91,7 +91,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                                     serde_json::to_vec_pretty(&specs_for_export)
                                         .map_err(|e| e.to_string())
                                         .and_then(|json| {
-                                            crate::core::safe_fs::write_file_inside(
+                                            crate::core::platform::safe_fs::write_file_inside(
                                                 &desk,
                                                 "",
                                                 "OtterSwiss-Hardware-Specs.json",

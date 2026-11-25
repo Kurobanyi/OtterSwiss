@@ -2,9 +2,11 @@ use std::io;
 use winreg::enums::{KEY_READ, KEY_WRITE};
 use winreg::{RegKey, RegValue};
 
-use crate::core::backup::RegistrySnapshot;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::tweaks_catalog::{is_allowed_registry_entry, RegHive, RegistryTweakSpec};
+use crate::core::optimize::backup::RegistrySnapshot;
+use crate::core::optimize::tweaks_catalog::{
+    is_allowed_registry_entry, RegHive, RegistryTweakSpec,
+};
 
 fn root_key(hive: RegHive) -> RegKey {
     match hive {

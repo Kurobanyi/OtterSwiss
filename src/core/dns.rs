@@ -20,11 +20,11 @@ use windows::Win32::Networking::WinSock::AF_UNSPEC;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 use winreg::RegKey;
 
-use crate::core::elevation::ElevationManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::power::parse_guid_strict;
-use crate::core::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::win_common::{to_wide_null, AlignedBuf, NamedMutex, SafeLibrary};
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::power::parse_guid_strict;
+use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
+use crate::core::platform::win32::{to_wide_null, AlignedBuf, NamedMutex, SafeLibrary};
 
 const DNS_BACKUP_MUTEX: &str = r"Global\OtterSwiss_DnsBackup_Lock";
 const MAX_DNS_BACKUP_BYTES: u64 = 512 * 1024;

@@ -1,5 +1,3 @@
-// src/ui/views/dns.rs
-
 use std::collections::HashMap;
 
 use dioxus::prelude::*;
@@ -8,7 +6,7 @@ use crate::core::dns::{
     benchmark_dns_presets, list_active_adapters, DnsBenchmarkResult, DnsManager,
     NetworkAdapterInfo, DNS_PRESETS,
 };
-use crate::core::trust::ensure_admin_only_data_dir;
+use crate::core::security::trust::ensure_admin_only_data_dir;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };

@@ -27,9 +27,9 @@ use windows::Win32::System::Wmi::{
 };
 use windows::Win32::System::IO::DeviceIoControl;
 
-use crate::core::safe_fs::open_verified_file_read;
-use crate::core::trust::verify_authenticode_on_handle;
-use crate::core::win_common::{to_wide_null, AlignedBuf, ComGuard, SafeHandle, SafeLibrary};
+use crate::core::platform::safe_fs::open_verified_file_read;
+use crate::core::platform::win32::{to_wide_null, AlignedBuf, ComGuard, SafeHandle, SafeLibrary};
+use crate::core::security::trust::verify_authenticode_on_handle;
 
 const RPC_C_AUTHN_WINNT: u32 = 10;
 const RPC_C_AUTHZ_NONE: u32 = 0;
@@ -110,7 +110,7 @@ impl NvmlSession {
             Err(_) => {
                 // Carpeta real de Program Files (no `%ProgramFiles%`, redefinible por el usuario) y DLL
                 // firmada por NVIDIA: el proceso corre elevado y cargar una DLL ajena sería ejecutar código.
-                let pf = crate::core::win_common::program_files_dir()?;
+                let pf = crate::core::platform::win32::program_files_dir()?;
                 let fallback = pf.join(r"NVIDIA Corporation\NVSMI\nvml.dll");
                 let (file, _) = open_verified_file_read(&fallback, true, None).ok()?;
                 let handle = windows::Win32::Foundation::HANDLE(
