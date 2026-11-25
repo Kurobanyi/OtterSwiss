@@ -5,10 +5,11 @@ use std::sync::Arc;
 use dioxus::prelude::*;
 
 use crate::core::archive::{
-    resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveProgress,
+    resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress,
     DEFAULT_EXTRACT_QUOTA,
 };
 use crate::ui::components::{Card, Modal, ProgressBar};
+use crate::ui::format::{bytes_mb, eta, mb_1};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
 
@@ -17,7 +18,7 @@ pub fn ArchiverView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
 
-    let mut mode = use_signal(|| "extract");
+    let mut mode = use_signal(|| ArchiveMode::Extract);
     let mut src_path = use_signal(String::new);
     let mut dest_path = use_signal(String::new);
     let mut selected_format = use_signal(|| ArchiveFormat::Zip);
@@ -33,7 +34,7 @@ pub fn ArchiverView() -> Element {
         let src = PathBuf::from(src_path.read().trim().trim_matches('"'));
         let typed_dest = PathBuf::from(dest_path.read().trim().trim_matches('"'));
         // Extraer nunca borra ni mezcla una carpeta existente: se usa la hermana libre «nombre (2)».
-        let dest = if current_mode == "extract" {
+        let dest = if current_mode == ArchiveMode::Extract {
             resolve_extract_destination(&typed_dest)
         } else {
             typed_dest
@@ -61,7 +62,7 @@ pub fn ArchiverView() -> Element {
         let dest_display = dest.display().to_string();
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
-                if current_mode == "extract" {
+                if current_mode == ArchiveMode::Extract {
                     ArchiveManager::extract_archive_with_progress(
                         &src,
                         &dest,
@@ -85,11 +86,14 @@ pub fn ArchiverView() -> Element {
 
             match res {
                 Ok(bytes) => {
-                    let mb = bytes as f64 / (1024.0 * 1024.0);
                     status_msg.set(Some(if en {
-                        format!("Done ({:.2} MB processed) → {}", mb, dest_display)
+                        format!("Done ({} processed) → {}", bytes_mb(bytes), dest_display)
                     } else {
-                        format!("Completado ({:.2} MB procesados) → {}", mb, dest_display)
+                        format!(
+                            "Completado ({} procesados) → {}",
+                            bytes_mb(bytes),
+                            dest_display
+                        )
                     }));
                     is_error.set(false);
                 }
@@ -104,12 +108,9 @@ pub fn ArchiverView() -> Element {
 
     let cancel_for_btn = Arc::clone(&cancel_flag);
     let prog = progress_state.read();
-    let mb_done = prog.bytes_processed as f64 / (1024.0 * 1024.0);
-    let mb_total = prog.total_bytes as f64 / (1024.0 * 1024.0);
-    let eta_txt = prog
-        .eta_seconds
-        .map(|s| format!("~{}s", s))
-        .unwrap_or_else(|| "—".to_string());
+    let mb_done = mb_1(prog.bytes_processed);
+    let mb_total = mb_1(prog.total_bytes);
+    let eta_txt = eta(prog.eta_seconds);
 
     let card_title = if en {
         "Secure Archiver (ZIP / 7Z / TAR.GZ)"
@@ -131,7 +132,7 @@ pub fn ArchiverView() -> Element {
             // UI-09: diálogo de progreso; Escape no cancela por accidente (para eso está «Cancelar»).
             if *is_working.read() {
                 Modal {
-                    title: match (*mode.read() == "extract", en) {
+                    title: match (*mode.read() == ArchiveMode::Extract, en) {
                         (true, true) => "Extracting archive...".to_string(),
                         (true, false) => "Extrayendo archivo...".to_string(),
                         (false, true) => "Compressing...".to_string(),
@@ -141,7 +142,7 @@ pub fn ArchiverView() -> Element {
                     on_close: move |_| {},
                         ProgressBar { percent: prog.percent }
                         div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
-                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
+                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
                         }
                         div { class: "modal-actions",
@@ -161,23 +162,23 @@ pub fn ArchiverView() -> Element {
                     div { class: "flex gap-2",
                         button {
                             class: "btn btn-secondary",
-                            "aria-pressed": if *mode.read() == "extract" { "true" } else { "false" },
+                            "aria-pressed": if *mode.read() == ArchiveMode::Extract { "true" } else { "false" },
                             disabled: *is_working.read(),
-                            onclick: move |_| mode.set("extract"),
+                            onclick: move |_| mode.set(ArchiveMode::Extract),
                             if en { "Extract" } else { "Descomprimir" }
                         }
                         button {
                             class: "btn btn-secondary",
-                            "aria-pressed": if *mode.read() == "compress" { "true" } else { "false" },
+                            "aria-pressed": if *mode.read() == ArchiveMode::Compress { "true" } else { "false" },
                             disabled: *is_working.read(),
-                            onclick: move |_| mode.set("compress"),
+                            onclick: move |_| mode.set(ArchiveMode::Compress),
                             if en { "Compress" } else { "Comprimir" }
                         }
                     }
 
                     div { class: "stack-2",
                         label { class: "text-xs text-muted",
-                            if *mode.read() == "extract" {
+                            if *mode.read() == ArchiveMode::Extract {
                                 if en { "Archive path (.zip, .7z, .tar, .tar.gz):" } else { "Archivo comprimido (.zip, .7z, .tar, .tar.gz):" }
                             } else if en {
                                 "Source file or folder:"
@@ -195,7 +196,7 @@ pub fn ArchiverView() -> Element {
                         }
 
                         label { class: "text-xs text-muted",
-                            if *mode.read() == "extract" {
+                            if *mode.read() == ArchiveMode::Extract {
                                 if en { "Output folder:" } else { "Carpeta destino:" }
                             } else if en {
                                 "Output archive file:"
@@ -205,14 +206,14 @@ pub fn ArchiverView() -> Element {
                         }
                         input {
                             r#type: "text",
-                            placeholder: if *mode.read() == "extract" { "C:\\Extracted" } else { "C:\\Backup\\Archive.zip" },
+                            placeholder: if *mode.read() == ArchiveMode::Extract { "C:\\Extracted" } else { "C:\\Backup\\Archive.zip" },
                             value: "{dest_path.read()}",
                             disabled: *is_working.read(),
                             class: "input",
                             oninput: move |evt| dest_path.set(evt.value()),
                         }
 
-                        if *mode.read() == "compress" {
+                        if *mode.read() == ArchiveMode::Compress {
                             div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
                                 span { class: "text-xs text-muted", if en { "Format:" } else { "Formato:" } }
                                 button {
@@ -244,7 +245,7 @@ pub fn ArchiverView() -> Element {
                                 class: "btn btn-primary",
                                 disabled: *is_working.read() || src_path.read().trim().is_empty() || dest_path.read().trim().is_empty(),
                                 onclick: on_execute,
-                                if *mode.read() == "extract" {
+                                if *mode.read() == ArchiveMode::Extract {
                                     if en { "Extract Now" } else { "Descomprimir" }
                                 } else if en {
                                     "Compress Now"

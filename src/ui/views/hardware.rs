@@ -1,5 +1,6 @@
 use crate::core::hardware::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
+use crate::ui::format::capacity_mb;
 use crate::ui::i18n::Lang;
 use dioxus::prelude::*;
 
@@ -211,7 +212,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                             style: "border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);",
                             div { class: "text-xs fw-bold mb-1", "{module.slot}" }
                             if module.populated {
-                                div { class: "text-sm", "{format_capacity(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
+                                div { class: "text-sm", "{capacity_mb(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
                                 div { class: "text-xs text-muted", "{module.manufacturer} ({module.part_number})" }
                             } else {
                                 div { class: "text-xs text-muted", if en { "Empty slot" } else { "Ranura libre" } }
@@ -231,28 +232,5 @@ fn SpecRow(label: String, value: String) -> Element {
             span { style: "color: var(--text-muted);", "{label}" }
             span { style: "color: var(--text); text-align: right; font-weight: 500;", "{value}" }
         }
-    }
-}
-
-/// ERR-12: un módulo de 512 MB no debe verse como «0 GB».
-fn format_capacity(mb: u32) -> String {
-    if mb >= 1024 && mb.is_multiple_of(1024) {
-        format!("{} GB", mb / 1024)
-    } else if mb >= 1024 {
-        format!("{:.1} GB", mb as f64 / 1024.0)
-    } else {
-        format!("{} MB", mb)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn capacidad_de_modulos_pequenos() {
-        assert_eq!(format_capacity(512), "512 MB");
-        assert_eq!(format_capacity(8192), "8 GB");
-        assert_eq!(format_capacity(1536), "1.5 GB");
     }
 }

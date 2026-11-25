@@ -5,18 +5,9 @@ use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
+use crate::ui::format::bytes_mb;
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
-
-fn format_mb(bytes: u64) -> String {
-    let mb = bytes as f64 / (1024.0 * 1024.0);
-    if mb >= 100.0 {
-        format!("{:.0} MB", mb)
-    } else {
-        format!("{:.2} MB", mb)
-    }
-}
-
 #[component]
 pub fn CleanerView() -> Element {
     let lang = use_context::<Signal<Lang>>();
@@ -207,7 +198,7 @@ pub fn CleanerView() -> Element {
                         prog.current_category,
                         prog.current_step,
                         prog.total_steps.max(1),
-                        format_mb(prog.bytes_freed_so_far)
+                        bytes_mb(prog.bytes_freed_so_far)
                     )),
                     div { class: "stack-2",
                         div { class: "text-xs text-muted",
@@ -235,7 +226,7 @@ pub fn CleanerView() -> Element {
                     Card {
                         title: freed_title,
                         subtitle: None,
-                        h2 { style: "color: var(--success-text); font-size: var(--font-size-xl);", "{format_mb(total_freed)}" }
+                        h2 { style: "color: var(--success-text); font-size: var(--font-size-xl);", "{bytes_mb(total_freed)}" }
                     }
                     Card {
                         title: files_title,
@@ -266,7 +257,7 @@ pub fn CleanerView() -> Element {
                                         div { class: "text-xs text-warning", "{err}" }
                                     }
                                 }
-                                div { class: "fw-semibold text-success", "{format_mb(item.bytes_freed)}" }
+                                div { class: "fw-semibold text-success", "{bytes_mb(item.bytes_freed)}" }
                             }
                         }
                     }

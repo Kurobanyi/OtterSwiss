@@ -7,6 +7,7 @@ use crate::core::uninstall::{
     InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallOutcome, UninstallerManager,
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
+use crate::ui::format::bytes_mb;
 use crate::ui::i18n::Lang;
 use crate::ui::installer::{
     refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
@@ -24,17 +25,12 @@ enum SortMode {
 /// Mensaje de estado con su tono (UI-02).
 type Status = Option<(String, Tone)>;
 
+/// Tamaño de una app o un resto; 0 significa «desconocido», no «vacío».
 fn format_size_mb(bytes: u64) -> String {
     if bytes == 0 {
-        return "—".to_string();
-    }
-    let mb = bytes as f64 / (1024.0 * 1024.0);
-    if mb < 0.01 {
-        "< 0.01 MB".to_string()
-    } else if mb >= 100.0 {
-        format!("{:.0} MB", mb)
+        "—".to_string()
     } else {
-        format!("{:.2} MB", mb)
+        bytes_mb(bytes)
     }
 }
 

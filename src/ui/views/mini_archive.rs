@@ -14,6 +14,7 @@ use crate::core::archive::{
 use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
+use crate::ui::format::{eta, mb_1};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
 use crate::ui::theme::Theme;
@@ -135,12 +136,9 @@ pub fn MiniArchiveView() -> Element {
     let open_folder_lbl = if en { "Open folder" } else { "Abrir carpeta" };
     let close_lbl = if en { "Close" } else { "Cerrar" };
 
-    let mb_done = prog.bytes_processed as f64 / (1024.0 * 1024.0);
-    let mb_total = prog.total_bytes as f64 / (1024.0 * 1024.0);
-    let eta_txt = prog
-        .eta_seconds
-        .map(|s| format!("~{}s", s))
-        .unwrap_or_else(|| "—".into());
+    let mb_done = mb_1(prog.bytes_processed);
+    let mb_total = mb_1(prog.total_bytes);
+    let eta_txt = eta(prog.eta_seconds);
 
     rsx! {
         div {
@@ -181,7 +179,7 @@ pub fn MiniArchiveView() -> Element {
                             div { class: "progress-fill", style: "width: {prog.percent}%;" }
                         }
                         div { class: "row-between text-xs text-muted",
-                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done:.1}/{mb_total:.1} MB" }
+                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
                         }
                     }

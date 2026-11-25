@@ -6,6 +6,7 @@
 mod app;
 pub mod components;
 pub mod document;
+pub mod format;
 pub mod i18n;
 pub mod installer;
 pub mod prefs;
