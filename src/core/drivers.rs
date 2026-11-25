@@ -29,7 +29,7 @@ use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows::Win32::System::UpdateAgent::{
     IUpdate3, IUpdateCollection, IUpdateSession, IWindowsDriverUpdate, UpdateCollection,
-    UpdateSession, orcSucceeded, orcSucceededWithErrors, ssDefault, ssWindowsUpdate,
+    UpdateSession, orcSucceeded, orcSucceededWithErrors, ssDefault,
 };
 use windows::core::{BSTR, Interface, PCWSTR};
 use winreg::RegKey;
@@ -350,16 +350,35 @@ fn is_windows_update_service_disabled() -> bool {
     false
 }
 
+/// SYS-25: `true` si el administrador del equipo decide los drivers: la política `ExcludeWUDriversInQualityUpdate` los
+/// excluye de Windows Update o el equipo usa un servidor WSUS (`UseWUServer`). En ese caso OtterSwiss no busca ni instala
+/// drivers por ningún camino (Windows Update, Catálogo ni fabricantes): saltarse esa decisión en un equipo gestionado
+/// es justo lo que la política quiere impedir.
 fn is_wu_driver_policy_blocked() -> bool {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(key) = hklm.open_subkey_with_flags(
+    let read = |subkey: &str, value: &str| {
+        hklm.open_subkey_with_flags(subkey, KEY_READ)
+            .and_then(|k| k.get_value::<u32, _>(value))
+            .ok()
+    };
+    read(
         r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate",
-        KEY_READ,
-    ) && let Ok(val) = key.get_value::<u32, _>("ExcludeWUDriversInQualityUpdate")
-    {
-        return val == 1;
+        "ExcludeWUDriversInQualityUpdate",
+    ) == Some(1)
+        || read(
+            r"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU",
+            "UseWUServer",
+        ) == Some(1)
+}
+
+/// Error común cuando la política del equipo bloquea los drivers (SYS-25).
+fn ensure_driver_updates_allowed() -> CoreResult<()> {
+    if is_wu_driver_policy_blocked() {
+        return Err(CoreError::Validation(
+            "La política del equipo (exclusión de drivers o WSUS) no permite instalar drivers desde OtterSwiss".into(),
+        ));
     }
-    false
+    Ok(())
 }
 
 fn get_system32_tool(name: &str) -> PathBuf {
@@ -914,9 +933,8 @@ impl DriverManager {
 
             unsafe {
                 let _ = searcher.SetOnline(VARIANT_BOOL(-1));
-                if searcher.SetServerSelection(ssWindowsUpdate).is_err() {
-                    let _ = searcher.SetServerSelection(ssDefault);
-                }
+                // SYS-25: el servidor que configuró el administrador (WSUS incluido), nunca Windows Update forzado.
+                let _ = searcher.SetServerSelection(ssDefault);
             }
 
             let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
@@ -1018,6 +1036,7 @@ impl DriverManager {
     }
 
     pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
+        ensure_driver_updates_allowed()?;
         if selected_ids.is_empty() {
             return Err(CoreError::Validation(
                 "No hay actualizaciones seleccionadas para instalar".into(),
@@ -1051,9 +1070,8 @@ impl DriverManager {
 
             unsafe {
                 let _ = searcher.SetOnline(VARIANT_BOOL(-1));
-                if searcher.SetServerSelection(ssWindowsUpdate).is_err() {
-                    let _ = searcher.SetServerSelection(ssDefault);
-                }
+                // SYS-25: el servidor que configuró el administrador (WSUS incluido), nunca Windows Update forzado.
+                let _ = searcher.SetServerSelection(ssDefault);
             }
 
             let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
@@ -1212,12 +1230,16 @@ impl DriverManager {
             let abs_pos = cursor + pos;
             cursor = abs_pos + 6;
 
-            let search_back = &html[abs_pos.saturating_sub(64)..abs_pos];
+            let mut back = abs_pos.saturating_sub(64);
+            while !html.is_char_boundary(back) {
+                back += 1;
+            }
+            let search_back = &html[back..abs_pos];
             let Some(id_start) = search_back.rfind("id=\"") else {
                 continue;
             };
             let guid = search_back[id_start + 4..].trim();
-            if guid.len() < 32 || guid.len() > 40 || !guid.contains('-') {
+            if !is_guid(guid) {
                 continue;
             }
 
@@ -1270,8 +1292,13 @@ impl DriverManager {
         Ok(matches)
     }
 
+    /// SEC-33: instala un driver del Microsoft Update Catalog. El `update_id` tiene que ser un GUID; el enlace del CAB
+    /// se acepta solo si su host es de Windows Update y termina en `.cab`; el CAB se baja con el cliente HTTPS común
+    /// (host final validado), tiene que estar firmado por Microsoft antes de expandirse y todo vive en una carpeta
+    /// temporal que se borra al terminar.
     pub fn install_catalog_driver(update_id: &str) -> CoreResult<String> {
-        if update_id.contains(['\\', '/', '.', ' ']) || update_id.is_empty() {
+        ensure_driver_updates_allowed()?;
+        if !is_guid(update_id) {
             return Err(CoreError::Validation(
                 "UpdateID de catálogo inválido".into(),
             ));
@@ -1288,138 +1315,79 @@ impl DriverManager {
             &form_body,
         )?;
 
-        let mut cab_url: Option<String> = None;
-        for marker in ["https://", "http://"] {
-            let mut cur = 0usize;
-            while let Some(p) = dialog_html[cur..].find(marker) {
-                let abs = cur + p;
-                let tail = &dialog_html[abs..];
-                let end = tail
-                    .find(['\'', '"', '<', ' '])
-                    .unwrap_or(tail.len().min(512));
-                let candidate = &tail[..end];
-                if candidate.contains("download.windowsupdate.com")
-                    && (candidate.to_ascii_lowercase().ends_with(".cab")
-                        || candidate.to_ascii_lowercase().ends_with(".msu")
-                        || candidate.to_ascii_lowercase().ends_with(".exe"))
-                {
-                    let secure = if let Some(rest) = candidate.strip_prefix("http://") {
-                        format!("https://{}", rest)
-                    } else {
-                        candidate.to_string()
-                    };
-                    cab_url = Some(secure);
-                    break;
-                }
-                cur = abs + marker.len();
-            }
-            if cab_url.is_some() {
-                break;
-            }
-        }
+        let download_url =
+            find_catalog_cab_url(&dialog_html).ok_or_else(|| CoreError::SystemTool {
+                message: "No se encontró enlace de descarga .CAB válido en Microsoft Catalog."
+                    .into(),
+                source: None,
+            })?;
 
-        let download_url = cab_url.ok_or_else(|| CoreError::SystemTool {
-            message: "No se encontró enlace de descarga .CAB válido en Microsoft Catalog.".into(),
-            source: None,
-        })?;
+        let scratch = ScratchDir::new("Catalog", update_id)?;
+        let cab_path = scratch.dir.join("driver.cab");
+        download_to_file(
+            &download_url,
+            CATALOG_CAB_HOSTS,
+            &cab_path,
+            MAX_CATALOG_CAB_BYTES,
+        )?;
 
-        let base_dir = ensure_admin_only_data_dir()?;
-        let cache_root = base_dir.join("DriverCache");
-        create_admin_only_dir(&cache_root)?;
-        let pkg_dir = cache_root.join(update_id);
-        if pkg_dir.exists() {
-            let _ = delete_tree_verified(&pkg_dir, &cache_root, 8);
-        }
-        create_admin_only_dir(&pkg_dir)?;
+        let policy = DownloadPolicy {
+            url: &download_url,
+            allowed_final_hosts: CATALOG_CAB_HOSTS,
+            expected_sha256_hex: None,
+            expected_cert_thumbprint_sha1: None,
+            expected_signer_cn: Some(MICROSOFT_SIGNER),
+            max_bytes: MAX_CATALOG_CAB_BYTES,
+        };
+        // El handle de solo lectura impide cambiar el CAB entre la verificación y `expand`.
+        let _cab_lock = reopen_verified_for_exec(&cab_path, &policy)?;
 
-        let filename = download_url
-            .rsplit('/')
-            .next()
-            .unwrap_or("driver.cab")
-            .split('?')
-            .next()
-            .unwrap_or("driver.cab");
-        let pkg_path = pkg_dir.join(filename);
-
-        let raw_bytes =
-            wininet_get_bytes(&download_url, "OtterSwiss-Catalog/4.0", 350 * 1024 * 1024)?;
-        {
-            let (mut f, _) = create_verified_new_file(&pkg_path, true)?;
-            f.write_all(&raw_bytes)?;
-            f.flush()?;
-            f.sync_all()?;
-        }
-
-        if filename.to_ascii_lowercase().ends_with(".cab") {
-            let extract_dir = pkg_dir.join("extracted");
-            create_admin_only_dir(&extract_dir)?;
-
-            let expand_exe = get_system32_tool("expand.exe");
-            let exp_out = std::process::Command::new(&expand_exe)
-                .args([
-                    pkg_path.to_string_lossy().as_ref(),
-                    "-F:*",
-                    extract_dir.to_string_lossy().as_ref(),
-                ])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-                .map_err(|e| CoreError::SystemTool {
-                    message: format!("No se pudo ejecutar expand.exe: {}", e),
-                    source: None,
-                })?;
-
-            if !exp_out.status.success() {
-                return Err(CoreError::SystemTool {
-                    message: format!(
-                        "Error extrayendo .CAB: {}",
-                        String::from_utf8_lossy(&exp_out.stderr)
-                    ),
-                    source: None,
-                });
-            }
-
-            let inf_pattern = extract_dir.join("*.inf");
-            let pnputil = get_system32_tool("pnputil.exe");
-            let pnp_out = std::process::Command::new(&pnputil)
-                .args([
-                    "/add-driver",
-                    inf_pattern.to_string_lossy().as_ref(),
-                    "/install",
-                ])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-                .map_err(|e| CoreError::SystemTool {
-                    message: format!("No se pudo ejecutar pnputil.exe: {}", e),
-                    source: None,
-                })?;
-
-            let code = pnp_out.status.code().unwrap_or(-1);
-            if pnp_out.status.success() || code == 3010 {
-                let reboot_msg = if code == 3010 {
-                    " (Reinicio requerido)"
-                } else {
-                    ""
-                };
-                return Ok(format!(
-                    "Driver instalado nativamente desde Microsoft Catalog{}.",
-                    reboot_msg
-                ));
-            }
-
+        let extract_dir = scratch.dir.join("extracted");
+        create_admin_only_dir(&extract_dir)?;
+        let system32 = system32_dir()?;
+        let exp_out = run_captured(
+            &system32.join("expand.exe"),
+            &[
+                cab_path.as_os_str(),
+                std::ffi::OsStr::new("-F:*"),
+                extract_dir.as_os_str(),
+            ],
+            PNPUTIL_TIMEOUT,
+        )?;
+        if !exp_out.success {
             return Err(CoreError::SystemTool {
-                message: format!(
-                    "pnputil devolvió código {}: {}",
-                    code,
-                    String::from_utf8_lossy(&pnp_out.stdout)
-                ),
+                message: format!("Error extrayendo .CAB: {}", exp_out.stderr.trim()),
                 source: None,
             });
         }
 
+        let inf_pattern = extract_dir.join("*.inf");
+        let pnp_out = run_captured(
+            &system32.join("pnputil.exe"),
+            &[
+                std::ffi::OsStr::new("/add-driver"),
+                inf_pattern.as_os_str(),
+                std::ffi::OsStr::new("/install"),
+            ],
+            PNPUTIL_TIMEOUT,
+        )?;
+        let code = pnp_out.code.unwrap_or(-1);
+        if pnp_out.success || code == 3010 {
+            let reboot_msg = if code == 3010 {
+                " (Reinicio requerido)"
+            } else {
+                ""
+            };
+            return Ok(format!(
+                "Driver instalado nativamente desde Microsoft Catalog{}.",
+                reboot_msg
+            ));
+        }
         Err(CoreError::SystemTool {
             message: format!(
-                "Paquete descargado ({}) no es un .CAB estándar para instalación directa.",
-                filename
+                "pnputil devolvió código {}: {}",
+                code,
+                pnp_out.stdout.trim()
             ),
             source: None,
         })
@@ -1561,6 +1529,7 @@ impl DriverManager {
     /// binario), nunca de `upd`, que viene del escaneo (de la red) y la vista devuelve tal cual. Todo ejecutable pasa por
     /// Authenticode con el firmante del fabricante y corre dentro de un Job; los temporales se borran al terminar.
     pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<String> {
+        ensure_driver_updates_allowed()?;
         let (hosts, signer) = vendor_policy(&upd.vendor)?;
         validate_https_host(&upd.download_url, hosts)?;
         let safe_id: String = upd
@@ -1593,6 +1562,12 @@ impl DriverManager {
 
     pub fn run_full_scan(devices: &[InstalledDriverDevice]) -> FullDriverScanResult {
         let wua_policy_blocked = is_wu_driver_policy_blocked();
+        if wua_policy_blocked {
+            return FullDriverScanResult {
+                wua_policy_blocked,
+                ..Default::default()
+            };
+        }
 
         let (wua_updates, wua_note) = match Self::search_driver_updates() {
             Ok(wua) => (wua, None),
@@ -1633,6 +1608,51 @@ impl DriverManager {
             notes: Vec::new(),
         }
     }
+}
+
+/// Hosts de los que se aceptan CAB del Microsoft Update Catalog (SEC-33).
+const CATALOG_CAB_HOSTS: &[&str] = &["download.windowsupdate.com", "*.download.windowsupdate.com"];
+const MICROSOFT_SIGNER: &str =
+    "Microsoft Corporation|Microsoft Windows|Microsoft Windows Hardware Compatibility Publisher";
+const MAX_CATALOG_CAB_BYTES: u64 = 350 * 1024 * 1024;
+
+/// `true` si `s` es un GUID `8-4-4-4-12` en hexadecimal (forma en que el Catálogo nombra sus actualizaciones).
+fn is_guid(s: &str) -> bool {
+    let parts: Vec<&str> = s.split('-').collect();
+    parts.len() == 5
+        && parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(p, len)| p.len() == len && p.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// Primer enlace a un `.cab` de Windows Update en el HTML de `DownloadDialog.aspx`, pasado a HTTPS. Se descarta lo
+/// que no sea `.cab` (antes se bajaban `.msu` y `.exe` para rechazarlos después, ERR-22) y lo que no tenga un host de
+/// [`CATALOG_CAB_HOSTS`] exacto.
+fn find_catalog_cab_url(html: &str) -> Option<String> {
+    for marker in ["https://", "http://"] {
+        let mut cur = 0usize;
+        while let Some(p) = html[cur..].find(marker) {
+            let abs = cur + p;
+            let tail = &html[abs..];
+            let end = tail
+                .find(['\'', '"', '<', ' '])
+                .unwrap_or(tail.len().min(512));
+            let candidate = &tail[..end];
+            let secure = match candidate.strip_prefix("http://") {
+                Some(rest) => format!("https://{rest}"),
+                None => candidate.to_string(),
+            };
+            let path = secure.split(['?', '#']).next().unwrap_or_default();
+            if path.to_ascii_lowercase().ends_with(".cab")
+                && validate_https_host(&secure, CATALOG_CAB_HOSTS).is_ok()
+            {
+                return Some(secure);
+            }
+            cur = abs + marker.len();
+        }
+    }
+    None
 }
 
 /// Hosts de descarga de NVIDIA (el comodín cubre los espejos regionales).
@@ -1695,16 +1715,70 @@ fn run_verified_vendor_installer(
     }
 }
 
-/// Carpeta temporal de un paquete de fabricante: se borra al soltarse (SEC-34).
-struct VendorScratch {
+/// Carpeta temporal solo-admin de un paquete de drivers (`DriverCache\<kind>\<stem>_<nonce>`): se borra al soltarse
+/// (SEC-34).
+struct ScratchDir {
     root: PathBuf,
     dir: PathBuf,
 }
 
-impl Drop for VendorScratch {
+impl ScratchDir {
+    fn new(kind: &str, stem: &str) -> CoreResult<Self> {
+        let root = ensure_admin_only_data_dir()?.join("DriverCache").join(kind);
+        std::fs::create_dir_all(&root)?;
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = root.join(format!("{stem}_{nonce}"));
+        create_admin_only_dir(&dir)?;
+        Ok(Self { root, dir })
+    }
+}
+
+impl Drop for ScratchDir {
     fn drop(&mut self) {
         let _ = delete_tree_verified(&self.dir, &self.root, 64);
     }
+}
+
+/// Baja `url` a `dest` (archivo nuevo) por el cliente HTTPS común, exigiendo estado 200, que el host final esté en
+/// `hosts` y que no pase de `max_bytes`. Una lectura cortada falla en vez de dejar un archivo truncado (ERR-19).
+fn download_to_file(url: &str, hosts: &[&str], dest: &Path, max_bytes: u64) -> CoreResult<()> {
+    let resp = http::get(
+        url,
+        http::Timeouts {
+            connect_ms: 30_000,
+            io_ms: 120_000,
+        },
+    )?;
+    resp.require_ok()?;
+    validate_https_host(&resp.final_url()?, hosts)?;
+    let (mut f, _) = create_verified_new_file(dest, true)?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut total: u64 = 0;
+    loop {
+        let n = resp.read_chunk(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        if total > max_bytes {
+            return Err(CoreError::Trust {
+                message: format!("La descarga de '{url}' excede el tamaño máximo"),
+                source: None,
+            });
+        }
+        f.write_all(&buf[..n])?;
+    }
+    if resp.content_length().is_some_and(|len| len != total) {
+        return Err(CoreError::Trust {
+            message: format!("Descarga incompleta de '{url}'"),
+            source: None,
+        });
+    }
+    f.sync_all()?;
+    Ok(())
 }
 
 /// SEC-30: paquete ZIP de Intel. Se baja con el cliente HTTPS común validando el host final, se extrae con el
@@ -1718,50 +1792,9 @@ fn install_vendor_zip(
 ) -> CoreResult<String> {
     use std::sync::atomic::AtomicBool;
 
-    let vendor_dir = ensure_admin_only_data_dir()?
-        .join("DriverCache")
-        .join("Vendor");
-    std::fs::create_dir_all(&vendor_dir)?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let scratch = VendorScratch {
-        root: vendor_dir.clone(),
-        dir: vendor_dir.join(format!("{safe_id}_{nonce}")),
-    };
-    create_admin_only_dir(&scratch.dir)?;
-
+    let scratch = ScratchDir::new("Vendor", safe_id)?;
     let zip_path = scratch.dir.join("package.zip");
-    {
-        let resp = http::get(
-            &upd.download_url,
-            http::Timeouts {
-                connect_ms: 30_000,
-                io_ms: 120_000,
-            },
-        )?;
-        resp.require_ok()?;
-        validate_https_host(&resp.final_url()?, hosts)?;
-        let (mut f, _) = create_verified_new_file(&zip_path, true)?;
-        let mut buf = vec![0u8; 64 * 1024];
-        let mut total: u64 = 0;
-        loop {
-            let n = resp.read_chunk(&mut buf)?;
-            if n == 0 {
-                break;
-            }
-            total += n as u64;
-            if total > MAX_VENDOR_ZIP_BYTES {
-                return Err(CoreError::Trust {
-                    message: format!("El paquete de '{}' excede el tamaño máximo", upd.title),
-                    source: None,
-                });
-            }
-            f.write_all(&buf[..n])?;
-        }
-        f.sync_all()?;
-    }
+    download_to_file(&upd.download_url, hosts, &zip_path, MAX_VENDOR_ZIP_BYTES)?;
 
     let extract_dir = scratch.dir.join("extracted");
     let cancel = AtomicBool::new(false);
@@ -1930,5 +1963,40 @@ fn find_intel_download_url(val: &Value) -> Option<String> {
         Value::Array(arr) => arr.iter().find_map(find_intel_download_url),
         Value::Object(map) => map.values().find_map(find_intel_download_url),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_id_solo_guid() {
+        assert!(is_guid("0a1b2c3d-4e5f-6789-abcd-ef0123456789"));
+        assert!(!is_guid("C:xxx-0000-0000-0000-000000000000"));
+        assert!(!is_guid("0a1b2c3d-4e5f-6789-abcd-ef012345678\""));
+        assert!(!is_guid(""));
+    }
+
+    #[test]
+    fn enlace_cab_del_catalogo() {
+        let ok = r#"x 'http://catalog.s.download.windowsupdate.com/d/msdownload/abc_123.cab' y"#;
+        assert_eq!(
+            find_catalog_cab_url(ok).as_deref(),
+            Some("https://catalog.s.download.windowsupdate.com/d/msdownload/abc_123.cab")
+        );
+        // Subcadena del host en otro dominio, traversal en el nombre y paquetes que no son CAB.
+        assert_eq!(
+            find_catalog_cab_url("'https://evil.example/download.windowsupdate.com/a.cab'"),
+            None
+        );
+        assert_eq!(
+            find_catalog_cab_url("'https://download.windowsupdate.com.evil.example/a.cab'"),
+            None
+        );
+        assert_eq!(
+            find_catalog_cab_url("'https://download.windowsupdate.com/a.msu'"),
+            None
+        );
     }
 }
