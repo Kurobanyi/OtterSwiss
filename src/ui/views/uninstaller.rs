@@ -98,7 +98,7 @@ fn start_scan(app: InstalledApp, en: bool, sig: UninstallerSignals) {
                 if en {
                     format!("No leftovers found for '{}'.", app.display_name)
                 } else {
-                    format!("Sin rastros residuales de '{}'.", app.display_name)
+                    format!("No quedaron restos de '{}'.", app.display_name)
                 },
                 Tone::Success,
             ))),

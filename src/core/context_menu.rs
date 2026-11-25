@@ -85,9 +85,9 @@ impl ContextMenuManager {
         match hklm.open_subkey_with_flags(&cmd_key_path, KEY_READ | KEY_WOW64_64KEY) {
             Ok(key) => {
                 let cmd: String = key.get_value("").unwrap_or_default();
+                // CL-16: `"exe"` contiene a `exe`, así que basta con buscar la ruta.
                 let current_exe = std::env::current_exe()?.to_string_lossy().to_string();
-                let expected = format!("\"{}\"", current_exe);
-                Ok(cmd.contains(&expected) || cmd.contains(&current_exe))
+                Ok(cmd.contains(&current_exe))
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(CoreError::Registry {
@@ -117,7 +117,16 @@ impl ContextMenuManager {
                 exe_canon.display()
             )));
         }
-        let exe_str = exe_canon.to_string_lossy().to_string();
+        // CL-15: una ruta que no es Unicode válido no se escribe con pérdida en el registro: se rechaza.
+        let exe_str = exe_canon
+            .to_str()
+            .ok_or_else(|| {
+                CoreError::Validation(format!(
+                    "La ruta del ejecutable no es Unicode válido: '{}'",
+                    exe_canon.display()
+                ))
+            })?
+            .to_string();
         let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
 
         for entry in MENU_ENTRIES {

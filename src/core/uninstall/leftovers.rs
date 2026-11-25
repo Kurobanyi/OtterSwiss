@@ -14,6 +14,7 @@ use crate::core::platform::folders::known_folder;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
 use crate::core::platform::registry::{RegHive, RegLocation, RegView};
 use crate::core::platform::safe_fs::is_safe_non_root_dir;
+use crate::core::platform::wide::path_key;
 use crate::core::security::data_dir::get_program_data_dir;
 
 pub(super) const PROTECTED_DIR_NAMES: &[&str] = &[
@@ -185,7 +186,7 @@ pub(super) fn push_dir_candidate(
     seen_paths: &mut HashSet<String>,
     items: &mut Vec<LeftoverItem>,
 ) {
-    let key = dir.to_string_lossy().to_ascii_lowercase();
+    let key = path_key(&dir);
     if !seen_paths.insert(key) {
         return;
     }
@@ -409,9 +410,7 @@ impl<'a> LeftoverScan<'a> {
                     }
                 } else if fname.to_ascii_lowercase().ends_with(".lnk")
                     && matches_any_token(&stem, &self.tokens)
-                    && self
-                        .seen_paths
-                        .insert(p.to_string_lossy().to_ascii_lowercase())
+                    && self.seen_paths.insert(path_key(&p))
                 {
                     let sz = entry.metadata().map(|m| m.len()).unwrap_or(0);
                     self.items.push(LeftoverItem {
@@ -554,16 +553,10 @@ impl<'a> LeftoverScan<'a> {
         if self.still_registered
             && let Some(loc) = self.app.install_location.as_ref()
         {
-            let loc_low = loc
-                .to_string_lossy()
-                .trim_end_matches('\\')
-                .to_ascii_lowercase();
+            let loc_low = path_key(loc);
             self.items.retain(|i| {
                 i.path.as_ref().is_none_or(|p| {
-                    let p_low = p
-                        .to_string_lossy()
-                        .trim_end_matches('\\')
-                        .to_ascii_lowercase();
+                    let p_low = path_key(p);
                     p_low != loc_low && !p_low.starts_with(&format!("{loc_low}\\"))
                 })
             });
