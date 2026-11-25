@@ -1,7 +1,7 @@
 use crate::core::hardware::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::format::capacity_mb;
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{Lang, Msg};
 use dioxus::prelude::*;
 
 #[derive(Props, Clone, PartialEq)]
@@ -21,7 +21,7 @@ pub struct HardwareViewProps {
 pub fn HardwareView(props: HardwareViewProps) -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
-    let mut status_msg = use_signal(|| None::<String>);
+    let mut status_msg = use_signal(|| None::<Msg>);
 
     let Some(specs) = props.specs.clone() else {
         if let Some(err) = props.error {
@@ -69,7 +69,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     }
                 }
                 div { class: "row",
-                    if let Some(msg) = status_msg() {
+                    if let Some(msg) = status_msg().map(|m| m.text(en)) {
                         span { style: "font-size: var(--font-size-xs); color: var(--accent-text); margin-right: var(--space-2);", "{msg}" }
                     }
                     button {
@@ -79,22 +79,23 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                             let escaped = serde_json::to_string(&summary).unwrap_or_default();
                             let script = format!("navigator.clipboard.writeText({escaped});");
                             document::eval(&script);
-                            status_msg.set(Some(if en { "Copied!".to_string() } else { "¡Copiado!".to_string() }));
+                            status_msg.set(Some(Msg::new(|en| if en { "Copied!".to_string() } else { "¡Copiado!".to_string() })));
                         },
                         if en { "Copy Summary" } else { "Copiar resumen" }
                     }
                     button {
                         class: "btn btn-primary",
                         onclick: move |_| {
-                            let res = crate::core::hardware::specs::export_to_desktop(&specs_for_export)
-                                .map_err(|e| e.to_string());
-                            match res {
-                                Ok(path) => status_msg.set(Some(if en {
-                                    format!("Saved: {}", path.display())
-                                } else {
-                                    format!("Guardado: {}", path.display())
-                                })),
-                                Err(e) => status_msg.set(Some(format!("Error: {e}"))),
+                            match crate::core::hardware::specs::export_to_desktop(&specs_for_export) {
+                                Ok(path) => {
+                                    let path = path.display().to_string();
+                                    status_msg.set(Some(Msg::new(move |en| if en {
+                                        format!("Saved: {path}")
+                                    } else {
+                                        format!("Guardado: {path}")
+                                    })));
+                                }
+                                Err(e) => status_msg.set(Some(Msg::from(e))),
                             }
                         },
                         if en { "Export JSON" } else { "Exportar JSON" }

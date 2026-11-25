@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ui::components::Tone;
-use crate::ui::i18n::{Lang, plural, strings};
+use crate::ui::i18n::{Msg, plural, strings};
 use dioxus::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -13,12 +13,12 @@ use crate::core::error::CoreError;
 use crate::core::store::app_store::AppStoreManager;
 use crate::core::store::dependencies::DependencyManager;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InstallStatus {
     Queued,
     Installing,
     Done,
-    Failed(String),
+    Failed(Msg),
 }
 
 #[derive(Debug, Clone)]
@@ -34,8 +34,8 @@ pub struct ToolsSharedState {
     pub progress_percent: u8,
     pub progress_label: Option<String>,
     /// Último aviso de Herramientas con su tono (CL-10: el tono ya no se deduce del texto).
-    pub tool_log: Option<(String, Tone)>,
-    pub summary_msg: Option<String>,
+    pub tool_log: Option<(Msg, Tone)>,
+    pub summary_msg: Option<Msg>,
     pub dep_states: HashMap<&'static str, bool>,
     pub installed_app_ids: HashSet<&'static str>,
     pub app_statuses: HashMap<&'static str, InstallStatus>,
@@ -70,9 +70,7 @@ pub(super) fn run_installer_worker(
     mut rx: UnboundedReceiver<InstallJobRequest>,
     cancel_worker: Arc<AtomicBool>,
     mut state_sig: Signal<ToolsSharedState>,
-    lang: Signal<Lang>,
 ) {
-    let lang_is_en = move || lang.peek().is_en();
     spawn(async move {
         while let Some(req) = rx.recv().await {
             cancel_worker.store(false, Ordering::Release);
@@ -84,15 +82,13 @@ pub(super) fn run_installer_worker(
                         s.progress_percent = 30;
                         s.progress_label = Some(format!("{}…", dep_id));
                         s.tool_log = Some((
-                            format!(
-                                "{} '{}'…",
-                                if lang_is_en() {
-                                    "Installing"
+                            Msg::new(move |en| {
+                                if en {
+                                    format!("Installing '{dep_id}'…")
                                 } else {
-                                    "Instalando"
-                                },
-                                dep_id
-                            ),
+                                    format!("Instalando '{dep_id}'…")
+                                }
+                            }),
                             Tone::Info,
                         ));
                     }
@@ -125,16 +121,22 @@ pub(super) fn run_installer_worker(
                     match res {
                         Ok(()) => {
                             s.tool_log = Some((
-                                if lang_is_en() {
-                                    format!("'{}' installed.", dep_id)
-                                } else {
-                                    format!("'{}' instalado.", dep_id)
-                                },
+                                Msg::new(move |en| {
+                                    if en {
+                                        format!("'{dep_id}' installed.")
+                                    } else {
+                                        format!("'{dep_id}' instalado.")
+                                    }
+                                }),
                                 Tone::Success,
                             ))
                         }
                         Err(e) => {
-                            s.tool_log = Some((format!("Error '{}': {}", dep_id, e), Tone::Danger))
+                            let err = Msg::from(e);
+                            s.tool_log = Some((
+                                Msg::new(move |en| format!("'{dep_id}': {}", err.text(en))),
+                                Tone::Danger,
+                            ))
                         }
                     }
                 }
@@ -145,11 +147,14 @@ pub(super) fn run_installer_worker(
                         s.is_working = true;
                         s.progress_percent = 5;
                         s.progress_label = Some(format!("0/{}", total));
-                        s.summary_msg = Some(if lang_is_en() {
-                            format!("Queue: {}…", plural(total, strings(true).app))
-                        } else {
-                            format!("Cola: {}…", plural(total, strings(false).app))
-                        });
+                        s.summary_msg = Some(Msg::new(move |en| {
+                            let apps = plural(total, strings(en).app);
+                            if en {
+                                format!("Queue: {apps}…")
+                            } else {
+                                format!("Cola: {apps}…")
+                            }
+                        }));
                         s.app_statuses.clear();
                         for &id in &ids {
                             s.app_statuses.insert(id, InstallStatus::Queued);
@@ -195,21 +200,14 @@ pub(super) fn run_installer_worker(
                                 cancelled = true;
                                 s.app_statuses.insert(
                                     pkg_id,
-                                    InstallStatus::Failed(
-                                        if lang_is_en() {
-                                            "Cancelled"
-                                        } else {
-                                            "Cancelado"
-                                        }
-                                        .into(),
-                                    ),
+                                    InstallStatus::Failed(Msg::from(CoreError::Cancelled)),
                                 );
                                 break;
                             }
                             Err(e) => {
                                 err_count += 1;
                                 s.app_statuses
-                                    .insert(pkg_id, InstallStatus::Failed(e.to_string()));
+                                    .insert(pkg_id, InstallStatus::Failed(Msg::from(e)));
                             }
                         }
                     }
@@ -225,8 +223,7 @@ pub(super) fn run_installer_worker(
                     s.progress_label = None;
                     s.is_working = false;
                     // UI-02: el resumen dice qué falló o si se canceló, no un «OK» genérico.
-                    let en = lang_is_en();
-                    s.summary_msg = Some(match (cancelled, err_count, en) {
+                    s.summary_msg = Some(Msg::new(move |en| match (cancelled, err_count, en) {
                         (true, _, true) => {
                             format!("Cancelled: {} installed, {} failed.", ok_count, err_count)
                         }
@@ -254,7 +251,7 @@ pub(super) fn run_installer_worker(
                             "{} instaladas, {} con error: mira el estado de cada app.",
                             ok_count, err_count
                         ),
-                    });
+                    }));
                 }
             }
         }

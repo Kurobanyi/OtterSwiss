@@ -10,7 +10,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
 
 #[component]
@@ -29,13 +29,13 @@ pub fn DashboardView() -> Element {
     });
     let is_elevated = use_signal(|| ElevationManager::is_elevated().unwrap_or(false));
     let mut is_running = use_signal(|| false);
-    let mut active_action_label = use_signal(String::new);
+    let mut active_action_label = use_signal(|| Msg::plain(""));
     let mut show_reboot_modal = use_signal(|| false);
     let mut confirm_optimize = use_signal(|| false);
     let mut progress_state = use_signal(EngineProgress::default);
     let mut last_report = use_signal(|| Option::<EngineExecutionReport>::None);
     let mut last_rollback = use_signal(|| Option::<RollbackReport>::None);
-    let mut error_banner = use_signal(|| Option::<String>::None);
+    let mut error_banner = use_signal(|| Option::<Msg>::None);
 
     let mut active_scheme = use_signal(|| {
         get_active_scheme_guid()
@@ -45,11 +45,13 @@ pub fn DashboardView() -> Element {
 
     let mut start_optimize = move || {
         is_running.set(true);
-        active_action_label.set(if en {
-            "Applying system optimizations".to_string()
-        } else {
-            "Aplicando optimizaciones".to_string()
-        });
+        active_action_label.set(Msg::new(|en| {
+            if en {
+                "Applying system optimizations".to_string()
+            } else {
+                "Aplicando optimizaciones".to_string()
+            }
+        }));
         error_banner.set(None);
         last_rollback.set(None);
         progress_state.set(EngineProgress {
@@ -67,10 +69,10 @@ pub fn DashboardView() -> Element {
 
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
-                let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
+                let engine = OptimizationEngine::open_default().map_err(Msg::from)?;
                 engine
                     .apply_profile_with_progress(OptimizationProfile::AutoDetected, Some(prog))
-                    .map_err(|e| e.to_string())
+                    .map_err(Msg::from)
             })
             .await
             .and_then(|r| r);
@@ -94,11 +96,13 @@ pub fn DashboardView() -> Element {
 
     let on_rollback = move |_| {
         is_running.set(true);
-        active_action_label.set(if en {
-            "Reverting from backup".to_string()
-        } else {
-            "Revirtiendo desde respaldo".to_string()
-        });
+        active_action_label.set(Msg::new(|en| {
+            if en {
+                "Reverting from backup".to_string()
+            } else {
+                "Revirtiendo desde respaldo".to_string()
+            }
+        }));
         error_banner.set(None);
         last_report.set(None);
         progress_state.set(EngineProgress {
@@ -116,10 +120,10 @@ pub fn DashboardView() -> Element {
 
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
-                let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
+                let engine = OptimizationEngine::open_default().map_err(Msg::from)?;
                 engine
                     .rollback_with_progress(false, Some(prog))
-                    .map_err(|e| e.to_string())
+                    .map_err(Msg::from)
             })
             .await
             .and_then(|r| r);
@@ -140,7 +144,7 @@ pub fn DashboardView() -> Element {
     let mut on_reboot_now = move || {
         show_reboot_modal.set(false);
         if let Err(e) = reboot_system_now() {
-            error_banner.set(Some(e.to_string()));
+            error_banner.set(Some(Msg::from(e)));
         }
     };
 
@@ -356,13 +360,13 @@ pub fn DashboardView() -> Element {
                 }
             }
 
-            if let Some(err) = error_banner.read().clone() {
-                StatusBanner { text: format!("Error: {}", err), tone: Tone::Danger }
+            if let Some(err) = error_banner.read().as_ref().map(|m| m.text(en)) {
+                StatusBanner { text: err, tone: Tone::Danger }
             }
 
             if *is_running.read() {
                 Card {
-                    title: active_action_label.read().clone(),
+                    title: active_action_label.read().text(en),
                     subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), prog.current_label)),
                     div { class: "stack-2",
                         div { class: "text-xs text-muted", "{prog.percent}%" }

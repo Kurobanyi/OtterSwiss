@@ -17,6 +17,11 @@ pub struct DriversStrings {
     pub updates_found: fn(usize) -> String,
     pub sources_failed: &'static str,
     pub installing: &'static str,
+    /// AR-26: resultado de una instalación (instalados, fallidos).
+    pub installed: fn(usize, usize) -> String,
+    /// Paquete quitado del Driver Store: (título, `oemNN.inf`).
+    pub removed: fn(&str, &str) -> String,
+    pub history_not_saved: &'static str,
     pub exporting_backup: &'static str,
     pub backup_saved: fn(&str) -> String,
     pub backup_failed: fn(&str) -> String,
@@ -85,6 +90,21 @@ pub static ES: DriversStrings = DriversStrings {
     },
     sources_failed: "No se pudieron consultar algunas fuentes:",
     installing: "Instalando drivers…",
+    installed: |ok, failed| {
+        if failed == 0 {
+            format!(
+                "{}.",
+                plural(ok, ("driver instalado", "drivers instalados"))
+            )
+        } else {
+            format!(
+                "{}; {failed} fallaron.",
+                plural(ok, ("driver instalado", "drivers instalados"))
+            )
+        }
+    },
+    removed: |title, name| format!("Se quitó «{title}» ({name})."),
+    history_not_saved: "No se pudo anotar para quitarlo después:",
     exporting_backup: "Exportando los drivers OEM a ProgramData\\OtterSwiss\\DriverBackup…",
     backup_saved: |path| format!("Respaldo del Driver Store guardado en {path}"),
     backup_failed: |e| format!("Falló el respaldo, no se instaló nada: {e}"),
@@ -156,6 +176,18 @@ pub static EN: DriversStrings = DriversStrings {
     updates_found: |n| format!("Scan complete: {} found.", plural(n, ("update", "updates"))),
     sources_failed: "Some sources could not be checked:",
     installing: "Installing drivers…",
+    installed: |ok, failed| {
+        if failed == 0 {
+            format!("{}.", plural(ok, ("driver installed", "drivers installed")))
+        } else {
+            format!(
+                "{}; {failed} failed.",
+                plural(ok, ("driver installed", "drivers installed"))
+            )
+        }
+    },
+    removed: |title, name| format!("Removed '{title}' ({name})."),
+    history_not_saved: "Could not record it for later removal:",
     exporting_backup: "Exporting OEM drivers to ProgramData\\OtterSwiss\\DriverBackup…",
     backup_saved: |path| format!("Driver Store backup saved to {path}"),
     backup_failed: |e| format!("Backup failed, nothing was installed: {e}"),
@@ -229,6 +261,7 @@ mod tests {
                 s.scan_cancelled,
                 s.search_placeholder,
                 s.installing,
+                s.history_not_saved,
                 s.exporting_backup,
                 (s.cm_problem)(43),
                 (s.cm_problem)(9999),

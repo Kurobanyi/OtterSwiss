@@ -1,8 +1,10 @@
 pub mod drivers;
+pub mod msg;
 pub mod strings;
 
 use serde::{Deserialize, Serialize};
 
+pub use msg::Msg;
 pub use strings::{Strings, plural};
 
 use crate::ui::prefs;

@@ -103,9 +103,7 @@ pub(super) fn with_driver_history(
         write_backup(&driver_history_path()?, &h)
     });
     if let Err(e) = saved {
-        report
-            .message
-            .push_str(&format!(" No se pudo registrar para revertir: {e}"));
+        report.history_warning = Some(e.to_string());
     }
     Ok(report)
 }
@@ -161,10 +159,7 @@ impl DriverManager {
         }
         history.entries.remove(pos);
         write_backup(&driver_history_path()?, &history)?;
-        Ok(DriverInstallReport::single(
-            format!("Se quitó '{}' ({}).", record.title, record.published_name),
-            code == 3010,
-        ))
+        Ok(DriverInstallReport::single(code == 3010))
     }
 }
 

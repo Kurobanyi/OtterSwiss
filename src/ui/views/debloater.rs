@@ -9,7 +9,7 @@ use crate::core::debloat::{
     DebloaterManager, DetectedBloatApp,
 };
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
 
 fn apply_recommended_defaults(
@@ -71,9 +71,9 @@ pub fn DebloaterView() -> Element {
     let mut is_running = use_signal(|| false);
     let mut progress_state = use_signal(DebloatProgress::default);
     let mut last_report = use_signal(|| Option::<DebloatReport>::None);
-    let mut status_banner = use_signal(|| Option::<(String, Tone)>::None);
+    let mut status_banner = use_signal(|| Option::<(Msg, Tone)>::None);
     let mut confirm_open = use_signal(|| false);
-    let mut error_banner = use_signal(|| Option::<String>::None);
+    let mut error_banner = use_signal(|| Option::<Msg>::None);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
 
     let run_scan = move || {
@@ -140,14 +140,19 @@ pub fn DebloaterView() -> Element {
                     &cancel_worker,
                     Some(prog),
                 )
-                .map_err(|e| e.to_string())
+                .map_err(Msg::from)
             })
             .await
             .and_then(|r| r);
 
             match res {
                 Ok(rep) => {
-                    status_banner.set(Some(report_banner(&rep, en)));
+                    let tone = report_banner(&rep, false).1;
+                    let shown = rep.clone();
+                    status_banner.set(Some((
+                        Msg::new(move |en| report_banner(&shown, en).0),
+                        tone,
+                    )));
                     last_report.set(Some(rep));
                     if let Ok(Ok(fresh)) =
                         tokio::task::spawn_blocking(DebloaterManager::scan_system).await
@@ -171,11 +176,13 @@ pub fn DebloaterView() -> Element {
             match res {
                 Ok(count) => {
                     status_banner.set(Some((
-                        if en {
-                            format!("Reverted {} registry values.", count)
-                        } else {
-                            format!("Revertidos {} valores de registro.", count)
-                        },
+                        Msg::new(move |en| {
+                            if en {
+                                format!("Reverted {count} registry values.")
+                            } else {
+                                format!("Revertidos {count} valores de registro.")
+                            }
+                        }),
                         Tone::Success,
                     )));
                     if let Ok(Ok(fresh)) =
@@ -351,12 +358,12 @@ pub fn DebloaterView() -> Element {
                 }
             }
 
-            if let Some((msg, tone)) = status_banner.read().clone() {
+            if let Some((msg, tone)) = status_banner.read().clone().map(|(m, t)| (m.text(en), t)) {
                 StatusBanner { text: msg, tone }
             }
 
-            if let Some(err) = error_banner.read().clone() {
-                StatusBanner { text: format!("Error: {}", err), tone: Tone::Danger }
+            if let Some(err) = error_banner.read().as_ref().map(|m| m.text(en)) {
+                StatusBanner { text: err, tone: Tone::Danger }
             }
 
             if let Some(rep) = last_report.read().as_ref() {

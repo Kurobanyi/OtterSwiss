@@ -321,10 +321,6 @@ fn wua_install_on_this_thread(target_ids: &[String]) -> CoreResult<DriverInstall
         succeeded_count,
         failed_count,
         reboot_required,
-        message: if failed_count == 0 {
-            format!("Windows Update instaló {succeeded_count} driver(s).")
-        } else {
-            format!("Windows Update instaló {succeeded_count} driver(s); {failed_count} fallaron.")
-        },
+        history_warning: None,
     })
 }

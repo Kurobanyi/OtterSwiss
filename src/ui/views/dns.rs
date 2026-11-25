@@ -10,16 +10,16 @@ use crate::core::error::CoreError;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
-use crate::ui::i18n::{Lang, plural, strings};
+use crate::ui::i18n::{Lang, Msg, plural, strings};
 
 /// Estado de la lista de adaptadores: `None` mientras se lee (UI-07).
-type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, String>>;
+type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, Msg>>;
 
 /// Relee adaptadores y si hay respaldo de DNS, fuera del hilo de UI (UI-05).
 fn spawn_refresh(mut adapters: Signal<AdaptersState>, mut has_backup: Signal<bool>) {
     spawn(async move {
         let res = tokio::task::spawn_blocking(|| {
-            let list = list_active_adapters().map_err(|e| e.to_string());
+            let list = list_active_adapters().map_err(Msg::from);
             let backup = DnsManager::open_default()
                 .map(|mgr| mgr.has_backup())
                 .unwrap_or(false);
@@ -31,7 +31,7 @@ fn spawn_refresh(mut adapters: Signal<AdaptersState>, mut has_backup: Signal<boo
                 adapters.set(Some(list));
                 has_backup.set(backup);
             }
-            Err(e) => adapters.set(Some(Err(e.to_string()))),
+            Err(e) => adapters.set(Some(Err(Msg::plain(e.to_string())))),
         }
     });
 }
@@ -44,7 +44,7 @@ pub fn DnsView() -> Element {
     let adapters = use_signal(|| AdaptersState::None);
     let has_backup = use_signal(|| false);
     let mut selected_preset = use_signal(|| "cloudflare");
-    let mut status_msg = use_signal(|| Option::<(String, Tone)>::None);
+    let mut status_msg = use_signal(|| Option::<(Msg, Tone)>::None);
     let mut is_working = use_signal(|| false);
     let mut is_benchmarking = use_signal(|| false);
     let mut confirm_apply = use_signal(|| false);
@@ -56,12 +56,14 @@ pub fn DnsView() -> Element {
     let on_benchmark = move |_| {
         is_benchmarking.set(true);
         status_msg.set(Some((
-            if en {
-                "Measuring ping…"
-            } else {
-                "Midiendo el ping…"
-            }
-            .to_string(),
+            Msg::new(move |en| {
+                if en {
+                    "Measuring ping…"
+                } else {
+                    "Midiendo el ping…"
+                }
+                .to_string()
+            }),
             Tone::Info,
         )));
 
@@ -90,23 +92,27 @@ pub fn DnsView() -> Element {
                 if let Some(p) = DNS_PRESETS.iter().find(|x| x.id == best_id) {
                     // UI-15: es ping ICMP al servidor, no tiempo de resolución DNS.
                     status_msg.set(Some((
-                        if en {
-                            format!("Lowest ping: {} ({} ms)", p.name, best_ms)
-                        } else {
-                            format!("Menor ping: {} ({} ms)", p.name, best_ms)
-                        },
+                        Msg::new(move |en| {
+                            if en {
+                                format!("Lowest ping: {} ({} ms)", p.name, best_ms)
+                            } else {
+                                format!("Menor ping: {} ({} ms)", p.name, best_ms)
+                            }
+                        }),
                         Tone::Success,
                     )));
                 }
             } else {
                 best_preset_id.set(None);
                 status_msg.set(Some((
-                    if en {
-                        "No server answered the ping."
-                    } else {
-                        "Ningún servidor respondió al ping."
-                    }
-                    .to_string(),
+                    Msg::new(move |en| {
+                        if en {
+                            "No server answered the ping."
+                        } else {
+                            "Ningún servidor respondió al ping."
+                        }
+                        .to_string()
+                    }),
                     Tone::Danger,
                 )));
             }
@@ -133,31 +139,35 @@ pub fn DnsView() -> Element {
 
             status_msg.set(Some(match res {
                 Ok(count) => (
-                    if en {
-                        format!(
-                            "{} applied to {}.",
-                            p_name,
-                            plural(count, strings(true).adapter)
-                        )
-                    } else {
-                        format!(
-                            "{} aplicado a {}.",
-                            p_name,
-                            plural(count, strings(false).adapter)
-                        )
-                    },
+                    Msg::new(move |en| {
+                        if en {
+                            format!(
+                                "{} applied to {}.",
+                                p_name,
+                                plural(count, strings(true).adapter)
+                            )
+                        } else {
+                            format!(
+                                "{} aplicado a {}.",
+                                p_name,
+                                plural(count, strings(false).adapter)
+                            )
+                        }
+                    }),
                     Tone::Success,
                 ),
                 Err(CoreError::NoActiveAdapters) => (
-                    if en {
-                        "There are no active physical adapters."
-                    } else {
-                        "No hay adaptadores físicos activos."
-                    }
-                    .to_string(),
+                    Msg::new(move |en| {
+                        if en {
+                            "There are no active physical adapters."
+                        } else {
+                            "No hay adaptadores físicos activos."
+                        }
+                        .to_string()
+                    }),
                     Tone::Danger,
                 ),
-                Err(e) => (format!("Error: {}", e), Tone::Danger),
+                Err(e) => (Msg::from(e), Tone::Danger),
             }));
             spawn_refresh(adapters, has_backup);
             is_working.set(false);
@@ -167,31 +177,31 @@ pub fn DnsView() -> Element {
     let on_restore_dns = move |_| {
         is_working.set(true);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
-                DnsManager::open_default()
-                    .and_then(|mgr| mgr.restore_dns())
-                    .map_err(|e| e.to_string())
+            let res = tokio::task::spawn_blocking(move || {
+                DnsManager::open_default().and_then(|mgr| mgr.restore_dns())
             })
             .await
-            .unwrap_or_else(|e| Err(e.to_string()));
+            .unwrap_or_else(|e| Err(CoreError::Panic(e.to_string())));
 
             // El core conserva en el respaldo los adaptadores pendientes y devuelve Err (SYS-08).
             status_msg.set(Some(match res {
                 Ok(count) => (
-                    if en {
-                        format!(
-                            "Previous DNS restored on {}.",
-                            plural(count, strings(true).adapter)
-                        )
-                    } else {
-                        format!(
-                            "DNS anterior restaurado en {}.",
-                            plural(count, strings(false).adapter)
-                        )
-                    },
+                    Msg::new(move |en| {
+                        if en {
+                            format!(
+                                "Previous DNS restored on {}.",
+                                plural(count, strings(true).adapter)
+                            )
+                        } else {
+                            format!(
+                                "DNS anterior restaurado en {}.",
+                                plural(count, strings(false).adapter)
+                            )
+                        }
+                    }),
                     Tone::Success,
                 ),
-                Err(e) => (format!("Error: {}", e), Tone::Danger),
+                Err(e) => (Msg::from(e), Tone::Danger),
             }));
             spawn_refresh(adapters, has_backup);
             is_working.set(false);
@@ -342,7 +352,7 @@ pub fn DnsView() -> Element {
                         }
                     }
 
-                    if let Some((msg, tone)) = status_msg.read().clone() {
+                    if let Some((msg, tone)) = status_msg.read().clone().map(|(m, t)| (m.text(en), t)) {
                         StatusBanner { text: msg, tone }
                     }
                 }
@@ -359,7 +369,7 @@ pub fn DnsView() -> Element {
                         Some(Err(err)) => rsx! {
                             ErrorState {
                                 title: if en { "Could not read the adapters".to_string() } else { "No se pudieron leer los adaptadores".to_string() },
-                                error_msg: err.clone(),
+                                error_msg: err.text(en),
                             }
                         },
                         Some(Ok(list)) if list.is_empty() => rsx! {

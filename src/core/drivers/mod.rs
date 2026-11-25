@@ -46,21 +46,23 @@ pub struct DriverUpdateCandidate {
 }
 
 #[derive(Debug, Clone)]
+/// AR-26: resultado como datos; la vista arma la frase en el idioma del usuario.
 pub struct DriverInstallReport {
     pub succeeded_count: usize,
     pub failed_count: usize,
     pub reboot_required: bool,
-    pub message: String,
+    /// SYS-26: se instaló, pero no se pudo anotar en el historial para quitarlo después (detalle técnico).
+    pub history_warning: Option<String>,
 }
 
 impl DriverInstallReport {
     /// ARQ-05: un paquete instalado; el reinicio viaja como dato (código 3010/1641), no dentro del texto.
-    fn single(message: String, reboot_required: bool) -> Self {
+    fn single(reboot_required: bool) -> Self {
         Self {
             succeeded_count: 1,
             failed_count: 0,
             reboot_required,
-            message,
+            history_warning: None,
         }
     }
 }

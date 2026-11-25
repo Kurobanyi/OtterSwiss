@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::theme::Theme;
 use crate::ui::views::archiver::ArchiverView;
 use crate::ui::views::cleaner::CleanerView;
@@ -112,14 +112,14 @@ pub fn App() -> Element {
     let window = use_window();
 
     let mut system_specs = use_signal(|| None::<crate::core::hardware::specs::SystemSpecs>);
-    let mut specs_error = use_signal(|| None::<String>);
+    let mut specs_error = use_signal(|| None::<Msg>);
     use_future(move || async move {
         // UI-06: un fallo se muestra en la pestaña en vez de dejarla «Analizando...» para siempre.
         match tokio::task::spawn_blocking(crate::core::hardware::specs::collect_system_specs).await
         {
             Ok(Ok(data)) => system_specs.set(Some(data)),
-            Ok(Err(e)) => specs_error.set(Some(e.to_string())),
-            Err(e) => specs_error.set(Some(e.to_string())),
+            Ok(Err(e)) => specs_error.set(Some(Msg::from(e))),
+            Err(e) => specs_error.set(Some(Msg::plain(e.to_string()))),
         }
     });
 
@@ -128,7 +128,7 @@ pub fn App() -> Element {
     let mut show_update_modal = use_signal(|| false);
     let mut is_downloading_update = use_signal(|| false);
     let mut update_progress = use_signal(|| 0u8);
-    let mut update_error = use_signal(|| None::<String>);
+    let mut update_error = use_signal(|| None::<Msg>);
 
     use_future(move || async move {
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
@@ -147,7 +147,7 @@ pub fn App() -> Element {
 
     let dispatcher = use_hook(|| {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<InstallJobRequest>();
-        run_installer_worker(rx, Arc::clone(&cancel_flag), tools_state, current_lang);
+        run_installer_worker(rx, Arc::clone(&cancel_flag), tools_state);
         InstallerDispatcher {
             tx,
             cancel_flag: Arc::clone(&cancel_flag),
@@ -215,7 +215,7 @@ pub fn App() -> Element {
             });
 
             if let Err(e) = res {
-                update_error.set(Some(e.to_string()));
+                update_error.set(Some(Msg::from(e)));
                 is_downloading_update.set(false);
             }
         });
@@ -359,7 +359,7 @@ pub fn App() -> Element {
                                 }
 
                                 if let Some(err) = update_error.read().clone() {
-                                    StatusBanner { text: err, tone: Tone::Danger }
+                                    StatusBanner { text: err.text(en), tone: Tone::Danger }
                                 }
 
                                 div { class: "modal-actions",
@@ -405,7 +405,7 @@ pub fn App() -> Element {
                     }
                 }
                 if *active_tab.read() == ActiveTab::Hardware {
-                    HardwareView { specs: system_specs(), error: specs_error() }
+                    HardwareView { specs: system_specs(), error: specs_error().map(|m| m.text(en)) }
                 }
                 if *active_tab.read() == ActiveTab::Sensors {
                     SensorsView {}

@@ -15,7 +15,7 @@ use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::format::{eta, mb_1};
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
 use crate::ui::theme::Theme;
 
@@ -59,7 +59,7 @@ pub fn MiniArchiveView() -> Element {
 
     let progress = use_signal(ArchiveProgress::default);
     let mut is_running = use_signal(|| true);
-    let mut error_msg = use_signal(|| Option::<String>::None);
+    let mut error_msg = use_signal(|| Option::<Msg>::None);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
 
     let worker_job = job.clone();
@@ -85,7 +85,7 @@ pub fn MiniArchiveView() -> Element {
                         Some(prog),
                     ),
                 }
-                .map_err(|e| e.to_string())
+                .map_err(Msg::from)
             })
             .await
             .and_then(|r| r);
@@ -100,7 +100,7 @@ pub fn MiniArchiveView() -> Element {
 
     let prog = progress.read();
     let running = *is_running.read();
-    let err_opt = error_msg.read().clone();
+    let err_opt = error_msg.read().as_ref().map(|m| m.text(en));
     let win_drag = window.clone();
     let win_close = window.clone();
     let win_done = window;

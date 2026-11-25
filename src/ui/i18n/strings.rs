@@ -5,6 +5,7 @@
 //! métodos de `Strings` con argumentos con nombre (el orden de los argumentos no puede desordenarse en un solo idioma).
 
 use super::drivers::{self, DriversStrings};
+use crate::core::error::ErrorKind;
 
 /// Textos fijos de la interfaz.
 pub struct Strings {
@@ -42,6 +43,8 @@ pub struct Strings {
     pub latest_version: &'static str,
     /// IN-08: pestaña Drivers.
     pub drivers: &'static DriversStrings,
+    /// UI-11: título de un error de core según su tipo; el detalle técnico va detrás.
+    pub error_title: fn(ErrorKind) -> &'static str,
 }
 
 pub static ES: Strings = Strings {
@@ -76,6 +79,24 @@ pub static ES: Strings = Strings {
     all_categories: "Todas las categorías",
     latest_version: "última versión",
     drivers: &drivers::ES,
+    error_title: |kind| match kind {
+        ErrorKind::Io => "Error de lectura o escritura",
+        ErrorKind::NotElevated => "Hace falta ejecutar como administrador",
+        ErrorKind::Cancelled => "Operación cancelada",
+        ErrorKind::AlreadyRunning => "Otra instancia de OtterSwiss está haciendo cambios",
+        ErrorKind::Registry => "Error del registro",
+        ErrorKind::Service => "Error de un servicio",
+        ErrorKind::Power => "Error de energía",
+        ErrorKind::Dns => "Error de DNS",
+        ErrorKind::Trust => "Descarga o firma no confiable",
+        ErrorKind::Backup => "Error del respaldo",
+        ErrorKind::Archive => "Error del archivo comprimido",
+        ErrorKind::Uninstaller => "Error del desinstalador",
+        ErrorKind::SystemTool => "Error de una herramienta del sistema",
+        ErrorKind::NoActiveAdapters => "No hay adaptadores de red físicos activos",
+        ErrorKind::Validation => "Datos no válidos",
+        ErrorKind::Panic => "Error interno inesperado",
+    },
 };
 
 pub static EN: Strings = Strings {
@@ -110,6 +131,24 @@ pub static EN: Strings = Strings {
     all_categories: "All categories",
     latest_version: "latest version",
     drivers: &drivers::EN,
+    error_title: |kind| match kind {
+        ErrorKind::Io => "Read or write error",
+        ErrorKind::NotElevated => "Administrator rights required",
+        ErrorKind::Cancelled => "Operation cancelled",
+        ErrorKind::AlreadyRunning => "Another OtterSwiss instance is making changes",
+        ErrorKind::Registry => "Registry error",
+        ErrorKind::Service => "Service error",
+        ErrorKind::Power => "Power management error",
+        ErrorKind::Dns => "DNS error",
+        ErrorKind::Trust => "Untrusted download or signature",
+        ErrorKind::Backup => "Backup error",
+        ErrorKind::Archive => "Archive error",
+        ErrorKind::Uninstaller => "Uninstaller error",
+        ErrorKind::SystemTool => "System tool error",
+        ErrorKind::NoActiveAdapters => "No active physical network adapters",
+        ErrorKind::Validation => "Invalid data",
+        ErrorKind::Panic => "Unexpected internal error",
+    },
 };
 
 /// IN-04: «1 adaptador», «3 adaptadores». ES y EN solo distinguen uno de varios.

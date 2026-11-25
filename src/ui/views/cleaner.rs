@@ -54,7 +54,7 @@ pub fn CleanerView() -> Element {
             .unwrap_or_else(|e| {
                 vec![CategoryCleanResult {
                     category: if en { "Cleanup" } else { "Limpieza" }.to_string(),
-                    error: Some(e),
+                    error: Some(e.text(en)),
                     ..Default::default()
                 }]
             });

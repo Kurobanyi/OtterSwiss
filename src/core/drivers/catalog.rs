@@ -170,10 +170,7 @@ impl DriverManager {
         )?;
         let code = pnp_out.code.unwrap_or(-1);
         if pnp_out.success || code == 3010 {
-            return Ok(DriverInstallReport::single(
-                "Driver instalado desde el Catálogo de Microsoft.".into(),
-                code == 3010,
-            ));
+            return Ok(DriverInstallReport::single(code == 3010));
         }
         Err(CoreError::SystemTool {
             message: format!(

@@ -11,7 +11,7 @@ use crate::core::store::app_store::{AppCategory, AppIcon, AppStoreManager};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
 };
@@ -117,11 +117,13 @@ pub fn ToolsView() -> Element {
     let on_trim_ram = move |_| {
         local_working.set(true);
         tools_state.write().tool_log = Some((
-            if en {
-                "Trimming RAM working sets…".to_string()
-            } else {
-                "Optimizando memoria RAM…".to_string()
-            },
+            Msg::new(|en| {
+                if en {
+                    "Trimming RAM working sets…".to_string()
+                } else {
+                    "Optimizando memoria RAM…".to_string()
+                }
+            }),
             Tone::Info,
         ));
 
@@ -137,24 +139,21 @@ pub fn ToolsView() -> Element {
 
             match res {
                 Ok(report) => {
+                    let (trimmed, skipped) = (report.processes_trimmed, report.processes_skipped);
                     tools_state.write().tool_log = Some((
-                        if en {
-                            format!(
-                                "RAM trimmed: {} processes, {} skipped.",
-                                report.processes_trimmed, report.processes_skipped
-                            )
-                        } else {
-                            format!(
-                                "RAM optimizada: {} procesos, {} omitidos.",
-                                report.processes_trimmed, report.processes_skipped
-                            )
-                        },
+                        Msg::new(move |en| {
+                            if en {
+                                format!("RAM trimmed: {trimmed} processes, {skipped} skipped.")
+                            } else {
+                                format!("RAM optimizada: {trimmed} procesos, {skipped} omitidos.")
+                            }
+                        }),
                         Tone::Success,
                     ));
                     ram_report_modal.set(Some(report));
                 }
                 Err(e) => {
-                    tools_state.write().tool_log = Some((format!("Error: {}", e), Tone::Danger));
+                    tools_state.write().tool_log = Some((Msg::from(e), Tone::Danger));
                 }
             }
             local_working.set(false);
@@ -186,19 +185,15 @@ pub fn ToolsView() -> Element {
                     let next = !currently_active;
                     *context_menu_active.write() = next;
                     tools_state.write().tool_log = Some((
-                        if next {
-                            if en {
-                                "Context menu installed.".to_string()
-                            } else {
-                                "Menú contextual instalado.".to_string()
+                        Msg::new(move |en| {
+                            match (next, en) {
+                                (true, true) => "Context menu installed.",
+                                (true, false) => "Menú contextual instalado.",
+                                (false, true) => "Context menu removed.",
+                                (false, false) => "Menú contextual desinstalado.",
                             }
-                        } else {
-                            if en {
-                                "Context menu removed.".to_string()
-                            } else {
-                                "Menú contextual desinstalado.".to_string()
-                            }
-                        },
+                            .to_string()
+                        }),
                         Tone::Success,
                     ));
                 }
@@ -221,7 +216,7 @@ pub fn ToolsView() -> Element {
                     }
                 }
                 Err(e) => {
-                    tools_state.write().tool_log = Some((format!("Error: {}", e), Tone::Danger));
+                    tools_state.write().tool_log = Some((Msg::from(e), Tone::Danger));
                 }
             }
             local_working.set(false);
@@ -319,7 +314,7 @@ pub fn ToolsView() -> Element {
             if let Some((msg, tone)) = state.tool_log.clone() {
                 StatusBanner {
                     tone,
-                    text: msg,
+                    text: msg.text(en),
                 }
             }
 
@@ -555,7 +550,7 @@ pub fn BatchAppStoreCard() -> Element {
                         }
                     }
 
-                    if let Some(msg) = state.summary_msg.as_ref() {
+                    if let Some(msg) = state.summary_msg.as_ref().map(|m| m.text(en)) {
                         span { class: "badge badge-info", "{msg}" }
                     }
                 }
@@ -625,7 +620,7 @@ pub fn BatchAppStoreCard() -> Element {
                                     }
                                     if let Some(InstallStatus::Failed(err_msg)) = st {
                                         // TE-27 (regresión de UI-18): texto en `--danger-text`, que cumple AA; `--danger` es para fondos.
-                                        div { class: "text-xs text-danger ml-5", "{err_msg}" }
+                                        div { class: "text-xs text-danger ml-5", "{err_msg.text(en)}" }
                                     }
                                 }
                             }

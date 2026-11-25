@@ -93,10 +93,74 @@ pub enum CoreError {
 
 pub type CoreResult<T> = Result<T, CoreError>;
 
+/// UI-11: qué clase de fallo es, para que la UI ponga el título en el idioma del usuario. El detalle técnico sigue
+/// siendo el mensaje de cada variante.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorKind {
+    Io,
+    NotElevated,
+    Cancelled,
+    AlreadyRunning,
+    Registry,
+    Service,
+    Power,
+    Dns,
+    Trust,
+    Backup,
+    Archive,
+    Uninstaller,
+    SystemTool,
+    NoActiveAdapters,
+    Validation,
+    Panic,
+}
+
 /// Error de origen con tipo borrado, para el campo `source` de las variantes.
 pub type BoxedSource = Box<dyn std::error::Error + Send + Sync>;
 
 impl CoreError {
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::Io(_) => ErrorKind::Io,
+            Self::NotElevated(_) => ErrorKind::NotElevated,
+            Self::Cancelled => ErrorKind::Cancelled,
+            Self::AlreadyRunning => ErrorKind::AlreadyRunning,
+            Self::Registry { .. } => ErrorKind::Registry,
+            Self::Service { .. } => ErrorKind::Service,
+            Self::Power { .. } => ErrorKind::Power,
+            Self::Dns { .. } => ErrorKind::Dns,
+            Self::Trust { .. } => ErrorKind::Trust,
+            Self::Backup { .. } => ErrorKind::Backup,
+            Self::Archive { .. } => ErrorKind::Archive,
+            Self::Uninstaller { .. } => ErrorKind::Uninstaller,
+            Self::SystemTool { .. } => ErrorKind::SystemTool,
+            Self::NoActiveAdapters => ErrorKind::NoActiveAdapters,
+            Self::Validation(_) => ErrorKind::Validation,
+            Self::Panic(_) => ErrorKind::Panic,
+        }
+    }
+
+    /// Detalle técnico sin el título de la variante (UI-11: el título lo traduce la UI). Vacío si la variante no
+    /// tiene más que su título.
+    pub fn detail(&self) -> String {
+        match self {
+            Self::Io(e) => e.to_string(),
+            Self::NotElevated(m) | Self::Validation(m) | Self::Panic(m) => m.clone(),
+            Self::Registry { path, message, .. } => format!("{path}: {message}"),
+            Self::Service {
+                service, message, ..
+            } => format!("{service}: {message}"),
+            Self::Power { message, .. }
+            | Self::Dns { message, .. }
+            | Self::Trust { message, .. }
+            | Self::Backup { message, .. }
+            | Self::Archive { message, .. }
+            | Self::Uninstaller { message, .. }
+            | Self::SystemTool { message, .. } => message.clone(),
+            Self::Cancelled | Self::AlreadyRunning | Self::NoActiveAdapters => String::new(),
+        }
+    }
+
     /// AR-06: adaptador para `map_err` que conserva el error de origen (HRESULT, `io::ErrorKind`) en `source`.
     /// `prefix` es el contexto ya redactado, por ejemplo `"OpenProcessToken falló: "`.
     pub fn sys<E>(prefix: &'static str) -> impl FnOnce(E) -> Self

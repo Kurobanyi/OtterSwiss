@@ -9,7 +9,8 @@ use crate::core::drivers::{
     InstalledDriverRecord, VendorDriverUpdate,
 };
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
-use crate::ui::i18n::{Lang, strings};
+use crate::ui::i18n::drivers::DriversStrings;
+use crate::ui::i18n::{Lang, Msg, strings};
 
 /// SEC-37: instalación que espera confirmación del usuario.
 #[derive(Debug, Clone)]
@@ -19,23 +20,44 @@ enum PendingInstall {
     Catalog { uid: String, title: String },
 }
 
-/// Resultado de una instalación ya confirmada: mensaje, si pide reinicio y si hubo fallos parciales.
+/// Texto fijo del catálogo de Drivers como aviso que se traduce al mostrarse (IN-03).
+fn drv(text: fn(&'static DriversStrings) -> &'static str) -> Msg {
+    Msg::new(move |en| text(strings(en).drivers).to_string())
+}
+
+/// Aviso de un hilo que entró en pánico o se canceló.
+fn thread_error(e: tokio::task::JoinError) -> Msg {
+    let detail = e.to_string();
+    Msg::new(move |en| format!("{}: {detail}", strings(en).drivers.internal_error))
+}
+
+/// AR-26: resultado de una instalación como frase, con el aviso del historial si no se pudo anotar (SYS-26).
+fn install_message(ok: usize, failed: usize, history_warning: Option<String>) -> Msg {
+    Msg::new(move |en| {
+        let t = strings(en).drivers;
+        let mut text = (t.installed)(ok, failed);
+        if let Some(w) = &history_warning {
+            text.push_str(&format!(" {} {w}", t.history_not_saved));
+        }
+        text
+    })
+}
+
+/// Resultado de una instalación ya confirmada: aviso, si pide reinicio y si hubo fallos parciales.
 struct InstallOutcome {
-    message: String,
+    message: Msg,
     reboot: bool,
     partial: bool,
 }
 
 /// Corre en un hilo bloqueante: respaldo opcional del Driver Store y luego la instalación. Si el respaldo pedido
 /// falla, no se instala nada.
-fn execute_install(
-    pending: PendingInstall,
-    backup: bool,
-    en: bool,
-) -> Result<InstallOutcome, String> {
+fn execute_install(pending: PendingInstall, backup: bool) -> Result<InstallOutcome, Msg> {
     if backup {
-        DriverManager::export_driver_store_backup()
-            .map_err(|e| (strings(en).drivers.backup_failed)(&e.to_string()))?;
+        DriverManager::export_driver_store_backup().map_err(|e| {
+            let err = Msg::from(e);
+            Msg::new(move |en| (strings(en).drivers.backup_failed)(&err.text(en)))
+        })?;
     }
     let report = match pending {
         PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids),
@@ -44,11 +66,15 @@ fn execute_install(
             DriverManager::install_catalog_driver(&uid, &title)
         }
     }
-    .map_err(|e| format!("Error: {e}"))?;
+    .map_err(Msg::from)?;
     Ok(InstallOutcome {
         partial: report.failed_count > 0,
         reboot: report.reboot_required,
-        message: report.message,
+        message: install_message(
+            report.succeeded_count,
+            report.failed_count,
+            report.history_warning,
+        ),
     })
 }
 
@@ -71,14 +97,12 @@ enum DeviceFilter {
 }
 
 fn trigger_device_scan(
-    en: bool,
     mut is_working: Signal<bool>,
-    mut status_msg: Signal<Option<(String, Tone)>>,
+    mut status_msg: Signal<Option<(Msg, Tone)>>,
     mut devices: Signal<Vec<InstalledDriverDevice>>,
 ) {
-    let t = strings(en).drivers;
     is_working.set(true);
-    status_msg.set(Some((t.scanning_devices.to_string(), Tone::Info)));
+    status_msg.set(Some((drv(|t| t.scanning_devices), Tone::Info)));
 
     spawn(async move {
         let res = tokio::task::spawn_blocking(DriverManager::list_present_devices).await;
@@ -86,14 +110,13 @@ fn trigger_device_scan(
             Ok(Ok(list)) => {
                 let count = list.len();
                 devices.set(list);
-                status_msg.set(Some(((t.devices_detected)(count), Tone::Info)));
+                status_msg.set(Some((
+                    Msg::new(move |en| (strings(en).drivers.devices_detected)(count)),
+                    Tone::Info,
+                )));
             }
-            Ok(Err(e)) => {
-                status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
-            }
-            Err(e) => {
-                status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
-            }
+            Ok(Err(e)) => status_msg.set(Some((Msg::from(e), Tone::Danger))),
+            Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
         }
         is_working.set(false);
     });
@@ -116,7 +139,7 @@ pub fn DriversView() -> Element {
     let mut search_query = use_signal(String::new);
     let mut filter_mode = use_signal(|| DeviceFilter::All);
     let mut is_working = use_signal(|| false);
-    let mut status_msg = use_signal(|| Option::<(String, Tone)>::None);
+    let mut status_msg = use_signal(|| Option::<(Msg, Tone)>::None);
     let mut reboot_alert = use_signal(|| false);
     let mut pending_install = use_signal(|| Option::<PendingInstall>::None);
     let mut backup_first = use_signal(|| true);
@@ -126,7 +149,7 @@ pub fn DriversView() -> Element {
     let mut scan_cancel = use_signal(|| Option::<Arc<AtomicBool>>::None);
 
     use_hook(move || {
-        trigger_device_scan(en, is_working, status_msg, devices);
+        trigger_device_scan(is_working, status_msg, devices);
         refresh_driver_history(install_history);
     });
 
@@ -145,17 +168,19 @@ pub fn DriversView() -> Element {
                     if rep.reboot_required {
                         reboot_alert.set(true);
                     }
-                    status_msg.set(Some((rep.message, Tone::Success)));
+                    let (title, file) = (record.title.clone(), record.published_name.clone());
+                    status_msg.set(Some((
+                        Msg::new(move |en| (strings(en).drivers.removed)(&title, &file)),
+                        Tone::Success,
+                    )));
                     if let Ok(Ok(refreshed)) =
                         tokio::task::spawn_blocking(DriverManager::list_present_devices).await
                     {
                         devices.set(refreshed);
                     }
                 }
-                Ok(Err(e)) => status_msg.set(Some((format!("Error: {e}"), Tone::Danger))),
-                Err(e) => {
-                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)))
-                }
+                Ok(Err(e)) => status_msg.set(Some((Msg::from(e), Tone::Danger))),
+                Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
             }
             refresh_driver_history(install_history);
             is_working.set(false);
@@ -163,7 +188,7 @@ pub fn DriversView() -> Element {
     };
 
     let on_refresh_devices = move |_| {
-        trigger_device_scan(en, is_working, status_msg, devices);
+        trigger_device_scan(is_working, status_msg, devices);
     };
 
     let on_full_scan = move |_| {
@@ -171,7 +196,7 @@ pub fn DriversView() -> Element {
         let cancel = Arc::new(AtomicBool::new(false));
         scan_cancel.set(Some(Arc::clone(&cancel)));
         is_working.set(true);
-        status_msg.set(Some((t.scanning_sources.to_string(), Tone::Info)));
+        status_msg.set(Some((drv(|t| t.scanning_sources), Tone::Info)));
 
         spawn(async move {
             let worker_cancel = Arc::clone(&cancel);
@@ -208,26 +233,31 @@ pub fn DriversView() -> Element {
                     // ERR-20: avisos de lo que no se pudo consultar (Windows Update, fabricantes, Catálogo).
                     let warnings: Vec<String> =
                         report.wua_note.into_iter().chain(report.notes).collect();
-                    let summary = if total_found == 0 {
-                        t.no_updates.to_string()
+                    let tone = if warnings.is_empty() {
+                        Tone::Success
                     } else {
-                        (t.updates_found)(total_found)
+                        Tone::Warning
                     };
-                    if warnings.is_empty() {
-                        status_msg.set(Some((summary, Tone::Success)));
-                    } else {
-                        status_msg.set(Some((
-                            format!(
-                                "{summary}\n{}\n• {}",
+                    let summary = Msg::new(move |en| {
+                        let t = strings(en).drivers;
+                        let mut text = if total_found == 0 {
+                            t.no_updates.to_string()
+                        } else {
+                            (t.updates_found)(total_found)
+                        };
+                        if !warnings.is_empty() {
+                            text.push_str(&format!(
+                                "\n{}\n• {}",
                                 t.sources_failed,
                                 warnings.join("\n• ")
-                            ),
-                            Tone::Warning,
-                        )));
-                    }
+                            ));
+                        }
+                        text
+                    });
+                    status_msg.set(Some((summary, tone)));
                 }
                 Err(e) => {
-                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
+                    status_msg.set(Some((thread_error(e), Tone::Danger)));
                 }
             }
             is_working.set(false);
@@ -238,7 +268,7 @@ pub fn DriversView() -> Element {
         if let Some(flag) = scan_cancel.take() {
             flag.store(true, Ordering::Release);
             is_working.set(false);
-            status_msg.set(Some((t.scan_cancelled.to_string(), Tone::Info)));
+            status_msg.set(Some((drv(|t| t.scan_cancelled), Tone::Info)));
         }
     };
 
@@ -256,10 +286,9 @@ pub fn DriversView() -> Element {
         let backup = *backup_first.read();
         let is_wua = matches!(pending, PendingInstall::Wua(_));
         is_working.set(true);
-        status_msg.set(Some((t.installing.to_string(), Tone::Info)));
+        status_msg.set(Some((drv(|t| t.installing), Tone::Info)));
         spawn(async move {
-            let res =
-                tokio::task::spawn_blocking(move || execute_install(pending, backup, en)).await;
+            let res = tokio::task::spawn_blocking(move || execute_install(pending, backup)).await;
             match res {
                 Ok(Ok(outcome)) => {
                     if outcome.reboot {
@@ -284,9 +313,7 @@ pub fn DriversView() -> Element {
                     refresh_driver_history(install_history);
                 }
                 Ok(Err(msg)) => status_msg.set(Some((msg, Tone::Danger))),
-                Err(e) => {
-                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)))
-                }
+                Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
             }
             is_working.set(false);
         });
@@ -294,22 +321,23 @@ pub fn DriversView() -> Element {
 
     let on_backup_oem = move |_| {
         is_working.set(true);
-        status_msg.set(Some((t.exporting_backup.to_string(), Tone::Info)));
+        status_msg.set(Some((drv(|t| t.exporting_backup), Tone::Info)));
 
         spawn(async move {
             let res = tokio::task::spawn_blocking(DriverManager::export_driver_store_backup).await;
             match res {
                 Ok(Ok(path)) => {
+                    let path = path.display().to_string();
                     status_msg.set(Some((
-                        (t.backup_saved)(&path.display().to_string()),
+                        Msg::new(move |en| (strings(en).drivers.backup_saved)(&path)),
                         Tone::Success,
                     )));
                 }
                 Ok(Err(e)) => {
-                    status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
+                    status_msg.set(Some((Msg::from(e), Tone::Danger)));
                 }
                 Err(e) => {
-                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
+                    status_msg.set(Some((thread_error(e), Tone::Danger)));
                 }
             }
             is_working.set(false);
@@ -475,7 +503,7 @@ pub fn DriversView() -> Element {
                     }
 
                     if let Some((msg, tone)) = status_msg.read().clone() {
-                        StatusBanner { text: msg, tone: tone }
+                        StatusBanner { text: msg.text(en), tone: tone }
                     }
                 }
             }
@@ -785,7 +813,8 @@ pub fn DriversView() -> Element {
                                                     onclick: move |_| {
                                                         let q_id = hw_for_btn.clone();
                                                         is_working.set(true);
-                                                        status_msg.set(Some(((t.searching_catalog)(&q_id), Tone::Info)));
+                                                        let shown = q_id.clone();
+                                                        status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.searching_catalog)(&shown)), Tone::Info)));
                                                         spawn(async move {
                                                             let res = tokio::task::spawn_blocking(move || {
                                                                 DriverManager::search_microsoft_catalog(&q_id)
@@ -795,13 +824,13 @@ pub fn DriversView() -> Element {
                                                                 Ok(Ok(list)) => {
                                                                     let n = list.len();
                                                                     catalog_matches.set(list);
-                                                                    status_msg.set(Some(((t.catalog_found)(n), Tone::Info)));
+                                                                    status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.catalog_found)(n)), Tone::Info)));
                                                                 }
                                                                 Ok(Err(e)) => {
-                                                                    status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
+                                                                    status_msg.set(Some((Msg::from(e), Tone::Danger)));
                                                                 }
                                                                 Err(e) => {
-                                                                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
+                                                                    status_msg.set(Some((thread_error(e), Tone::Danger)));
                                                                 }
                                                             }
                                                             is_working.set(false);

@@ -78,7 +78,6 @@ fn run_verified_vendor_installer(
     )?;
     if exit.is_success() {
         Ok(DriverInstallReport::single(
-            format!("Instalador oficial '{title}' verificado y terminado."),
             exit.exit_code == 3010 || exit.exit_code == 1641,
         ))
     } else {
