@@ -421,6 +421,24 @@ pub fn ToolsView() -> Element {
     }
 }
 
+/// Paquetes del catálogo que se ven con la búsqueda `query` (en minúsculas) y la categoría `cat`.
+fn filter_catalog(
+    query: &str,
+    cat: Option<AppCategory>,
+) -> Vec<&'static crate::core::store::app_store::CuratedPackage> {
+    AppStoreManager::get_catalog()
+        .iter()
+        .filter(|p| cat.is_none_or(|c| p.category == c))
+        .filter(|p| {
+            query.is_empty()
+                || p.name.to_ascii_lowercase().contains(query)
+                || p.copyright_holder.to_ascii_lowercase().contains(query)
+                || p.description_es.to_ascii_lowercase().contains(query)
+                || p.description_en.to_ascii_lowercase().contains(query)
+        })
+        .collect()
+}
+
 #[component]
 pub fn BatchAppStoreCard() -> Element {
     let lang = use_context::<Signal<Lang>>();
@@ -445,19 +463,20 @@ pub fn BatchAppStoreCard() -> Element {
     let on_install_selected = {
         let tx = dispatcher.tx.clone();
         move |_| {
-            let ids: Vec<&'static str> = AppStoreManager::get_catalog()
-                .iter()
+            // UI-21: solo lo que se ve; lo marcado y oculto por el filtro no se instala a ciegas.
+            let q = search_query.read().trim().to_ascii_lowercase();
+            let ids: Vec<&'static str> = filter_catalog(&q, *selected_cat.read())
+                .into_iter()
                 .filter(|p| selected.read().contains(p.id))
                 .map(|p| p.id)
                 .collect();
 
-            if !ids.is_empty() {
-                let _ = tx.send(InstallJobRequest::InstallAppBatch(ids));
+            if !ids.is_empty() && tx.send(InstallJobRequest::InstallAppBatch(ids)).is_ok() {
+                selected.write().clear();
             }
         }
     };
 
-    let selected_count = selected.read().len();
     let state = tools_state.read();
     let is_running = state.is_working;
 
@@ -491,20 +510,11 @@ pub fn BatchAppStoreCard() -> Element {
     let q = search_query.read().trim().to_ascii_lowercase();
     let cur_cat = *selected_cat.read();
 
-    let filtered_catalog: Vec<&'static crate::core::store::app_store::CuratedPackage> =
-        AppStoreManager::get_catalog()
-            .iter()
-            .filter(|p| cur_cat.is_none_or(|c| p.category == c))
-            .filter(|p| {
-                if q.is_empty() {
-                    return true;
-                }
-                p.name.to_ascii_lowercase().contains(&q)
-                    || p.copyright_holder.to_ascii_lowercase().contains(&q)
-                    || p.description_es.to_ascii_lowercase().contains(&q)
-                    || p.description_en.to_ascii_lowercase().contains(&q)
-            })
-            .collect();
+    let filtered_catalog = filter_catalog(&q, cur_cat);
+    let selected_count = filtered_catalog
+        .iter()
+        .filter(|p| selected.read().contains(p.id))
+        .count();
 
     rsx! {
         Card {

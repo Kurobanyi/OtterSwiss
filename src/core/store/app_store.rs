@@ -132,6 +132,8 @@ pub struct CuratedPackage {
     pub run_unelevated: bool,
     pub silent_args: &'static str,
     pub max_bytes: u64,
+    /// Cómo se detecta instalada: prefijo del `DisplayName` en Uninstall, o, para las apps de la Store
+    /// (`is_winget`), nombre del paquete (`Microsoft.WindowsCalculator`).
     pub uninstall_display_prefix: &'static str,
 }
 
@@ -717,30 +719,6 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         uninstall_display_prefix: "PowerToys",
     },
     CuratedPackage {
-        id: "rufus",
-        name: "Rufus",
-        category: AppCategory::Utilities,
-        icon: AppIcon::Disk,
-        copyright_holder: "Pete Batard",
-        license: "GPL-3.0",
-        official_site: "https://rufus.ie/",
-        description_es: "Creación de unidades USB de arranque e instalación de Windows",
-        description_en: "Create bootable USB flash drives reliably",
-        version: "4.6",
-        url: "https://github.com/pbatard/rufus/releases/download/v4.6/rufus-4.6.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: None,
-        signer_cn: Some("Akeo Consulting"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 6 * 1024 * 1024,
-        uninstall_display_prefix: "Rufus",
-    },
-    CuratedPackage {
         id: "treesize_free",
         name: "TreeSize Free",
         category: AppCategory::Utilities,
@@ -984,7 +962,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "MSN Weather",
+        uninstall_display_prefix: "Microsoft.BingWeather",
     },
     CuratedPackage {
         id: "uwp_camera",
@@ -1008,7 +986,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Windows Camera",
+        uninstall_display_prefix: "Microsoft.WindowsCamera",
     },
     CuratedPackage {
         id: "uwp_clock",
@@ -1032,7 +1010,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Windows Clock",
+        uninstall_display_prefix: "Microsoft.WindowsAlarms",
     },
     CuratedPackage {
         id: "uwp_calculator",
@@ -1052,11 +1030,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         cert_thumbprint_sha1: None,
         is_msi: false,
         is_winget: true,
-        winget_id: Some("9WZDNCRFJ364"),
+        winget_id: Some("9WZDNCRFHVN5"),
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Calculator",
+        uninstall_display_prefix: "Microsoft.WindowsCalculator",
     },
     CuratedPackage {
         id: "uwp_recorder",
@@ -1080,7 +1058,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Voice Recorder",
+        uninstall_display_prefix: "Microsoft.WindowsSoundRecorder",
     },
     CuratedPackage {
         id: "uwp_phonelink",
@@ -1100,11 +1078,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         cert_thumbprint_sha1: None,
         is_msi: false,
         is_winget: true,
-        winget_id: Some("9NBLGGH4S547"),
+        winget_id: Some("9NMPJ99VJBWV"),
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Phone Link",
+        uninstall_display_prefix: "Microsoft.YourPhone",
     },
     CuratedPackage {
         id: "uwp_todos",
@@ -1128,7 +1106,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Microsoft To Do",
+        uninstall_display_prefix: "Microsoft.Todos",
     },
     CuratedPackage {
         id: "uwp_xbox",
@@ -1152,7 +1130,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Xbox",
+        uninstall_display_prefix: "Microsoft.GamingApp",
     },
     CuratedPackage {
         id: "uwp_gamebar",
@@ -1176,7 +1154,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Xbox Game Bar",
+        uninstall_display_prefix: "Microsoft.XboxGamingOverlay",
     },
     CuratedPackage {
         id: "uwp_clipchamp",
@@ -1200,7 +1178,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Clipchamp",
+        uninstall_display_prefix: "Clipchamp.Clipchamp",
     },
     CuratedPackage {
         id: "uwp_terminal",
@@ -1224,7 +1202,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Windows Terminal",
+        uninstall_display_prefix: "Microsoft.WindowsTerminal",
     },
     CuratedPackage {
         id: "uwp_photos",
@@ -1244,11 +1222,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         cert_thumbprint_sha1: None,
         is_msi: false,
         is_winget: true,
-        winget_id: Some("9NBLGGH42THS"),
+        winget_id: Some("9WZDNCRFJBH4"),
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Microsoft Photos",
+        uninstall_display_prefix: "Microsoft.Windows.Photos",
     },
     CuratedPackage {
         id: "uwp_snipping",
@@ -1272,7 +1250,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Snipping Tool",
+        uninstall_display_prefix: "Microsoft.ScreenSketch",
     },
     CuratedPackage {
         id: "uwp_paint",
@@ -1296,7 +1274,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Paint",
+        uninstall_display_prefix: "Microsoft.Paint",
     },
     CuratedPackage {
         id: "uwp_notepad",
@@ -1320,7 +1298,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         run_unelevated: false,
         silent_args: "",
         max_bytes: 0,
-        uninstall_display_prefix: "Windows Notepad",
+        uninstall_display_prefix: "Microsoft.WindowsNotepad",
     },
 ];
 
@@ -1439,6 +1417,18 @@ fn resolve_user_winget(user_token: &SafeHandle) -> CoreResult<PathBuf> {
     }
 }
 
+/// UI-20: paquetes de la Store instalados para el usuario (nombres completos en minúsculas). Las apps de la Store no
+/// aparecen en `Uninstall`; su registro está en el repositorio de AppModel del perfil.
+fn installed_store_packages() -> Vec<String> {
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags(
+            r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages",
+            KEY_READ,
+        )
+        .map(|k| k.enum_keys().flatten().map(|n| n.to_ascii_lowercase()).collect())
+        .unwrap_or_default()
+}
+
 fn display_name_matches(display_name: &str, prefix: &str) -> bool {
     let dn = display_name.trim().to_ascii_lowercase();
     let pref = prefix.trim().to_ascii_lowercase();
@@ -1448,6 +1438,13 @@ fn display_name_matches(display_name: &str, prefix: &str) -> bool {
     let Some(rest) = dn.strip_prefix(&pref) else {
         return false;
     };
+    // Prefijo que ya es una versión («Python 3.12») seguido de más versión («.8 (64-bit)»).
+    if pref.ends_with(|c: char| c.is_ascii_digit())
+        && rest.starts_with('.')
+        && rest[1..].starts_with(|c: char| c.is_ascii_digit())
+    {
+        return true;
+    }
     let mut chars = rest.chars();
     match chars.next() {
         Some(' ') | Some('-') => {}
@@ -1536,11 +1533,17 @@ impl AppStoreManager {
             }
         }
 
+        let store_packages = installed_store_packages();
         let mut installed = HashSet::new();
         for pkg in CURATED_CATALOG {
-            let found = display_names
-                .iter()
-                .any(|name| display_name_matches(name, pkg.uninstall_display_prefix));
+            let found = if pkg.is_winget {
+                let wanted = format!("{}_", pkg.uninstall_display_prefix.to_ascii_lowercase());
+                store_packages.iter().any(|full| full.starts_with(&wanted))
+            } else {
+                display_names
+                    .iter()
+                    .any(|name| display_name_matches(name, pkg.uninstall_display_prefix))
+            };
             if found {
                 installed.insert(pkg.id);
             }
@@ -1758,6 +1761,15 @@ mod tests {
         assert!(!display_name_matches("GitHub Desktop", "Git"));
         assert!(display_name_matches("7-Zip 24.09 (x64)", "7-Zip"));
         assert!(display_name_matches("Notepad++ (64-bit x64)", "Notepad++"));
+        assert!(display_name_matches(
+            "Python 3.12.8 (64-bit)",
+            "Python 3.12"
+        ));
+        assert!(!display_name_matches(
+            "Python 3.13.1 (64-bit)",
+            "Python 3.12"
+        ));
+        assert!(!display_name_matches("Python 3.120", "Python 3.12"));
     }
 
     #[test]
