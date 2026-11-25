@@ -12,6 +12,7 @@ pub struct DriversStrings {
     pub scanning_devices: &'static str,
     pub devices_detected: fn(usize) -> String,
     pub scanning_sources: &'static str,
+    pub scan_cancelled: &'static str,
     pub no_updates: &'static str,
     pub updates_found: fn(usize) -> String,
     pub sources_failed: &'static str,
@@ -71,6 +72,7 @@ pub static ES: DriversStrings = DriversStrings {
         )
     },
     scanning_sources: "Buscando en Windows Update, NVIDIA e Intel y el Catálogo de Microsoft…",
+    scan_cancelled: "Búsqueda cancelada.",
     no_updates: "No hay actualizaciones de drivers pendientes.",
     updates_found: |n| {
         format!(
@@ -149,6 +151,7 @@ pub static EN: DriversStrings = DriversStrings {
     scanning_devices: "Reading hardware and drivers…",
     devices_detected: |n| format!("{} detected.", plural(n, ("device", "devices"))),
     scanning_sources: "Checking Windows Update, NVIDIA and Intel, and the Microsoft Update Catalog…",
+    scan_cancelled: "Search cancelled.",
     no_updates: "No pending driver updates.",
     updates_found: |n| format!("Scan complete: {} found.", plural(n, ("update", "updates"))),
     sources_failed: "Some sources could not be checked:",
@@ -223,6 +226,7 @@ mod tests {
                 s.subtitle,
                 s.scanning_devices,
                 s.scanning_sources,
+                s.scan_cancelled,
                 s.search_placeholder,
                 s.installing,
                 s.exporting_backup,

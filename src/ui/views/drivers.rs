@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 
@@ -120,6 +122,8 @@ pub fn DriversView() -> Element {
     let mut backup_first = use_signal(|| true);
     let install_history = use_signal(Vec::<InstalledDriverRecord>::new);
     let mut pending_revert = use_signal(|| Option::<InstalledDriverRecord>::None);
+    // CON-03: bandera de la búsqueda en curso; cada búsqueda tiene la suya, así una cancelada no pisa a la siguiente.
+    let mut scan_cancel = use_signal(|| Option::<Arc<AtomicBool>>::None);
 
     use_hook(move || {
         trigger_device_scan(en, is_working, status_msg, devices);
@@ -164,13 +168,22 @@ pub fn DriversView() -> Element {
 
     let on_full_scan = move |_| {
         let current_devs = devices.read().clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        scan_cancel.set(Some(Arc::clone(&cancel)));
         is_working.set(true);
         status_msg.set(Some((t.scanning_sources.to_string(), Tone::Info)));
 
         spawn(async move {
-            let res =
-                tokio::task::spawn_blocking(move || DriverManager::run_full_scan(&current_devs))
-                    .await;
+            let worker_cancel = Arc::clone(&cancel);
+            let res = tokio::task::spawn_blocking(move || {
+                DriverManager::run_full_scan(&current_devs, &worker_cancel)
+            })
+            .await;
+            // Cancelada: la vista ya quedó libre y quizá haya otra tarea en curso; no se toca nada.
+            if cancel.load(Ordering::Acquire) {
+                return;
+            }
+            scan_cancel.set(None);
 
             match res {
                 Ok(report) => {
@@ -219,6 +232,14 @@ pub fn DriversView() -> Element {
             }
             is_working.set(false);
         });
+    };
+
+    let on_cancel_scan = move |_| {
+        if let Some(flag) = scan_cancel.take() {
+            flag.store(true, Ordering::Release);
+            is_working.set(false);
+            status_msg.set(Some((t.scan_cancelled.to_string(), Tone::Info)));
+        }
     };
 
     let on_install_wua = move |_| {
@@ -368,6 +389,13 @@ pub fn DriversView() -> Element {
                             disabled: *is_working.read(),
                             onclick: on_full_scan,
                             "{t.full_scan}"
+                        }
+                        if scan_cancel.read().is_some() {
+                            button {
+                                class: "btn btn-danger",
+                                onclick: on_cancel_scan,
+                                "{strings(en).cancel}"
+                            }
                         }
                         button {
                             class: "btn btn-secondary",

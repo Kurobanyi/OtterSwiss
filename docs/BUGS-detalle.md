@@ -1185,12 +1185,13 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="con-03"></a>
 ### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Parcial
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: `Search`, `Download` e `Install` de WUA son síncronos; `install_driver_updates` repite la búsqueda online. La pestaña
   queda deshabilitada minutos sin botón de cancelar. (COM está bien: STA en hilo propio y `CoUninitialize` emparejado.)
 - **Dónde**: `src/core/drivers.rs:897-1017`, `1034-1197`; `src/ui/views/drivers.rs:88-161`.
 - **Propuesta**: `BeginSearch`/`EndSearch` con cancelación y reutilizar los `IUpdate` de la búsqueda.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): la búsqueda de Windows Update corre en su hilo con plazo de 4 minutos: pasado ese tiempo la pestaña deja de esperar y lo informa (la búsqueda solo lee, así que el hilo puede terminar después sin dejar nada a medias). La instalación sigue sin plazo ni cancelación a propósito: cortar una instalación de drivers a mitad es peor que esperar. Tampoco hay botón de cancelar la búsqueda. Verificado: `clippy --all-targets -- -D warnings` en verde.
+- **Cierre final** (2026-11-25): la vista muestra «Cancelar» mientras busca. Cada búsqueda lleva su propia bandera: al cancelar, la vista deja de esperar enseguida y queda libre, y lo que devuelva después esa búsqueda se descarta (no pisa a una nueva). En el núcleo, `search_driver_updates` deja de esperar a Windows Update (sondeo cada 250 ms, `CoreError::Cancelled`) y `run_full_scan` corta antes de la fuente siguiente. Descartado reutilizar los `IUpdate` de la búsqueda para instalar: viven en el STA del hilo de búsqueda, que termina, y mantenerlo vivo entre la búsqueda y la instalación agrega un hilo COM propio por un ahorro de segundos. Verificado: test `busqueda_cancelada_no_consulta_fuentes` (cae si la cancelación no se ve), `cargo test` (70), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; en la app sin elevar: buscar, cancelar («Búsqueda cancelada.», botones libres al instante) y buscar de nuevo hasta el final.
 
 <a id="ui-19"></a>
 ### UI-19 · Error de Windows Update y «no hay actualizaciones» a la vez

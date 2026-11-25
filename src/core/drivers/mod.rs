@@ -11,6 +11,7 @@ mod vendor;
 mod wua;
 
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
@@ -123,7 +124,13 @@ impl DriverManager {
         with_driver_history(&upd.title, || Self::install_vendor_update_inner(upd))
     }
 
-    pub fn run_full_scan(devices: &[InstalledDriverDevice]) -> FullDriverScanResult {
+    /// Busca en todas las fuentes. Si `cancel` se marca, corta antes de la fuente siguiente y devuelve un resultado
+    /// vacío: la vista ya dejó de esperarlo (CON-03).
+    pub fn run_full_scan(
+        devices: &[InstalledDriverDevice],
+        cancel: &AtomicBool,
+    ) -> FullDriverScanResult {
+        let cancelled = || cancel.load(Ordering::Acquire);
         let wua_policy_blocked = is_wu_driver_policy_blocked();
         if wua_policy_blocked {
             return FullDriverScanResult {
@@ -132,19 +139,27 @@ impl DriverManager {
             };
         }
 
-        let (wua_updates, wua_note) = match Self::search_driver_updates() {
+        let (wua_updates, wua_note) = match Self::search_driver_updates(cancel) {
             Ok(wua) => (wua, None),
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
+        if cancelled() {
+            return FullDriverScanResult::default();
+        }
 
         // ERR-20: lo que no se pudo consultar se informa en `notes`, no se confunde con «sin actualizaciones».
         let mut notes = Vec::new();
         let mut vendor_updates = Vec::new();
-        for (source, result) in [
-            ("NVIDIA", Self::check_nvidia_updates(devices)),
-            ("Intel", Self::check_intel_updates(devices)),
-        ] {
-            match result {
+        type VendorCheck = fn(&[InstalledDriverDevice]) -> CoreResult<Vec<VendorDriverUpdate>>;
+        let vendors: [(&str, VendorCheck); 2] = [
+            ("NVIDIA", Self::check_nvidia_updates),
+            ("Intel", Self::check_intel_updates),
+        ];
+        for (source, check) in vendors {
+            if cancelled() {
+                return FullDriverScanResult::default();
+            }
+            match check(devices) {
                 Ok(found) => vendor_updates.extend(found),
                 Err(e) => notes.push(format!("{source}: {e}")),
             }
@@ -156,6 +171,9 @@ impl DriverManager {
             .iter()
             .filter(|d| d.has_problem && d.problem_code == 28)
         {
+            if cancelled() {
+                return FullDriverScanResult::default();
+            }
             let Some(short_id) = dev.short_hw_id() else {
                 continue;
             };
@@ -250,4 +268,19 @@ fn fetch_bytes(
     resp.require_ok()?;
     validate_https_host(&resp.final_url()?, hosts)?;
     resp.read_to_end_capped(max_bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// CON-03: con la búsqueda cancelada no se consulta ninguna fuente ni se informa un fallo.
+    #[test]
+    fn busqueda_cancelada_no_consulta_fuentes() {
+        let res = DriverManager::run_full_scan(&[], &AtomicBool::new(true));
+        assert!(res.wua_updates.is_empty() && res.vendor_updates.is_empty());
+        assert!(res.catalog_matches.is_empty());
+        assert_eq!(res.wua_note, None);
+        assert!(res.notes.is_empty());
+    }
 }

@@ -1,5 +1,9 @@
 //! Windows Update Agent por COM: búsqueda de drivers pendientes (con plazo, CON-03) e instalación de los elegidos.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::RecvTimeoutError;
+use std::time::{Duration, Instant};
+
 use windows::Win32::Foundation::VARIANT_BOOL;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::UpdateAgent::{
@@ -17,10 +21,13 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::ComGuard;
 
 /// Plazo de una búsqueda de drivers en Windows Update (CON-03).
-const WUA_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4 * 60);
+const WUA_SEARCH_TIMEOUT: Duration = Duration::from_secs(4 * 60);
+/// Cada cuánto se mira si el usuario canceló la búsqueda.
+const CANCEL_POLL: Duration = Duration::from_millis(250);
 
 impl DriverManager {
-    pub fn search_driver_updates() -> CoreResult<Vec<DriverUpdateCandidate>> {
+    /// Drivers pendientes en Windows Update. `cancel` deja de esperar la búsqueda (`CoreError::Cancelled`).
+    pub fn search_driver_updates(cancel: &AtomicBool) -> CoreResult<Vec<DriverUpdateCandidate>> {
         if is_windows_update_service_disabled() {
             return Err(CoreError::SystemTool {
                 message: "El servicio Windows Update (wuauserv) está deshabilitado.".into(),
@@ -28,25 +35,39 @@ impl DriverManager {
             });
         }
 
+        if cancel.load(Ordering::Acquire) {
+            return Err(CoreError::Cancelled);
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(Self::search_driver_updates_on_this_thread());
         });
-        // CON-03: Windows Update puede quedarse colgado (servicio ocupado, red). Pasado el plazo se deja de esperar;
-        // la búsqueda solo lee, así que el hilo puede terminar solo después sin dejar nada a medias.
-        match rx.recv_timeout(WUA_SEARCH_TIMEOUT) {
-            Ok(result) => result,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(CoreError::SystemTool {
-                message: format!(
-                    "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
-                    WUA_SEARCH_TIMEOUT.as_secs() / 60
-                ),
-                source: None,
-            }),
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(CoreError::SystemTool {
-                message: "Fallo inesperado en hilo COM de búsqueda de drivers".into(),
-                source: None,
-            }),
+        // CON-03: Windows Update puede quedarse colgado (servicio ocupado, red). Pasado el plazo, o si el usuario cancela,
+        // se deja de esperar; la búsqueda solo lee, así que el hilo puede terminar solo después sin dejar nada a medias.
+        let deadline = Instant::now() + WUA_SEARCH_TIMEOUT;
+        loop {
+            if cancel.load(Ordering::Acquire) {
+                return Err(CoreError::Cancelled);
+            }
+            match rx.recv_timeout(CANCEL_POLL) {
+                Ok(result) => return result,
+                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(CoreError::SystemTool {
+                        message: format!(
+                            "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
+                            WUA_SEARCH_TIMEOUT.as_secs() / 60
+                        ),
+                        source: None,
+                    });
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(CoreError::SystemTool {
+                        message: "Fallo inesperado en hilo COM de búsqueda de drivers".into(),
+                        source: None,
+                    });
+                }
+            }
         }
     }
 
