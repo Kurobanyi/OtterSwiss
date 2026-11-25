@@ -249,12 +249,12 @@ pub fn CleanerView() -> Element {
                     Card {
                         title: freed_title,
                         subtitle: None,
-                        h2 { style: "color: var(--success); font-size: var(--font-size-xl);", "{format_mb(total_freed)}" }
+                        h2 { style: "color: var(--success-text); font-size: var(--font-size-xl);", "{format_mb(total_freed)}" }
                     }
                     Card {
                         title: files_title,
                         subtitle: None,
-                        h2 { style: "color: var(--accent); font-size: var(--font-size-xl);", "{total_files}" }
+                        h2 { style: "color: var(--accent-text); font-size: var(--font-size-xl);", "{total_files}" }
                     }
                 }
 

@@ -670,7 +670,7 @@ pub fn UninstallerView() -> Element {
                     Card {
                         title: locked_title,
                         subtitle: None,
-                        div { style: "font-size: var(--font-size-xs); color: var(--danger); display: flex; flex-direction: column; gap: var(--space-1);",
+                        div { style: "font-size: var(--font-size-xs); color: var(--danger-text); display: flex; flex-direction: column; gap: var(--space-1);",
                             for err in rep.errors.iter() {
                                 div { "{err}" }
                             }

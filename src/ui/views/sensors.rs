@@ -176,11 +176,11 @@ fn render_sensor_section(
                         div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
                             h2 {
                                 style: if reading.current_celsius >= 80.0 {
-                                    "color: var(--danger); font-size: var(--font-size-xl);"
+                                    "color: var(--danger-text); font-size: var(--font-size-xl);"
                                 } else if reading.current_celsius >= 65.0 {
-                                    "color: var(--warning); font-size: var(--font-size-xl);"
+                                    "color: var(--warning-text); font-size: var(--font-size-xl);"
                                 } else {
-                                    "color: var(--success); font-size: var(--font-size-xl);"
+                                    "color: var(--success-text); font-size: var(--font-size-xl);"
                                 },
                                 "{reading.current_celsius:.1} °C"
                             }

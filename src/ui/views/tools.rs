@@ -208,7 +208,7 @@ pub fn ToolsView() -> Element {
                     class: "card",
                     style: "border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface));",
                     div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        strong { style: "color: var(--warning);",
+                        strong { style: "color: var(--warning-text);",
                             if en { "Installing — Please keep OtterSwiss open until finished." } else { "Instalando — No cierres OtterSwiss hasta que finalice." }
                         }
                         if let Some(lbl) = state.progress_label.as_ref() {
@@ -422,7 +422,7 @@ pub fn BatchAppStoreCard() -> Element {
 
                 for cat in categories {
                     div { key: "{cat.label(en)}", style: "display: flex; flex-direction: column; gap: var(--space-2);",
-                        h4 { style: "font-size: var(--font-size-xs); color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1);",
+                        h4 { style: "font-size: var(--font-size-xs); color: var(--accent-text); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1);",
                             "{cat.label(en)}"
                         }
                         for pkg in AppStoreManager::get_catalog().iter().filter(|p| p.category == cat) {
@@ -488,7 +488,7 @@ pub fn BatchAppStoreCard() -> Element {
                                         }
                                         if let Some(InstallStatus::Failed(err_msg)) = st {
                                             div {
-                                                style: "font-size: var(--font-size-xs); color: var(--danger); margin-left: var(--space-5);",
+                                                style: "font-size: var(--font-size-xs); color: var(--danger-text); margin-left: var(--space-5);",
                                                 "{err_msg}"
                                             }
                                         }

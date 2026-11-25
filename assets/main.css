@@ -24,7 +24,8 @@
     --text-muted: #8d93aa;
     --accent: #3b82f6;
     --accent-rgb: 59, 130, 246;
-    --accent-hover: #2563eb;
+    /* UI-18: el hover aclara para que --on-accent (oscuro) siga en >= 4.5:1. */
+    --accent-hover: #60a5fa;
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #ef4444;
@@ -134,7 +135,8 @@
     --text-muted: #b58d99;
     --accent: #f43f5e;
     --accent-rgb: 244, 63, 94;
-    --accent-hover: #e11d48;
+    /* UI-18: el hover aclara para que --on-accent (oscuro) siga en >= 4.5:1. */
+    --accent-hover: #f75d78;
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #fb7185;
@@ -237,7 +239,8 @@ html, body {
 }
 
 .top-nav-item.active {
-    color: var(--accent);
+    /* UI-18: --accent como texto queda bajo 4.5:1 en cuatro temas. */
+    color: var(--accent-text);
     background: rgba(var(--accent-rgb, 59, 130, 246), 0.16);
 }
 
@@ -466,6 +469,11 @@ html, body {
 }
 
 .text-muted { color: var(--text-muted); }
+/* UI-18: --success, --warning, --danger y --accent son para fondos y bordes; el texto usa siempre --*-text. */
+.text-success { color: var(--success-text); }
+.text-warning { color: var(--warning-text); }
+.text-danger { color: var(--danger-text); }
+.text-accent { color: var(--accent-text); }
 .text-xs { font-size: var(--font-size-xs); }
 
 .state-container {
@@ -480,6 +488,30 @@ html, body {
     font-size: var(--font-size-md);
     font-weight: 600;
     margin-bottom: var(--space-1);
+}
+
+.state-error {
+    border-style: solid;
+    border-color: var(--danger);
+}
+
+.state-error .state-title { color: var(--danger-text); }
+
+/* UI-17: indicador de carga de LoadingState. */
+.state-spinner {
+    width: 24px;
+    height: 24px;
+    margin: 0 auto var(--space-3);
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: state-spin 0.8s linear infinite;
+}
+
+@keyframes state-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .state-spinner { animation: none; border-top-color: var(--border); border-right-color: var(--accent); }
 }
 
 .state-desc {

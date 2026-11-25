@@ -69,7 +69,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
                 }
                 div { style: "display: flex; align-items: center; gap: var(--space-2);",
                     if let Some(msg) = status_msg() {
-                        span { style: "font-size: var(--font-size-xs); color: var(--accent); margin-right: var(--space-2);", "{msg}" }
+                        span { style: "font-size: var(--font-size-xs); color: var(--accent-text); margin-right: var(--space-2);", "{msg}" }
                     }
                     button {
                         class: "btn btn-secondary",
@@ -128,7 +128,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
             div { class: "cards-grid",
                 div { class: "card", style: "padding: var(--space-4);",
                     div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent);", "CPU" }
+                        strong { style: "color: var(--accent-text);", "CPU" }
                         if let Some(temp) = props.cpu_temp_c {
                             span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{temp:.0} °C" }
                         }
@@ -154,7 +154,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
 
                 div { class: "card", style: "padding: var(--space-4);",
                     div { style: "margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent);", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
+                        strong { style: "color: var(--accent-text);", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
                     }
                     div { style: "font-size: var(--font-size-md); font-weight: 600; margin-bottom: var(--space-2);", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
                     SpecRow {
@@ -173,7 +173,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
 
                 div { class: "card", style: "padding: var(--space-4);",
                     div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent);", "GPU" }
+                        strong { style: "color: var(--accent-text);", "GPU" }
                         if let Some(edge) = props.gpu_edge_temp_c {
                             span { style: "font-size: var(--font-size-xs); font-weight: 600;", "{edge:.0} °C" }
                         }
@@ -196,7 +196,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
 
                 div { class: "card", style: "padding: var(--space-4);",
                     div { style: "margin-bottom: var(--space-2);",
-                        strong { style: "color: var(--accent);", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
+                        strong { style: "color: var(--accent-text);", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
                     }
                     for drive in &specs.storage {
                         div { key: "{drive.device_index}", style: "margin-bottom: var(--space-2);",
@@ -212,7 +212,7 @@ pub fn HardwareTab(props: HardwareTabProps) -> Element {
 
             div { class: "card", style: "padding: var(--space-4);",
                 div { style: "display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);",
-                    strong { style: "color: var(--accent);", "RAM (SMBIOS)" }
+                    strong { style: "color: var(--accent-text);", "RAM (SMBIOS)" }
                     span { style: "font-size: var(--font-size-xs); color: var(--text-muted);",
                         "{ram_gb:.1} GB {specs.memory.memory_type} @ {specs.memory.effective_speed_mts} MT/s ({specs.memory.populated_slots}/{specs.memory.total_slots})"
                     }
