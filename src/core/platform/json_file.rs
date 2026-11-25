@@ -51,36 +51,27 @@ pub fn write_backup<T: Serialize>(path: &Path, value: &T) -> CoreResult<()> {
 mod tests {
     use super::*;
 
-    fn temp_file(tag: &str) -> std::path::PathBuf {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        std::env::temp_dir().join(format!(
-            "otter-json-{tag}-{}-{nonce}.json",
-            std::process::id()
-        ))
-    }
+    use crate::core::test_util::TempDir;
 
     #[test]
     fn ida_y_vuelta_y_archivo_ausente() {
-        let path = temp_file("ok");
+        let dir = TempDir::new("json-ok");
+        let path = dir.join("respaldo.json");
         assert!(read_backup::<Vec<u32>>(&path, 1024, "x").unwrap().is_none());
         write_backup(&path, &vec![1u32, 2, 3]).unwrap();
         assert_eq!(
             read_backup::<Vec<u32>>(&path, 1024, "x").unwrap(),
             Some(vec![1, 2, 3])
         );
-        let _ = std::fs::remove_file(&path);
     }
 
     /// Patrón 6: un respaldo dañado es un error, no un respaldo vacío.
     #[test]
     fn respaldo_danado_falla() {
-        let path = temp_file("roto");
+        let dir = TempDir::new("json-roto");
+        let path = dir.join("respaldo.json");
         std::fs::write(&path, b"{ esto no es json").unwrap();
         let err = read_backup::<Vec<u32>>(&path, 1024, "no se toca nada").unwrap_err();
         assert!(err.to_string().contains("dañado"));
-        let _ = std::fs::remove_file(&path);
     }
 }

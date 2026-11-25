@@ -117,7 +117,7 @@ impl BackupManager {
         self.file_path.exists()
     }
 
-    /// Carga tolerante (Transversal 6): descarta entradas manipuladas o fuera de la tabla única
+    /// Carga tolerante (patrón 4 de docs/BUGS.md): descarta entradas manipuladas o fuera de la tabla única
     /// sin bloquear toda la recuperación del respaldo.
     pub fn load_tolerant(&self) -> CoreResult<(Option<OptimizationBackup>, Vec<String>)> {
         let _lock = NamedMutex::acquire_blocking(BACKUP_MUTEX_NAME)?;

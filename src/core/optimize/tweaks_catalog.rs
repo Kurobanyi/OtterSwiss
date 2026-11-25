@@ -83,7 +83,7 @@ pub struct ServiceTweakSpec {
     pub applies_to_low_end: bool,
 }
 
-/// Tabla única de verdad (Transversal 6): usada tanto por el motor para aplicar
+/// Tabla única de verdad (patrón 4 de docs/BUGS.md): usada tanto por el motor para aplicar
 /// como por `backup.rs` y `registry.rs` para validar cada clave, valor y tipo.
 pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
     RegistryTweakSpec {

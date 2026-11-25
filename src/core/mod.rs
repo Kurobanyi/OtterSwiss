@@ -19,5 +19,7 @@ pub mod progress;
 pub mod rollback;
 pub mod store;
 pub mod sys_tools;
+#[cfg(test)]
+pub(crate) mod test_util;
 pub mod uninstall;
 pub mod updater;

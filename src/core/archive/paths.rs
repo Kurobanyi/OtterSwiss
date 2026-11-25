@@ -141,22 +141,7 @@ pub fn resolve_extract_destination(dest: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Carpeta temporal única para un test (se borra al final de cada test).
-    fn temp_dir(tag: &str) -> PathBuf {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = std::env::temp_dir().join(format!(
-            "otter_test_{}_{}_{}",
-            tag,
-            std::process::id(),
-            nonce
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::core::test_util::TempDir;
 
     #[test]
     fn saneo_rechaza_traversal_unidades_y_ads() {
@@ -204,7 +189,7 @@ mod tests {
     /// SYS-01: extraer junto a una carpeta existente nunca la reutiliza ni la borra.
     #[test]
     fn destino_existente_usa_carpeta_hermana_y_conserva_el_centinela() {
-        let root = temp_dir("dest");
+        let root = TempDir::new("dest");
         let dest = root.join("proyecto");
         assert_eq!(resolve_extract_destination(&dest), dest);
 
@@ -221,6 +206,5 @@ mod tests {
             resolve_extract_destination(&dest),
             root.join("proyecto (3)")
         );
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

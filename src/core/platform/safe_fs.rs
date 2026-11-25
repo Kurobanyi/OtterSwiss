@@ -509,12 +509,7 @@ mod tests {
     /// SEC-01: si la validación de raíz falla, el archivo queda intacto.
     #[test]
     fn borrado_fuera_de_raiz_no_borra_nada() {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let base =
-            std::env::temp_dir().join(format!("otter_sec01_{}_{}", std::process::id(), nonce));
+        let base = crate::core::test_util::TempDir::new("sec01");
         let root = base.join("raiz");
         std::fs::create_dir_all(&root).unwrap();
         let inside = root.join("dentro.txt");
@@ -530,6 +525,5 @@ mod tests {
 
         delete_verified_file_under(&inside, Some(&root)).unwrap();
         assert!(!inside.exists());
-        let _ = std::fs::remove_dir_all(&base);
     }
 }
