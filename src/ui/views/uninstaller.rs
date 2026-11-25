@@ -11,6 +11,7 @@ use crate::ui::i18n::Lang;
 use crate::ui::installer::{
     refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
 };
+use crate::ui::task::run_blocking;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SortMode {
@@ -73,11 +74,7 @@ fn start_scan(
 
     spawn(async move {
         let app_clone = app.clone();
-        let res =
-            tokio::task::spawn_blocking(move || UninstallerManager::scan_leftovers(&app_clone))
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+        let res = run_blocking(move || UninstallerManager::scan_leftovers(&app_clone)).await;
 
         match res {
             Err(err) => status_msg.set(Some((
@@ -150,11 +147,7 @@ fn start_uninstall_and_scan(
 
     spawn(async move {
         let app_run = app.clone();
-        let res =
-            tokio::task::spawn_blocking(move || UninstallerManager::uninstall_and_scan(&app_run))
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+        let res = run_blocking(move || UninstallerManager::uninstall_and_scan(&app_run)).await;
 
         let name = app.display_name.clone();
         let (text, tone) = match res {
@@ -287,10 +280,7 @@ pub fn UninstallerView() -> Element {
     let mut load_apps = move || {
         is_working.set(true);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+            let res = run_blocking(UninstallerManager::list_installed_apps).await;
             match res {
                 Ok(list) => {
                     apps.set(list.clone());

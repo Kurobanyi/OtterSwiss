@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
 use dioxus::prelude::*;
 
@@ -11,6 +10,7 @@ use crate::core::debloat::{
 };
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
+use crate::ui::task::{run_blocking, run_with_progress};
 
 fn apply_recommended_defaults(
     scan: &DebloatScanResult,
@@ -80,10 +80,7 @@ pub fn DebloaterView() -> Element {
         is_scanning.set(true);
         error_banner.set(None);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(DebloaterManager::scan_system)
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+            let res = run_blocking(DebloaterManager::scan_system).await;
 
             match res {
                 Ok(data) => {
@@ -133,31 +130,20 @@ pub fn DebloaterView() -> Element {
             percent: 2,
         });
 
-        let prog_arc = Arc::new(Mutex::new(DebloatProgress::default()));
-        let prog_worker = Arc::clone(&prog_arc);
         let cancel_worker = Arc::clone(&cancel_for_exec);
 
         spawn(async move {
-            let handle = tokio::task::spawn_blocking(move || {
+            let res = run_with_progress(progress_state, move |prog| {
                 DebloaterManager::execute_debloat(
                     &apps_to_remove,
                     &sel_reg_ids,
                     &cancel_worker,
-                    Some(&prog_worker),
+                    Some(prog),
                 )
                 .map_err(|e| e.to_string())
-            });
-
-            while !handle.is_finished() {
-                if let Ok(snap) = prog_arc.lock() {
-                    if snap.total_steps > 0 {
-                        progress_state.set(snap.clone());
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(150)).await;
-            }
-
-            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
+            })
+            .await
+            .and_then(|r| r);
 
             match res {
                 Ok(rep) => {
@@ -180,10 +166,7 @@ pub fn DebloaterView() -> Element {
         is_running.set(true);
         error_banner.set(None);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(DebloaterManager::revert_registry_debloat)
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+            let res = run_blocking(DebloaterManager::revert_registry_debloat).await;
 
             match res {
                 Ok(count) => {

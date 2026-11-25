@@ -9,6 +9,7 @@ pub mod document;
 pub mod i18n;
 pub mod installer;
 pub mod prefs;
+pub mod task;
 pub mod theme;
 pub mod views;
 

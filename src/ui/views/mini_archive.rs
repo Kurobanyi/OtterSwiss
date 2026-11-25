@@ -2,8 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
 use dioxus::desktop::use_window;
 use dioxus::prelude::*;
@@ -16,6 +15,7 @@ use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::i18n::Lang;
+use crate::ui::task::run_with_progress;
 use crate::ui::theme::Theme;
 
 /// Trabajo que llega por la línea de comandos (`--extract` o `--compress-zip`).
@@ -56,7 +56,7 @@ pub fn MiniArchiveView() -> Element {
     let lang = use_hook(Lang::load_persisted);
     let en = lang.is_en();
 
-    let mut progress = use_signal(ArchiveProgress::default);
+    let progress = use_signal(ArchiveProgress::default);
     let mut is_running = use_signal(|| true);
     let mut error_msg = use_signal(|| Option::<String>::None);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
@@ -64,42 +64,30 @@ pub fn MiniArchiveView() -> Element {
     let worker_job = job.clone();
     let cancel_for_hook = Arc::clone(&cancel_flag);
     use_hook(move || {
-        let prog_arc = Arc::new(Mutex::new(ArchiveProgress::default()));
-        let prog_worker = Arc::clone(&prog_arc);
         let cancel_worker = Arc::clone(&cancel_for_hook);
 
         spawn(async move {
-            let handle = tokio::task::spawn_blocking(move || {
+            let res = run_with_progress(progress, move |prog| {
                 match worker_job.mode {
                     ArchiveMode::Extract => ArchiveManager::extract_archive_with_progress(
                         &worker_job.src,
                         &worker_job.dest,
                         DEFAULT_EXTRACT_QUOTA,
                         &cancel_worker,
-                        Some(&prog_worker),
+                        Some(prog),
                     ),
                     ArchiveMode::Compress => ArchiveManager::compress_path_with_progress(
                         &worker_job.src,
                         &worker_job.dest,
                         ArchiveFormat::Zip,
                         &cancel_worker,
-                        Some(&prog_worker),
+                        Some(prog),
                     ),
                 }
                 .map_err(|e| e.to_string())
-            });
-
-            while !handle.is_finished() {
-                if let Ok(snap) = prog_arc.lock() {
-                    progress.set(snap.clone());
-                }
-                tokio::time::sleep(Duration::from_millis(120)).await;
-            }
-
-            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
-            if let Ok(snap) = prog_arc.lock() {
-                progress.set(snap.clone());
-            }
+            })
+            .await
+            .and_then(|r| r);
             if let Err(err) = res {
                 error_msg.set(Some(err));
             }

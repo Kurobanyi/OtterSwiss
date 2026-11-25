@@ -1,6 +1,3 @@
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
 use dioxus::prelude::*;
 
 use crate::core::hardware::profile::{HardwareProfile, HardwareTier};
@@ -14,6 +11,7 @@ use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
+use crate::ui::task::run_with_progress;
 
 #[component]
 pub fn DashboardView() -> Element {
@@ -67,36 +65,18 @@ pub fn DashboardView() -> Element {
             completed_steps: Vec::new(),
         });
 
-        let prog_arc = Arc::new(Mutex::new(EngineProgress::default()));
-        let prog_worker = Arc::clone(&prog_arc);
-
         spawn(async move {
-            let handle = tokio::task::spawn_blocking(move || {
+            let res = run_with_progress(progress_state, move |prog| {
                 let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
                 engine
-                    .apply_profile_with_progress(
-                        OptimizationProfile::AutoDetected,
-                        Some(&prog_worker),
-                    )
+                    .apply_profile_with_progress(OptimizationProfile::AutoDetected, Some(prog))
                     .map_err(|e| e.to_string())
-            });
-
-            while !handle.is_finished() {
-                if let Ok(snap) = prog_arc.lock() {
-                    if snap.total_steps > 0 {
-                        progress_state.set(snap.clone());
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-
-            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
+            })
+            .await
+            .and_then(|r| r);
 
             match res {
                 Ok(report) => {
-                    if let Ok(snap) = prog_arc.lock() {
-                        progress_state.set(snap.clone());
-                    }
                     let need_reboot = report.requires_relogon;
                     last_report.set(Some(report));
                     if let Ok(g) = get_active_scheme_guid() {
@@ -134,27 +114,15 @@ pub fn DashboardView() -> Element {
             completed_steps: Vec::new(),
         });
 
-        let prog_arc = Arc::new(Mutex::new(EngineProgress::default()));
-        let prog_worker = Arc::clone(&prog_arc);
-
         spawn(async move {
-            let handle = tokio::task::spawn_blocking(move || {
+            let res = run_with_progress(progress_state, move |prog| {
                 let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
                 engine
-                    .rollback_with_progress(false, Some(&prog_worker))
+                    .rollback_with_progress(false, Some(prog))
                     .map_err(|e| e.to_string())
-            });
-
-            while !handle.is_finished() {
-                if let Ok(snap) = prog_arc.lock() {
-                    if snap.total_steps > 0 {
-                        progress_state.set(snap.clone());
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-
-            let res = handle.await.unwrap_or_else(|e| Err(e.to_string()));
+            })
+            .await
+            .and_then(|r| r);
 
             match res {
                 Ok(rb) => {

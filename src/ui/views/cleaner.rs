@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Arc;
 
 use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
+use crate::ui::task::run_with_progress;
 
 fn format_mb(bytes: u64) -> String {
     let mb = bytes as f64 / (1024.0 * 1024.0);
@@ -48,37 +48,25 @@ pub fn CleanerView() -> Element {
             files_removed_so_far: 0,
         });
 
-        let prog_arc = Arc::new(Mutex::new(CleanProgress::default()));
-        let prog_worker = Arc::clone(&prog_arc);
         let cancel_worker = Arc::clone(&cancel_for_start);
 
         spawn(async move {
-            let handle = tokio::task::spawn_blocking(move || {
+            let res = run_with_progress(progress_state, move |prog| {
                 SystemCleaner::run_full_cleanup_with_progress(
                     min_age_hours,
                     recycle,
                     &cancel_worker,
-                    Some(&prog_worker),
+                    Some(prog),
                 )
-            });
-
-            while !handle.is_finished() {
-                if let Ok(snap) = prog_arc.lock() {
-                    progress_state.set(snap.clone());
-                }
-                tokio::time::sleep(Duration::from_millis(150)).await;
-            }
-
-            let res = handle.await.unwrap_or_else(|e| {
+            })
+            .await
+            .unwrap_or_else(|e| {
                 vec![CategoryCleanResult {
                     category: if en { "Cleanup" } else { "Limpieza" }.to_string(),
-                    error: Some(e.to_string()),
+                    error: Some(e),
                     ..Default::default()
                 }]
             });
-            if let Ok(snap) = prog_arc.lock() {
-                progress_state.set(snap.clone());
-            }
             results.set(res);
             is_cleaning.set(false);
         });
