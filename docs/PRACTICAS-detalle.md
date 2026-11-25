@@ -273,7 +273,7 @@ Leyenda:
 
 <a id="ar-17"></a>
 ### AR-17 · Textos de presentación generados en core
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `specs::to_compact_summary` tiene etiquetas en español; `win_common` usa textos de relleno como valores («Placa Base
   Estándar», «Unidad Física {}»); `AppCategory::label(en)` es bilingüe y `DebloatCategory::label()` solo español: dos estrategias de
   idioma en core. Es el diseño que hay detrás de `UI-11` (diferido); este ID solo propone la regla para el código nuevo.
@@ -281,6 +281,7 @@ Leyenda:
   `src/core/debloater.rs:33`.
 - **Propuesta**: core devuelve datos (`Option<String>`, enums) y la UI pone el texto (`IN-02`).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Va con UI-11 (diferido por el autor).
+- **Cierre parcial** (2026-11-25): `CoreError::kind()` y `detail()`: la UI pone el título del error en el idioma del usuario y deja el detalle técnico (decisión del autor: traducir cada detalle va con `AR-06`). Faltan los catálogos con texto en core (ajustes del motor y sus categorías, Debloater, limpiador, restos, menú contextual, rellenos de `specs`): sus informes y su progreso llevan la etiqueta en español y no el ID, así que traducirlos pide cambiar esos informes; queda para un bloque propio.
 
 <a id="ar-18"></a>
 ### AR-18 · Tres versiones del crate `windows` y dependencias duplicadas
@@ -756,7 +757,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 
 <a id="in-03"></a>
 ### IN-03 · El estado guarda mensajes ya traducidos
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: los avisos se guardan como `String` con el idioma capturado al crearlos; si el usuario cambia de idioma, los que ya
   están en pantalla quedan en el anterior. Es otra fuente de mezcla de idiomas.
 - **Dónde**: `src/ui/views/uninstaller.rs:27`; `debloater.rs:84`; `dns.rs:49`; `src/ui/mod.rs:132,181,197,278`.
@@ -764,6 +765,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Los avisos siguen guardando el texto ya traducido.
 - **Observado** (2026-11-25): en Drivers, «237 dispositivos detectados.» sigue en español después de pasar a inglés; el resto de la
   pestaña sí cambia. Pasa igual en todas las vistas que guardan avisos.
+- **Cierre** (2026-11-25, decisión del autor): `ui/i18n/msg.rs` con `Msg`, que guarda cómo armar el texto (`Fn(en) -> String`) y lo arma al dibujarse. Todos los avisos de las vistas (Archivador, mini ventana, Limpiador, Inicio, Debloater, DNS, Drivers, Hardware, Desinstalador, Herramientas y su cola, y la ventana principal) guardan `Msg` en vez de `String`; `ui::task` devuelve `Msg`. Test `el_aviso_cambia_de_idioma`. Verificado: `cargo test` (76 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; en la app sin elevar, «236 dispositivos detectados.» pasa a «236 devices detected.» al cambiar de idioma, y el error del Debloater sin admin pasa de «Administrator rights required: …» a «Hace falta ejecutar como administrador: …».
 
 <a id="in-04"></a>
 ### IN-04 · Plurales con «(s)»
@@ -1027,13 +1029,14 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-26"></a>
 ### AR-26 · Core arma textos y la UI los vuelve a leer como datos
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `describe_cm_problem(code, en)` bilingüe en core (contra `AR-17`); rellenos en un idioma dentro de campos de datos
   («Desconocida», «Sin driver», «Latest», «Oficial Intel»); `install_*` devuelve `CoreResult<String>` y la vista busca «Reinicio» en el
   texto (`ARQ-05`); en sensores, `sensor_type` y la nota larga en español.
 - **Dónde**: `src/core/drivers.rs:71-76`, `309-339`, `1186-1189`, `1397-1405`, `1780-1800`; `src/ui/views/drivers.rs:619-621`;
   `src/core/hardware/sensors/wmi.rs`.
 - **Propuesta**: `CmProblem(u32)` y `Option<String>` en core, textos en `strings`; `DriverInstallOutcome`; `SensorSource` enum.
+- **Cierre parcial** (2026-11-25): `describe_cm_problem` salió de core (`cm_problem` en el catálogo, `IN-08`); `DriverInstallReport` ya no trae una frase sino cantidades y `history_warning`, y la vista arma «N drivers instalados» o «Se quitó …» (`installed`, `removed`). Faltan el relleno «Desconocida» de NVIDIA y los textos de sensores. Verificado: `cargo test` (76 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; en la app sin elevar, «236 dispositivos detectados.» pasa a «236 devices detected.» al cambiar de idioma, y el error del Debloater sin admin pasa de «Administrator rights required: …» a «Hace falta ejecutar como administrador: …».
 
 <a id="ar-27"></a>
 ### AR-27 · Booleanos y centinelas donde corresponde un enum

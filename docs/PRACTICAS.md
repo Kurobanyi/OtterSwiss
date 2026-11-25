@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **88 hechas, 9 parciales, 16 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **89 hechas, 11 parciales, 13 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -40,7 +40,7 @@ dependencias directas se usan.
 | [`TE-02`](PRACTICAS-detalle.md#te-02) | 185 estilos inline: el CSS no tiene clases de layout ni de componente | M/L | Parcial |
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
-| [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
+| [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Parcial |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
 
 ## P2
@@ -49,11 +49,10 @@ dependencias directas se usan.
 |---|---|---|---|
 | [`OR-04`](PRACTICAS-detalle.md#or-04) | El orden interno de los archivos no sigue una regla | M | Parcial |
 | [`AR-06`](PRACTICAS-detalle.md#ar-06) | `CoreError` por módulo y no por causa; 161 `source: None` | L | Parcial |
-| [`AR-17`](PRACTICAS-detalle.md#ar-17) | Textos de presentación generados en core | M | Pendiente |
+| [`AR-17`](PRACTICAS-detalle.md#ar-17) | Textos de presentación generados en core | M | Parcial |
 | [`AR-18`](PRACTICAS-detalle.md#ar-18) | Tres versiones del crate `windows` y dependencias duplicadas | M | Parcial |
 | [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
-| [`IN-03`](PRACTICAS-detalle.md#in-03) | El estado guarda mensajes ya traducidos | M | Pendiente |
 | [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Pendiente |
 | [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Pendiente |
 | [`AR-28`](PRACTICAS-detalle.md#ar-28) | API pública de drivers más ancha de lo que usa la UI, y campos muertos | S | Pendiente |
@@ -78,8 +77,8 @@ dependencias directas se usan.
 
 1. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 2. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-3. Decidido el 25/11: `AR-17` y `AR-26` (con `UI-11`) e `IN-03`: core devuelve datos y la UI traduce al mostrar. Decisión del autor:
-   `AR-19`.
+3. Decidido el 25/11, a medias: los catálogos con texto en core (`AR-17`, `AR-26`, `UI-11`): que sus informes y su progreso lleven
+   el ID y la UI ponga el texto. Decisión del autor: `AR-19`.
 
 ## Lo que hay que conservar
 

@@ -841,7 +841,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
   menú contextual y todos los `CoreError`. En español salen en inglés «Restored {} NIC(s)», «No active physical adapters», «Thread error».
 - **Dónde**: `src/ui/i18n.rs`; `src/core/tweaks_catalog.rs`; `src/ui/views/dns.rs:99,106,136`; `src/ui/views/dashboard.rs:346,376`.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Traducidos los textos de la UI (DNS, tienda, «Thread error», «Cargando...», avisos de privacidad DNS). Los textos que vienen del núcleo (tweaks, categorías, Debloater, `CoreError`) siguen solo en español: diferido por decisión del autor. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
-
+- **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`, decisión del autor): los avisos se traducen al mostrarse (`Msg`, `IN-03`) y cada `CoreError` muestra su título en el idioma del usuario con el detalle técnico detrás. Siguen en español los catálogos de core (ajustes, Debloater, limpiador, restos, menú contextual) y el detalle de cada error (va con `AR-06`). Verificado: `cargo test` (76 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; en la app sin elevar, «236 dispositivos detectados.» pasa a «236 devices detected.» al cambiar de idioma, y el error del Debloater sin admin pasa de «Administrator rights required: …» a «Hace falta ejecutar como administrador: …».
 
 <a id="ui-12"></a>
 ### UI-12 · El plan de optimización y el Debloater no explican lo que hacen

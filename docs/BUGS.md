@@ -64,7 +64,7 @@ Conservan su expediente; se retoman por decisión del autor.
 ## Siguiente
 
 1. `SEC-35` y `ERR-24`: la tienda pasa a `winget download` con verificación propia (decidido el 25/11).
-2. `UI-11`: core devuelve datos y la UI pone el texto, junto con `IN-03` de PRACTICAS (decidido el 25/11).
+2. `UI-11`: avisos y títulos de error ya se traducen; faltan los catálogos de core (ajustes, Debloater, limpiador, restos).
 3. En una VM: instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
 4. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
 5. Mejoras de `docs/PRACTICAS.md`.
