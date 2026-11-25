@@ -4,10 +4,10 @@ use dioxus::prelude::*;
 
 use crate::core::drivers::{
     CatalogDriverMatch, DriverManager, DriverUpdateCandidate, InstalledDriverDevice,
-    InstalledDriverRecord, VendorDriverUpdate, describe_cm_problem,
+    InstalledDriverRecord, VendorDriverUpdate,
 };
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{Lang, strings};
 
 /// SEC-37: instalación que espera confirmación del usuario.
 #[derive(Debug, Clone)]
@@ -32,13 +32,8 @@ fn execute_install(
     en: bool,
 ) -> Result<InstallOutcome, String> {
     if backup {
-        DriverManager::export_driver_store_backup().map_err(|e| {
-            if en {
-                format!("Backup failed, nothing was installed: {e}")
-            } else {
-                format!("Falló el respaldo, no se instaló nada: {e}")
-            }
-        })?;
+        DriverManager::export_driver_store_backup()
+            .map_err(|e| (strings(en).drivers.backup_failed)(&e.to_string()))?;
     }
     let report = match pending {
         PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids),
@@ -79,15 +74,9 @@ fn trigger_device_scan(
     mut status_msg: Signal<Option<(String, Tone)>>,
     mut devices: Signal<Vec<InstalledDriverDevice>>,
 ) {
+    let t = strings(en).drivers;
     is_working.set(true);
-    status_msg.set(Some((
-        if en {
-            "Scanning PnP hardware & driver metadata...".to_string()
-        } else {
-            "Escaneando hardware PnP y metadatos de drivers...".to_string()
-        },
-        Tone::Info,
-    )));
+    status_msg.set(Some((t.scanning_devices.to_string(), Tone::Info)));
 
     spawn(async move {
         let res = tokio::task::spawn_blocking(DriverManager::list_present_devices).await;
@@ -95,20 +84,13 @@ fn trigger_device_scan(
             Ok(Ok(list)) => {
                 let count = list.len();
                 devices.set(list);
-                status_msg.set(Some((
-                    if en {
-                        format!("Detected {} active hardware devices.", count)
-                    } else {
-                        format!("{} dispositivos de hardware activos detectados.", count)
-                    },
-                    Tone::Info,
-                )));
+                status_msg.set(Some(((t.devices_detected)(count), Tone::Info)));
             }
             Ok(Err(e)) => {
                 status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
             }
             Err(e) => {
-                status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
+                status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
             }
         }
         is_working.set(false);
@@ -119,6 +101,7 @@ fn trigger_device_scan(
 pub fn DriversView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let t = strings(en).drivers;
 
     let mut devices = use_signal(Vec::<InstalledDriverDevice>::new);
     let mut wua_updates = use_signal(Vec::<DriverUpdateCandidate>::new);
@@ -166,7 +149,9 @@ pub fn DriversView() -> Element {
                     }
                 }
                 Ok(Err(e)) => status_msg.set(Some((format!("Error: {e}"), Tone::Danger))),
-                Err(e) => status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger))),
+                Err(e) => {
+                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)))
+                }
             }
             refresh_driver_history(install_history);
             is_working.set(false);
@@ -180,16 +165,7 @@ pub fn DriversView() -> Element {
     let on_full_scan = move |_| {
         let current_devs = devices.read().clone();
         is_working.set(true);
-        status_msg.set(Some((
-            if en {
-                "Scanning Windows Update, NVIDIA/Intel Official Feeds & Microsoft Catalog..."
-                    .to_string()
-            } else {
-                "Escaneando Windows Update, NVIDIA/Intel Oficial y Catálogo de Microsoft..."
-                    .to_string()
-            },
-            Tone::Info,
-        )));
+        status_msg.set(Some((t.scanning_sources.to_string(), Tone::Info)));
 
         spawn(async move {
             let res =
@@ -220,35 +196,25 @@ pub fn DriversView() -> Element {
                     let warnings: Vec<String> =
                         report.wua_note.into_iter().chain(report.notes).collect();
                     let summary = if total_found == 0 {
-                        if en {
-                            "No pending driver updates found.".to_string()
-                        } else {
-                            "No se encontraron actualizaciones de drivers pendientes.".to_string()
-                        }
-                    } else if en {
-                        format!("Scan complete: {} update(s) found.", total_found)
+                        t.no_updates.to_string()
                     } else {
-                        format!(
-                            "Escaneo completo: {} actualización(es) encontrada(s).",
-                            total_found
-                        )
+                        (t.updates_found)(total_found)
                     };
                     if warnings.is_empty() {
                         status_msg.set(Some((summary, Tone::Success)));
                     } else {
-                        let lead = if en {
-                            "Some sources could not be checked:"
-                        } else {
-                            "No se pudieron consultar algunas fuentes:"
-                        };
                         status_msg.set(Some((
-                            format!("{summary}\n{lead}\n• {}", warnings.join("\n• ")),
+                            format!(
+                                "{summary}\n{}\n• {}",
+                                t.sources_failed,
+                                warnings.join("\n• ")
+                            ),
                             Tone::Warning,
                         )));
                     }
                 }
                 Err(e) => {
-                    status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
+                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
                 }
             }
             is_working.set(false);
@@ -269,14 +235,7 @@ pub fn DriversView() -> Element {
         let backup = *backup_first.read();
         let is_wua = matches!(pending, PendingInstall::Wua(_));
         is_working.set(true);
-        status_msg.set(Some((
-            if en {
-                "Installing drivers…".to_string()
-            } else {
-                "Instalando drivers…".to_string()
-            },
-            Tone::Info,
-        )));
+        status_msg.set(Some((t.installing.to_string(), Tone::Info)));
         spawn(async move {
             let res =
                 tokio::task::spawn_blocking(move || execute_install(pending, backup, en)).await;
@@ -304,7 +263,9 @@ pub fn DriversView() -> Element {
                     refresh_driver_history(install_history);
                 }
                 Ok(Err(msg)) => status_msg.set(Some((msg, Tone::Danger))),
-                Err(e) => status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger))),
+                Err(e) => {
+                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)))
+                }
             }
             is_working.set(false);
         });
@@ -312,27 +273,14 @@ pub fn DriversView() -> Element {
 
     let on_backup_oem = move |_| {
         is_working.set(true);
-        status_msg.set(Some((
-            if en {
-                "Exporting installed OEM drivers to ProgramData\\OtterSwiss\\DriverBackup..."
-                    .to_string()
-            } else {
-                "Exportando drivers OEM instalados a ProgramData\\OtterSwiss\\DriverBackup..."
-                    .to_string()
-            },
-            Tone::Info,
-        )));
+        status_msg.set(Some((t.exporting_backup.to_string(), Tone::Info)));
 
         spawn(async move {
             let res = tokio::task::spawn_blocking(DriverManager::export_driver_store_backup).await;
             match res {
                 Ok(Ok(path)) => {
                     status_msg.set(Some((
-                        if en {
-                            format!("OEM Driver Store backup saved: {}", path.display())
-                        } else {
-                            format!("Respaldo de Driver Store guardado en: {}", path.display())
-                        },
+                        (t.backup_saved)(&path.display().to_string()),
                         Tone::Success,
                     )));
                 }
@@ -340,7 +288,7 @@ pub fn DriversView() -> Element {
                     status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
                 }
                 Err(e) => {
-                    status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
+                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
                 }
             }
             is_working.set(false);
@@ -402,180 +350,36 @@ pub fn DriversView() -> Element {
     let catalog_guard = catalog_matches.read();
     let selected_wua_count = selected_wua.read().len();
 
-    let main_title = if en {
-        "Native Driver Manager & Updater"
-    } else {
-        "Gestor y Actualizador Nativo de Drivers"
-    }
-    .to_string();
-    let main_sub = Some(
-        if en {
-            "Windows Update + Direct NVIDIA/Intel Feeds + Microsoft Update Catalog (.CAB)"
-        } else {
-            "Windows Update + Feeds Oficiales NVIDIA/Intel + Catálogo Oficial de Microsoft (.CAB)"
-        }
-        .to_string(),
-    );
-    let btn_full_scan = if en {
-        "Full Driver Scan"
-    } else {
-        "Escaneo Completo de Drivers"
-    };
-    let btn_refresh_lbl = if en {
-        "Refresh Hardware"
-    } else {
-        "Refrescar Hardware"
-    };
-    let btn_backup_lbl = if en {
-        "Backup OEM Drivers"
-    } else {
-        "Respaldar Drivers OEM"
-    };
-
     let problems_badge_txt = if problem_count > 0 {
-        if en {
-            format!("{} device error(s)", problem_count)
-        } else {
-            format!("{} dispositivo(s) con error", problem_count)
-        }
-    } else if en {
-        "All hardware OK".to_string()
+        (t.device_errors)(problem_count)
     } else {
-        "Hardware sin errores".to_string()
-    };
-
-    let policy_warn_txt = if en {
-        "This PC is managed: a policy (driver exclusion or WSUS) decides driver updates, so OtterSwiss does not search for or install drivers.".to_string()
-    } else {
-        "Este equipo está gestionado: una política (exclusión de drivers o WSUS) decide las actualizaciones de drivers, así que OtterSwiss no las busca ni las instala.".to_string()
-    };
-
-    let reboot_banner_txt = if en {
-        "Windows requires a system restart to complete driver installation.".to_string()
-    } else {
-        "Windows requiere reiniciar el equipo para completar la instalación de los drivers."
-            .to_string()
-    };
-
-    let vendor_card_title = if en {
-        "Direct Vendor Updates (NVIDIA / Intel)"
-    } else {
-        "Actualizaciones Directas de Fabricantes (NVIDIA / Intel)"
-    }
-    .to_string();
-    let vendor_card_sub = Some(
-        if en {
-            "Official signed installers matched by PCI/USB Hardware ID"
-        } else {
-            "Instaladores oficiales firmados emparejados por Hardware ID"
-        }
-        .to_string(),
-    );
-    let vendor_install_lbl = if en {
-        "Download & Install"
-    } else {
-        "Descargar e Instalar"
-    };
-
-    let wua_card_title = if en {
-        "Windows Update WHQL Drivers"
-    } else {
-        "Drivers WHQL de Windows Update"
-    }
-    .to_string();
-    let wua_card_sub = Some(
-        if en {
-            "Verified packages from Windows Update Agent"
-        } else {
-            "Paquetes verificados mediante Windows Update Agent"
-        }
-        .to_string(),
-    );
-    let btn_install_wua = if en {
-        format!("Download & Install ({})", selected_wua_count)
-    } else {
-        format!("Descargar e Instalar ({})", selected_wua_count)
-    };
-    let firmware_warn_lbl = "FIRMWARE / BIOS";
-
-    let catalog_card_title = if en {
-        "Microsoft Update Catalog (.CAB Solutions)"
-    } else {
-        "Catálogo Oficial de Microsoft (.CAB)"
-    }
-    .to_string();
-    let catalog_card_sub = Some(
-        if en {
-            "Official Microsoft WHQL .cab packages for missing drivers"
-        } else {
-            "Paquetes .CAB firmados por Microsoft para dispositivos sin driver"
-        }
-        .to_string(),
-    );
-    let catalog_install_lbl = if en { "Install .CAB" } else { "Instalar .CAB" };
-
-    let hw_card_title = if en {
-        "Installed PnP Hardware & Drivers"
-    } else {
-        "Hardware PnP y Controladores Instalados"
-    }
-    .to_string();
-    let hw_card_sub = Some(if en {
-        format!("Showing {} device(s)", filtered_devs.len())
-    } else {
-        format!("Mostrando {} dispositivo(s)", filtered_devs.len())
-    });
-    let search_placeholder = if en {
-        "Filter by device, vendor, Hardware ID or .inf..."
-    } else {
-        "Filtrar por dispositivo, fabricante, Hardware ID o .inf..."
-    };
-
-    let filter_all_lbl = if en {
-        format!("All ({})", total_devs)
-    } else {
-        format!("Todos ({})", total_devs)
-    };
-    let filter_err_lbl = if en {
-        format!("Errors ({})", problem_count)
-    } else {
-        format!("Con Errores ({})", problem_count)
-    };
-    let filter_oem_lbl = if en {
-        format!("Third-Party OEM ({})", oem_count)
-    } else {
-        format!("Terceros OEM ({})", oem_count)
-    };
-    let find_catalog_btn = if en {
-        "Search MS Catalog"
-    } else {
-        "Buscar en Catálogo"
+        t.all_ok.to_string()
     };
 
     rsx! {
         div { class: "content-body",
             Card {
-                title: main_title,
-                subtitle: main_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                    div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
+                title: t.title.to_string(),
+                subtitle: Some(t.subtitle.to_string()),
+                div { class: "stack-3",
+                    div { class: "row wrap",
                         button {
                             class: "btn btn-primary",
                             disabled: *is_working.read(),
                             onclick: on_full_scan,
-                            "{btn_full_scan}"
+                            "{t.full_scan}"
                         }
                         button {
                             class: "btn btn-secondary",
                             disabled: *is_working.read(),
                             onclick: on_refresh_devices,
-                            "{btn_refresh_lbl}"
+                            "{t.refresh_hardware}"
                         }
                         button {
                             class: "btn btn-secondary",
                             disabled: *is_working.read(),
                             onclick: on_backup_oem,
-                            "{btn_backup_lbl}"
+                            "{t.backup_oem}"
                         }
                         span {
                             class: if problem_count > 0 { "badge badge-danger" } else { "badge badge-success" },
@@ -601,14 +405,10 @@ pub fn DriversView() -> Element {
                             let has_firmware = items.iter().any(|(_, fw)| *fw);
                             rsx! {
                                 ConfirmDialog {
-                                    title: if en { "Install drivers?".to_string() } else { "¿Instalar drivers?".to_string() },
-                                    subtitle: Some(if en {
-                                        "A bad driver can leave a device without working. Windows can only undo it from Device Manager or a restore point.".to_string()
-                                    } else {
-                                        "Un driver equivocado puede dejar un dispositivo sin funcionar. Solo se deshace desde el Administrador de dispositivos o un punto de restauración.".to_string()
-                                    }),
-                                    confirm_label: if en { "Install".to_string() } else { "Instalar".to_string() },
-                                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                                    title: t.confirm_title.to_string(),
+                                    subtitle: Some(t.confirm_subtitle.to_string()),
+                                    confirm_label: t.install.to_string(),
+                                    cancel_label: strings(en).cancel.to_string(),
                                     tone: if has_firmware { Tone::Danger } else { Tone::Warning },
                                     on_confirm: on_confirm_install,
                                     on_cancel: move |_| pending_install.set(None),
@@ -623,14 +423,7 @@ pub fn DriversView() -> Element {
                                         }
                                     }
                                     if has_firmware {
-                                        StatusBanner {
-                                            text: if en {
-                                                "Includes firmware or BIOS: an interrupted update can leave the PC unable to boot. Keep it plugged in.".to_string()
-                                            } else {
-                                                "Incluye firmware o BIOS: si la actualización se interrumpe, el equipo puede no arrancar. Mantenlo enchufado.".to_string()
-                                            },
-                                            tone: Tone::Danger,
-                                        }
+                                        StatusBanner { text: t.firmware_warning.to_string(), tone: Tone::Danger }
                                     }
                                     label { class: "row gap-2 clickable",
                                         input {
@@ -638,9 +431,7 @@ pub fn DriversView() -> Element {
                                             checked: *backup_first.read(),
                                             onchange: move |evt| backup_first.set(evt.checked()),
                                         }
-                                        span { class: "text-sm",
-                                            if en { "Back up installed drivers first (ProgramData\\OtterSwiss\\DriverBackup)" } else { "Respaldar antes los drivers instalados (ProgramData\\OtterSwiss\\DriverBackup)" }
-                                        }
+                                        span { class: "text-sm", "{t.backup_first}" }
                                     }
                                 }
                             }
@@ -648,11 +439,11 @@ pub fn DriversView() -> Element {
                     }
 
                     if *wua_policy_warn.read() {
-                        StatusBanner { text: policy_warn_txt, tone: Tone::Warning }
+                        StatusBanner { text: t.policy_managed.to_string(), tone: Tone::Warning }
                     }
 
                     if *reboot_alert.read() {
-                        StatusBanner { text: reboot_banner_txt, tone: Tone::Warning }
+                        StatusBanner { text: t.reboot_needed.to_string(), tone: Tone::Warning }
                     }
 
                     if let Some((msg, tone)) = status_msg.read().clone() {
@@ -663,22 +454,22 @@ pub fn DriversView() -> Element {
 
             if !vendor_guard.is_empty() {
                 Card {
-                    title: vendor_card_title,
-                    subtitle: vendor_card_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    title: t.vendor_title.to_string(),
+                    subtitle: Some(t.vendor_subtitle.to_string()),
+                    div { class: "stack-2",
                         for v_upd in vendor_guard.iter() {
                             {
                                 let upd_clone = v_upd.clone();
                                 rsx! {
                                     div {
                                         key: "{v_upd.id}",
-                                        style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); flex-wrap: wrap;",
-                                        div { style: "min-width: 240px; flex: 1;",
-                                            div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
+                                        class: "item-row row-between gap-3 wrap",
+                                        div { class: "grow-wide",
+                                            div { class: "row wrap",
                                                 span { class: "badge badge-info", "{v_upd.vendor}" }
-                                                span { class: "text-sm", style: "font-weight: 600;", "{v_upd.title}" }
+                                                span { class: "text-sm fw-semibold", "{v_upd.title}" }
                                             }
-                                            div { class: "text-xs text-muted", style: "margin-top: var(--space-1);",
+                                            div { class: "text-xs text-muted mt-1",
                                                 "{v_upd.current_version} → {v_upd.latest_version} • {v_upd.size_label}"
                                                 if !v_upd.release_date.is_empty() {
                                                     " • {v_upd.release_date}"
@@ -691,7 +482,7 @@ pub fn DriversView() -> Element {
                                             onclick: move |_| {
                                                 pending_install.set(Some(PendingInstall::Vendor(Box::new(upd_clone.clone()))));
                                             },
-                                            "{vendor_install_lbl}"
+                                            "{t.download_install}"
                                         }
                                     }
                                 }
@@ -703,12 +494,8 @@ pub fn DriversView() -> Element {
 
             if !install_history.read().is_empty() {
                 Card {
-                    title: if en { "Drivers installed from OtterSwiss".to_string() } else { "Drivers instalados desde OtterSwiss".to_string() },
-                    subtitle: Some(if en {
-                        "Removing one sends its devices back to the best driver left on the PC.".to_string()
-                    } else {
-                        "Quitar uno devuelve sus dispositivos al mejor driver que quede en el equipo.".to_string()
-                    }),
+                    title: t.history_title.to_string(),
+                    subtitle: Some(t.history_subtitle.to_string()),
                     div { class: "stack-2",
                         for rec in install_history.read().iter() {
                             {
@@ -723,7 +510,7 @@ pub fn DriversView() -> Element {
                                             class: "btn btn-secondary btn-sm",
                                             disabled: *is_working.read(),
                                             onclick: move |_| pending_revert.set(Some(rec_c.clone())),
-                                            if en { "Remove" } else { "Quitar" }
+                                            "{t.remove}"
                                         }
                                     }
                                 }
@@ -735,28 +522,22 @@ pub fn DriversView() -> Element {
 
             if let Some(rec) = pending_revert.read().clone() {
                 ConfirmDialog {
-                    title: if en { "Remove this driver?".to_string() } else { "¿Quitar este driver?".to_string() },
+                    title: t.remove_title.to_string(),
                     subtitle: Some(format!("{} ({})", rec.title, rec.published_name)),
-                    confirm_label: if en { "Remove".to_string() } else { "Quitar".to_string() },
-                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    confirm_label: t.remove.to_string(),
+                    cancel_label: strings(en).cancel.to_string(),
                     tone: Tone::Warning,
                     on_confirm: on_confirm_revert,
                     on_cancel: move |_| pending_revert.set(None),
-                    p { class: "text-sm",
-                        if en {
-                            "Windows removes the package from the Driver Store and the devices that used it go back to the previous driver. It may ask for a restart."
-                        } else {
-                            "Windows quita el paquete del Driver Store y los dispositivos que lo usaban vuelven al driver anterior. Puede pedir reiniciar."
-                        }
-                    }
+                    p { class: "text-sm", "{t.remove_body}" }
                 }
             }
 
             if !catalog_guard.is_empty() {
                 Card {
-                    title: catalog_card_title,
-                    subtitle: catalog_card_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    title: t.catalog_title.to_string(),
+                    subtitle: Some(t.catalog_subtitle.to_string()),
+                    div { class: "stack-2",
                         for cat in catalog_guard.iter() {
                             {
                                 let uid = cat.update_id.clone();
@@ -764,10 +545,10 @@ pub fn DriversView() -> Element {
                                 rsx! {
                                     div {
                                         key: "{uid}",
-                                        style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); flex-wrap: wrap;",
-                                        div { style: "min-width: 240px; flex: 1;",
-                                            div { class: "text-sm", style: "font-weight: 600;", "{cat.title}" }
-                                            div { class: "text-xs text-muted", style: "margin-top: var(--space-1);",
+                                        class: "item-row row-between gap-3 wrap",
+                                        div { class: "grow-wide",
+                                            div { class: "text-sm fw-semibold", "{cat.title}" }
+                                            div { class: "text-xs text-muted mt-1",
                                                 "{cat.query_hw_id} • v{cat.version} • {cat.last_updated} • {cat.size_str}"
                                             }
                                         }
@@ -780,7 +561,7 @@ pub fn DriversView() -> Element {
                                                     title: title_c.clone(),
                                                 }));
                                             },
-                                            "{catalog_install_lbl}"
+                                            "{t.install_cab}"
                                         }
                                     }
                                 }
@@ -792,9 +573,9 @@ pub fn DriversView() -> Element {
 
             if !wua_guard.is_empty() {
                 Card {
-                    title: wua_card_title,
-                    subtitle: wua_card_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2);",
+                    title: t.wua_title.to_string(),
+                    subtitle: Some(t.wua_subtitle.to_string()),
+                    div { class: "stack-2",
                         for upd in wua_guard.iter() {
                             {
                                 let uid = upd.id.clone();
@@ -808,8 +589,8 @@ pub fn DriversView() -> Element {
                                 rsx! {
                                     label {
                                         key: "{uid}",
-                                        style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); cursor: pointer;",
-                                        div { style: "display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1;",
+                                        class: "item-row row-between gap-3 clickable",
+                                        div { class: "row grow",
                                             input {
                                                 r#type: "checkbox",
                                                 checked: checked,
@@ -822,14 +603,14 @@ pub fn DriversView() -> Element {
                                                     }
                                                 },
                                             }
-                                            div { style: "min-width: 0;",
-                                                div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
-                                                    span { class: "text-sm", style: "font-weight: 600;", "{upd.title}" }
+                                            div { class: "min-w-0",
+                                                div { class: "row wrap",
+                                                    span { class: "text-sm fw-semibold", "{upd.title}" }
                                                     if upd.is_firmware {
-                                                        span { class: "badge badge-danger", "{firmware_warn_lbl}" }
+                                                        span { class: "badge badge-danger", "FIRMWARE / BIOS" }
                                                     }
                                                 }
-                                                div { class: "text-xs text-muted", style: "margin-top: var(--space-1);",
+                                                div { class: "text-xs text-muted mt-1",
                                                     if !upd.driver_provider.is_empty() {
                                                         "{upd.driver_provider} • "
                                                     }
@@ -848,12 +629,12 @@ pub fn DriversView() -> Element {
                             }
                         }
 
-                        div { style: "display: flex; justify-content: flex-end; margin-top: var(--space-2);",
+                        div { class: "row-end",
                             button {
                                 class: "btn btn-primary",
                                 disabled: *is_working.read() || selected_wua_count == 0,
                                 onclick: on_install_wua,
-                                "{btn_install_wua}"
+                                "{(t.download_install_n)(selected_wua_count)}"
                             }
                         }
                     }
@@ -861,35 +642,39 @@ pub fn DriversView() -> Element {
             }
 
             Card {
-                title: hw_card_title,
-                subtitle: hw_card_sub,
-                div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                    div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
+                title: t.hardware_title.to_string(),
+                subtitle: Some((t.showing_devices)(filtered_devs.len())),
+                div { class: "stack-3",
+                    div { class: "row wrap",
                         input {
                             r#type: "text",
-                            placeholder: "{search_placeholder}",
+                            class: "input grow-wide",
+                            placeholder: "{t.search_placeholder}",
                             value: "{search_query.read()}",
-                            style: "flex: 1; min-width: 240px; padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
                             oninput: move |evt| search_query.set(evt.value()),
                         }
+                        // TE-28: el filtro elegido se marca con aria-pressed, no alternando btn-primary.
                         button {
-                            class: if cur_filter == DeviceFilter::All { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary btn-sm",
+                            "aria-pressed": if cur_filter == DeviceFilter::All { "true" } else { "false" },
                             onclick: move |_| filter_mode.set(DeviceFilter::All),
-                            "{filter_all_lbl}"
+                            "{(t.filter_all)(total_devs)}"
                         }
                         button {
-                            class: if cur_filter == DeviceFilter::ErrorsOnly { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary btn-sm",
+                            "aria-pressed": if cur_filter == DeviceFilter::ErrorsOnly { "true" } else { "false" },
                             onclick: move |_| filter_mode.set(DeviceFilter::ErrorsOnly),
-                            "{filter_err_lbl}"
+                            "{(t.filter_errors)(problem_count)}"
                         }
                         button {
-                            class: if cur_filter == DeviceFilter::ThirdPartyOem { "btn btn-primary" } else { "btn btn-secondary" },
+                            class: "btn btn-secondary btn-sm",
+                            "aria-pressed": if cur_filter == DeviceFilter::ThirdPartyOem { "true" } else { "false" },
                             onclick: move |_| filter_mode.set(DeviceFilter::ThirdPartyOem),
-                            "{filter_oem_lbl}"
+                            "{(t.filter_oem)(oem_count)}"
                         }
                     }
 
-                    div { class: "modal-list", style: "max-height: 460px;",
+                    div { class: "modal-list tall",
                         for dev in filtered_devs.into_iter() {
                             {
                                 let title_str = dev.display_title().to_string();
@@ -917,11 +702,11 @@ pub fn DriversView() -> Element {
                                 };
 
                                 let status_badge_txt = if dev.has_problem {
-                                    describe_cm_problem(dev.problem_code, en).to_string()
+                                    (t.cm_problem)(dev.problem_code)
                                 } else if dev.needs_reboot {
-                                    if en { "Pending Reboot".to_string() } else { "Reinicio pendiente".to_string() }
+                                    t.pending_reboot
                                 } else {
-                                    "OK".to_string()
+                                    "OK"
                                 };
 
                                 let key_str = format!("dev_{}_{}", dev.dev_inst, title_str);
@@ -930,10 +715,10 @@ pub fn DriversView() -> Element {
                                 rsx! {
                                     div {
                                         key: "{key_str}",
-                                        style: "padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
-                                        div { style: "min-width: 240px; flex: 1;",
-                                            div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
-                                                span { class: "text-sm", style: "font-weight: 600;", "{title_str}" }
+                                        class: "item-row row-between wrap",
+                                        div { class: "grow-wide",
+                                            div { class: "row wrap",
+                                                span { class: "text-sm fw-semibold", "{title_str}" }
                                                 if !hw_hint.is_empty() {
                                                     span { class: "badge badge-warning", "{hw_hint}" }
                                                 } else if !decoded_ven.is_empty() {
@@ -946,7 +731,7 @@ pub fn DriversView() -> Element {
                                                     span { class: "badge badge-success", "GeForce {nv}" }
                                                 }
                                             }
-                                            div { class: "text-xs text-muted", style: "margin-top: var(--space-1);",
+                                            div { class: "text-xs text-muted mt-1",
                                                 if !vendor_str.is_empty() {
                                                     "{vendor_str} • "
                                                 }
@@ -964,7 +749,7 @@ pub fn DriversView() -> Element {
                                                 }
                                             }
                                         }
-                                        div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                        div { class: "row",
                                             if dev.has_problem && !hw_for_btn.is_empty() {
                                                 button {
                                                     class: "btn btn-secondary",
@@ -972,14 +757,7 @@ pub fn DriversView() -> Element {
                                                     onclick: move |_| {
                                                         let q_id = hw_for_btn.clone();
                                                         is_working.set(true);
-                                                        status_msg.set(Some((
-                                                            if en {
-                                                                format!("Searching Microsoft Catalog for {}...", q_id)
-                                                            } else {
-                                                                format!("Buscando en Catálogo MS para {}...", q_id)
-                                                            },
-                                                            Tone::Info,
-                                                        )));
+                                                        status_msg.set(Some(((t.searching_catalog)(&q_id), Tone::Info)));
                                                         spawn(async move {
                                                             let res = tokio::task::spawn_blocking(move || {
                                                                 DriverManager::search_microsoft_catalog(&q_id)
@@ -989,26 +767,19 @@ pub fn DriversView() -> Element {
                                                                 Ok(Ok(list)) => {
                                                                     let n = list.len();
                                                                     catalog_matches.set(list);
-                                                                    status_msg.set(Some((
-                                                                        if en {
-                                                                            format!("Found {} package(s) in MS Catalog.", n)
-                                                                        } else {
-                                                                            format!("{} paquete(s) encontrado(s) en Catálogo MS.", n)
-                                                                        },
-                                                                        Tone::Info,
-                                                                    )));
+                                                                    status_msg.set(Some(((t.catalog_found)(n), Tone::Info)));
                                                                 }
                                                                 Ok(Err(e)) => {
                                                                     status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
                                                                 }
                                                                 Err(e) => {
-                                                                    status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
+                                                                    status_msg.set(Some((format!("{}: {e}", t.internal_error), Tone::Danger)));
                                                                 }
                                                             }
                                                             is_working.set(false);
                                                         });
                                                     },
-                                                    "{find_catalog_btn}"
+                                                    "{t.search_catalog}"
                                                 }
                                             }
                                             span { class: "{status_badge_cls}", "{status_badge_txt}" }

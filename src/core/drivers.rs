@@ -220,38 +220,6 @@ pub struct FullDriverScanResult {
     pub notes: Vec<String>,
 }
 
-pub fn describe_cm_problem(code: u32, en: bool) -> &'static str {
-    if en {
-        match code {
-            1 => "Device not configured correctly (Code 1)",
-            10 => "Device cannot start (Code 10)",
-            12 => "Not enough free resources (Code 12)",
-            18 => "Reinstall drivers for this device (Code 18)",
-            22 => "Device is disabled (Code 22)",
-            28 => "Drivers are not installed (Code 28)",
-            31 => "Device is not working properly (Code 31)",
-            43 => "Windows stopped this device due to errors (Code 43)",
-            45 => "Hardware device not connected (Code 45)",
-            52 => "Cannot verify digital signature of drivers (Code 52)",
-            _ => "Hardware / Driver issue",
-        }
-    } else {
-        match code {
-            1 => "Dispositivo mal configurado (Código 1)",
-            10 => "El dispositivo no puede iniciarse (Código 10)",
-            12 => "Recursos libres insuficientes (Código 12)",
-            18 => "Reinstalar controladores (Código 18)",
-            22 => "Dispositivo deshabilitado (Código 22)",
-            28 => "Faltan los controladores (Código 28)",
-            31 => "El dispositivo no funciona correctamente (Código 31)",
-            43 => "Windows detuvo el dispositivo por errores (Código 43)",
-            45 => "Dispositivo no conectado actualmente (Código 45)",
-            52 => "Firma digital de controlador no verificada (Código 52)",
-            _ => "Problema de dispositivo o controlador",
-        }
-    }
-}
-
 fn is_windows_update_service_disabled() -> bool {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
     if let Ok(key) =

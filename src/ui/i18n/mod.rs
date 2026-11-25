@@ -1,3 +1,4 @@
+pub mod drivers;
 pub mod strings;
 
 use serde::{Deserialize, Serialize};

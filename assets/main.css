@@ -745,6 +745,19 @@ button.badge {
     border-bottom: none;
 }
 
+/* TE-25: fila con borde de una lista (app de la tienda, driver, dispositivo). El layout lo ponen las utilidades
+   (`row-between`, `stack-1`…); dentro de una `.modal-list` se separa del fondo con `--surface`. */
+.item-row {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+}
+
+.modal-list .item-row {
+    background: var(--surface);
+}
+
 /* Barra de progreso (ProgressBar) */
 .progress {
     width: 100%;
@@ -783,6 +796,11 @@ button.badge {
 .modal-card.modal-wide { max-width: 720px; }
 .modal-card.modal-danger { border-color: var(--danger); }
 .modal-card.modal-warning { border-color: var(--warning); }
+
+.modal-list.tall {
+    max-height: 480px;
+    gap: var(--space-2);
+}
 
 .modal-list {
     max-height: 280px;
@@ -858,8 +876,11 @@ button.badge {
 .gap-2 { gap: var(--space-2); }
 .gap-3 { gap: var(--space-3); }
 .grow { flex: 1; min-width: 0; }
+/* Columna o campo que crece pero no baja de 240px antes de pasar a otra línea (buscadores, título de una fila). */
+.grow-wide { flex: 1; min-width: 240px; }
 .min-w-0 { min-width: 0; }
 .mt-1 { margin-top: var(--space-1); }
+.ml-5 { margin-left: var(--space-5); }
 .mb-1 { margin-bottom: var(--space-1); }
 .mb-2 { margin-bottom: var(--space-2); }
 .clickable { cursor: pointer; }

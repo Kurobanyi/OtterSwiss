@@ -1121,12 +1121,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="te-25"></a>
 ### TE-25 · 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado (`style:` 50 → 95) · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado (`style:` 50 → 95) · **Estado**: Hecha
 - **Qué pasa**: 31 `style:` en drivers que equivalen a `.stack-*`, `.row .wrap`, `.fw-semibold`, `.input`, `.btn-sm`; la tarjeta de ítem
   copiada 5 veces. La tienda reemplazó `stack-3`, `row-between gap-3 wrap`, `flex gap-2`, `row gap-3` y `text-sm fw-semibold` por `style:`
   (regresión de `TE-02`).
 - **Dónde**: `src/ui/views/drivers.rs:473-827`; `src/ui/views/tools.rs:513-648`.
 - **Propuesta**: volver a las utilidades y crear `.item-row`; `style:` solo para valores calculados.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): clase `.item-row` para las filas con borde (la tarjeta que estaba copiada 5 veces), `.grow-wide` para buscadores y títulos de fila, `.modal-list.tall` y `.ml-5`; la tienda vuelve a `stack-3`, `row-between gap-3 wrap`, `flex gap-2` y `text-sm fw-semibold`. `style:` en `drivers.rs` pasa de 31 a 0; los 4 que quedan en `tools.rs` ya estaban antes de la fusión (icono, `OR-07`; tarjeta de progreso y menú contextual, `TE-02`). Verificado: `cargo test` (69), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; Drivers y Tienda recorridas en una copia sin elevar, en oscuro y ventana chica, y en claro, inglés y maximizada.
 
 <a id="te-26"></a>
 ### TE-26 · `px` y colores derivados escritos en Rust
@@ -1138,16 +1139,18 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="te-27"></a>
 ### TE-27 · Texto de error de la tienda con `--danger` (regresión de UI-18)
-- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Dónde**: `src/ui/views/tools.rs:648`.
 - **Propuesta**: `class: "text-xs text-danger"`.
+- **Cierre** (2026-11-25): el error de una app usa `text-xs text-danger` (`--danger-text`, AA). Verificado: `cargo test` (69), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; Drivers y Tienda recorridas en una copia sin elevar, en oscuro y ventana chica, y en claro, inglés y maximizada.
 
 <a id="te-28"></a>
 ### TE-28 · Filtros marcados alternando `btn-primary` (regresión de TE-13)
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: los 3 filtros de dispositivos y los 7 de categoría cambian de clase en vez de usar `aria-pressed`.
 - **Dónde**: `src/ui/views/drivers.rs:736-748`; `src/ui/views/tools.rs:523`, `532`.
 - **Propuesta**: `btn btn-secondary btn-sm` con `aria_pressed`.
+- **Cierre** (2026-11-25): los 3 filtros de dispositivos y los 7 de categoría son `btn btn-secondary btn-sm` con `aria-pressed`. Verificado: `cargo test` (69), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; Drivers y Tienda recorridas en una copia sin elevar, en oscuro y ventana chica, y en claro, inglés y maximizada.
 
 <a id="te-29"></a>
 ### TE-29 · Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida
@@ -1166,11 +1169,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="in-08"></a>
 ### IN-08 · 43 `if en` nuevos fuera del catálogo y regresión de `strings(en)` en la tienda
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado (206 → 249) · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado (206 → 249) · **Estado**: Hecha
 - **Qué pasa**: 39 en drivers sin ninguna cadena en `strings.rs`; la tienda volvió de `strings(en).installed_app`/`installing` a texto
   suelto; `describe_cm_problem` lleva el idioma a core.
 - **Dónde**: `src/ui/views/drivers.rs`; `src/ui/views/tools.rs:464-489`, `592`, `634-640`; `src/core/drivers.rs:309`.
 - **Propuesta**: bloque `drivers` en `Strings` con `plural()` y volver a `strings(en)` en la tienda.
+- **Cierre** (2026-11-25): bloque `drivers` en el catálogo (`ui/i18n/drivers.rs`, con `fn` para los textos con cantidad y `plural`); la vista de drivers queda sin `if en`. `describe_cm_problem` sale de core y pasa al catálogo como `cm_problem`. La tienda vuelve a `strings(en)` (`installed_app`, `installing`) y suma `queued`, `done`, título, buscador y «todas las categorías». «Error de hilo», que solo estaba en español, pasa a `internal_error`. Queda `IN-03`: un aviso ya mostrado no cambia de idioma. Verificado: `cargo test` (69), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; Drivers y Tienda recorridas en una copia sin elevar, en oscuro y ventana chica, y en claro, inglés y maximizada.
 
 <a id="in-09"></a>
 ### IN-09 · Textos en un solo idioma o mezclados

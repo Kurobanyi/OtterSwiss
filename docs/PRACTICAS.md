@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **79 hechas, 11 parciales y 24 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **83 hechas, 11 parciales y 20 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -44,8 +44,6 @@ dependencias directas se usan.
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
 | [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Parcial |
-| [`TE-25`](PRACTICAS-detalle.md#te-25) | 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline | M | Pendiente |
-| [`TE-27`](PRACTICAS-detalle.md#te-27) | Texto de error de la tienda con `--danger` (regresión de UI-18) | S | Pendiente |
 
 ## P2
 
@@ -67,9 +65,7 @@ dependencias directas se usan.
 | [`CL-23`](PRACTICAS-detalle.md#cl-23) | Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID | S | Parcial |
 | [`CL-25`](PRACTICAS-detalle.md#cl-25) | Componentes y clases que ya existen no se usan | S | Pendiente |
 | [`TE-26`](PRACTICAS-detalle.md#te-26) | `px` y colores derivados escritos en Rust | S | Pendiente |
-| [`TE-28`](PRACTICAS-detalle.md#te-28) | Filtros marcados alternando `btn-primary` (regresión de TE-13) | S | Pendiente |
 | [`TE-29`](PRACTICAS-detalle.md#te-29) | Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida | S | Pendiente |
-| [`IN-08`](PRACTICAS-detalle.md#in-08) | 43 `if en` nuevos fuera del catálogo y regresión de `strings(en)` en la tienda | M | Pendiente |
 | [`IN-09`](PRACTICAS-detalle.md#in-09) | Textos en un solo idioma o mezclados | S | Pendiente |
 | [`HE-14`](PRACTICAS-detalle.md#he-14) | Nada frena las regresiones de una fusión | S | Pendiente |
 
@@ -87,7 +83,7 @@ dependencias directas se usan.
 
 1. Código de v4.2.0, junto con los defectos de `docs/BUGS.md`: `OR-06` con `AR-21`…`AR-23` (cliente HTTP, descargas y procesos por
    las primitivas de `security/` y `platform/`, que cierra de paso `SEC-30`, `SEC-33`, `SEC-34`, `ERR-19`, `ERR-22`) y `CL-22`.
-2. Regresiones de la fusión: `TE-25`, `TE-27`, `TE-28`, `IN-08`, y el freno `HE-14`.
+2. El freno a las regresiones de una fusión: `HE-14`.
 3. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 4. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
 5. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.

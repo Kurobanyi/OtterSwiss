@@ -480,33 +480,6 @@ pub fn BatchAppStoreCard() -> Element {
     let state = tools_state.read();
     let is_running = state.is_working;
 
-    let store_title = if en {
-        "Silent App Store & UWP Restoration"
-    } else {
-        "App Store Silenciosa y Restaurador UWP"
-    }
-    .to_string();
-    let store_sub = Some(
-        (if en {
-            "Official vendor downloads & Microsoft Store restoration via Winget"
-        } else {
-            "Descargas oficiales e instalación de apps de Microsoft Store vía Winget"
-        })
-        .to_string(),
-    );
-
-    let search_placeholder = if en {
-        "Search app, tool or publisher..."
-    } else {
-        "Buscar aplicación, herramienta o desarrollador..."
-    };
-
-    let filter_all_lbl = if en {
-        "All Categories"
-    } else {
-        "Todas las categorías"
-    };
-
     let q = search_query.read().trim().to_ascii_lowercase();
     let cur_cat = *selected_cat.read();
 
@@ -518,33 +491,33 @@ pub fn BatchAppStoreCard() -> Element {
 
     rsx! {
         Card {
-            title: store_title,
-            subtitle: store_sub,
-            div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
-                div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
+            title: strings(en).store_title.to_string(),
+            subtitle: Some(strings(en).store_subtitle.to_string()),
+            div { class: "stack-3",
+                div { class: "row wrap",
                     input {
                         r#type: "text",
-                        placeholder: "{search_placeholder}",
+                        class: "input grow-wide",
+                        placeholder: "{strings(en).store_search}",
                         value: "{search_query.read()}",
-                        style: "flex: 1; min-width: 240px; padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: var(--font-size-xs);",
                         oninput: move |evt| search_query.set(evt.value()),
                     }
+                    // TE-28: la categoría elegida se marca con aria-pressed, no alternando btn-primary.
                     button {
-                        class: if cur_cat.is_none() { "btn btn-primary" } else { "btn btn-secondary" },
-                        style: "padding: var(--space-1) var(--space-2); font-size: var(--font-size-xs);",
+                        class: "btn btn-secondary btn-sm",
+                        "aria-pressed": if cur_cat.is_none() { "true" } else { "false" },
                         onclick: move |_| selected_cat.set(None),
-                        "{filter_all_lbl}"
+                        "{strings(en).all_categories}"
                     }
                     for cat in categories {
                         {
                             let cat_label = cat.label(en);
                             let is_selected_cat = cur_cat == Some(cat);
-                            let btn_cat_cls = if is_selected_cat { "btn btn-primary" } else { "btn btn-secondary" };
                             rsx! {
                                 button {
                                     key: "{cat_label}",
-                                    class: "{btn_cat_cls}",
-                                    style: "padding: var(--space-1) var(--space-2); font-size: var(--font-size-xs);",
+                                    class: "btn btn-secondary btn-sm",
+                                    "aria-pressed": if is_selected_cat { "true" } else { "false" },
                                     onclick: move |_| selected_cat.set(Some(cat)),
                                     "{cat_label}"
                                 }
@@ -553,8 +526,8 @@ pub fn BatchAppStoreCard() -> Element {
                     }
                 }
 
-                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
-                    div { style: "display: flex; gap: var(--space-2);",
+                div { class: "row-between gap-3 wrap",
+                    div { class: "flex gap-2",
                         button {
                             class: "btn btn-primary",
                             disabled: is_running || selected_count == 0,
@@ -587,7 +560,7 @@ pub fn BatchAppStoreCard() -> Element {
                     }
                 }
 
-                div { class: "modal-list", style: "max-height: 480px; gap: var(--space-2);",
+                div { class: "modal-list tall",
                     for pkg in filtered_catalog.into_iter() {
                         {
                             let pkg_id = pkg.id;
@@ -599,7 +572,7 @@ pub fn BatchAppStoreCard() -> Element {
                             let version_label = if pkg.is_winget {
                                 "MS Store".to_string()
                             } else if pkg.version == "Evergreen" {
-                                if en { "latest".to_string() } else { "última".to_string() }
+                                strings(en).latest_version.to_string()
                             } else {
                                 format!("v{}", pkg.version)
                             };
@@ -607,10 +580,9 @@ pub fn BatchAppStoreCard() -> Element {
                             rsx! {
                                 div {
                                     key: "{pkg_id}",
-                                    style: "display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);",
-                                    label {
-                                        style: "display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: var(--space-2);",
-                                        div { style: "display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0;",
+                                    class: "item-row stack-1",
+                                    label { class: "row-between clickable",
+                                        div { class: "row gap-3 grow",
                                             input {
                                                 r#type: "checkbox",
                                                 checked: is_checked,
@@ -625,39 +597,35 @@ pub fn BatchAppStoreCard() -> Element {
                                                 },
                                             }
                                             {render_generic_icon(pkg.icon)}
-                                            div { style: "min-width: 0; flex: 1;",
-                                                div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
-                                                    span { style: "font-weight: 600; font-size: var(--font-size-sm);", "{pkg.name}" }
+                                            div { class: "grow",
+                                                div { class: "row wrap",
+                                                    span { class: "text-sm fw-semibold", "{pkg.name}" }
                                                     span { class: "badge badge-info", "{cat_tag}" }
                                                     span { class: "text-xs text-muted",
                                                         "{version_label} • © {pkg.copyright_holder}"
                                                     }
                                                 }
-                                                div { class: "text-xs text-muted", style: "margin-top: 2px;",
-                                                    "{desc}"
-                                                }
+                                                div { class: "text-xs text-muted mt-1", "{desc}" }
                                             }
                                         }
 
-                                        div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                        div { class: "row",
                                             if is_installed {
-                                                span { class: "badge badge-success", if en { "Installed" } else { "Instalada" } }
+                                                span { class: "badge badge-success", "{strings(en).installed_app}" }
                                             }
                                             if let Some(ref status) = st {
                                                 match status {
-                                                    InstallStatus::Queued => rsx! { span { class: "badge badge-info", if en { "Queued" } else { "En cola" } } },
-                                                    InstallStatus::Installing => rsx! { span { class: "badge badge-warning", if en { "Installing..." } else { "Instalando..." } } },
-                                                    InstallStatus::Done => rsx! { span { class: "badge badge-success", if en { "Done" } else { "Listo" } } },
+                                                    InstallStatus::Queued => rsx! { span { class: "badge badge-info", "{strings(en).queued}" } },
+                                                    InstallStatus::Installing => rsx! { span { class: "badge badge-warning", "{strings(en).installing}" } },
+                                                    InstallStatus::Done => rsx! { span { class: "badge badge-success", "{strings(en).done}" } },
                                                     InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "Error" } },
                                                 }
                                             }
                                         }
                                     }
                                     if let Some(InstallStatus::Failed(err_msg)) = st {
-                                        div {
-                                            style: "font-size: var(--font-size-xs); color: var(--danger); margin-left: var(--space-5);",
-                                            "{err_msg}"
-                                        }
+                                        // TE-27 (regresión de UI-18): texto en `--danger-text`, que cumple AA; `--danger` es para fondos.
+                                        div { class: "text-xs text-danger ml-5", "{err_msg}" }
                                     }
                                 }
                             }

@@ -4,6 +4,8 @@
 //! Regla para textos nuevos: van aquí, no como `if en { … } else { … }` en la vista. Los que tienen parámetros son
 //! métodos de `Strings` con argumentos con nombre (el orden de los argumentos no puede desordenarse en un solo idioma).
 
+use super::drivers::{self, DriversStrings};
+
 /// Textos fijos de la interfaz.
 pub struct Strings {
     pub cancel: &'static str,
@@ -30,6 +32,16 @@ pub struct Strings {
     pub process: (&'static str, &'static str),
     pub app: (&'static str, &'static str),
     pub leftover: (&'static str, &'static str),
+    pub queued: &'static str,
+    pub done: &'static str,
+    pub store_title: &'static str,
+    pub store_subtitle: &'static str,
+    pub store_search: &'static str,
+    pub all_categories: &'static str,
+    /// Versión de las apps que siempre se descargan en su última versión («Evergreen», UI-15).
+    pub latest_version: &'static str,
+    /// IN-08: pestaña Drivers.
+    pub drivers: &'static DriversStrings,
 }
 
 pub static ES: Strings = Strings {
@@ -56,6 +68,14 @@ pub static ES: Strings = Strings {
     process: ("proceso", "procesos"),
     app: ("app", "apps"),
     leftover: ("resto encontrado", "restos encontrados"),
+    queued: "En cola",
+    done: "Listo",
+    store_title: "Tienda silenciosa y restaurador UWP",
+    store_subtitle: "Descargas oficiales y apps de Microsoft Store con winget",
+    store_search: "Buscar app, herramienta o desarrollador…",
+    all_categories: "Todas las categorías",
+    latest_version: "última versión",
+    drivers: &drivers::ES,
 };
 
 pub static EN: Strings = Strings {
@@ -82,6 +102,14 @@ pub static EN: Strings = Strings {
     process: ("process", "processes"),
     app: ("app", "apps"),
     leftover: ("leftover", "leftovers"),
+    queued: "Queued",
+    done: "Done",
+    store_title: "Silent app store and UWP restore",
+    store_subtitle: "Official vendor downloads and Microsoft Store apps through winget",
+    store_search: "Search app, tool or publisher…",
+    all_categories: "All categories",
+    latest_version: "latest version",
+    drivers: &drivers::EN,
 };
 
 /// IN-04: «1 adaptador», «3 adaptadores». ES y EN solo distinguen uno de varios.
@@ -117,6 +145,13 @@ mod tests {
                 s.open_folder,
                 s.completed,
                 s.time_left,
+                s.queued,
+                s.done,
+                s.store_title,
+                s.store_subtitle,
+                s.store_search,
+                s.all_categories,
+                s.latest_version,
             ];
             for f in fields {
                 assert!(!f.trim().is_empty());
