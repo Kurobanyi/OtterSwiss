@@ -6,7 +6,7 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::win32::AlignedBuf;
+use crate::core::platform::memory::AlignedBuf;
 
 #[derive(Debug, Clone)]
 pub struct InstalledDriverDevice {

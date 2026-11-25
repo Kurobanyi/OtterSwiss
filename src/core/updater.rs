@@ -24,7 +24,7 @@ use windows::Win32::Networking::WinInet::{
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::delete_verified_file;
-use crate::core::platform::win32::to_wide_null;
+use crate::core::platform::wide::to_wide_null;
 use crate::core::security::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify_with_progress,
     DownloadPolicy,

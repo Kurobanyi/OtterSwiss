@@ -8,7 +8,8 @@ use windows::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOASYNC, SHELLEXECUTEI
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::win32::{to_wide_null, SafeHandle};
+use crate::core::platform::handles::SafeHandle;
+use crate::core::platform::wide::to_wide_null;
 
 const ALLOWED_RELAUNCH_FLAGS: &[&str] = &[
     "--elevated",

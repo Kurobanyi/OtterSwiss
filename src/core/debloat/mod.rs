@@ -13,9 +13,9 @@ use winreg::{RegKey, RegValue};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::platform::win32::NamedMutex;
 use crate::core::security::trust::ensure_admin_only_data_dir;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;

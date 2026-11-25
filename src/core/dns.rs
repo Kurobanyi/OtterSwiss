@@ -22,9 +22,12 @@ use winreg::RegKey;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::platform::power::parse_guid_strict;
+use crate::core::platform::guid::parse_guid_strict;
+use crate::core::platform::handles::SafeLibrary;
+use crate::core::platform::memory::AlignedBuf;
+use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::platform::win32::{to_wide_null, AlignedBuf, NamedMutex, SafeLibrary};
+use crate::core::platform::wide::to_wide_null;
 
 const DNS_BACKUP_MUTEX: &str = r"Global\OtterSwiss_DnsBackup_Lock";
 const MAX_DNS_BACKUP_BYTES: u64 = 512 * 1024;

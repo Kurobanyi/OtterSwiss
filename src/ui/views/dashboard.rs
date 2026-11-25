@@ -3,13 +3,15 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
+use crate::core::hardware::profile::{HardwareProfile, HardwareTier};
 use crate::core::optimize::engine::{
     EngineExecutionReport, EngineProgress, OptimizationEngine, OptimizationProfile,
     OptimizationStepStatus, RollbackReport,
 };
+use crate::core::optimize::power_plan::get_active_scheme_guid;
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::platform::power::{format_guid, get_active_scheme_guid};
-use crate::core::platform::win32::{reboot_system_now, HardwareProfile, HardwareTier};
+use crate::core::platform::guid::format_guid;
+use crate::core::platform::power::reboot_system_now;
 use crate::core::security::trust::ensure_admin_only_data_dir;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;

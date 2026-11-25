@@ -45,7 +45,7 @@ use windows::Win32::UI::Shell::{FOLDERID_ProgramData, SHGetKnownFolderPath, KF_F
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::{inspect_handle, write_zone_identifier};
-use crate::core::platform::win32::{to_wide_null, wide_ptr_to_string_and_free};
+use crate::core::platform::wide::{to_wide_null, wide_ptr_to_string_and_free};
 
 /// `szOID_COMMON_NAME` de wincrypt.h.
 const SZ_OID_COMMON_NAME_BYTES: &[u8] = b"2.5.4.3\0";

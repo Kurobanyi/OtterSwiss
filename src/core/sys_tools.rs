@@ -17,7 +17,7 @@ extern "system" {
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::platform::win32::SafeHandle;
+use crate::core::platform::handles::SafeHandle;
 
 #[derive(Debug, Clone, Default)]
 pub struct TrimWorkingSetsReport {

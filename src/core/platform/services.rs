@@ -20,7 +20,9 @@ use crate::core::optimize::backup::ServiceSnapshot;
 use crate::core::optimize::tweaks_catalog::{
     is_allowed_service_name, is_valid_service_start_type, ServiceTargetAction, ServiceTweakSpec,
 };
-use crate::core::platform::win32::{to_wide_null, AlignedBuf, ScHandle};
+use crate::core::platform::handles::ScHandle;
+use crate::core::platform::memory::AlignedBuf;
+use crate::core::platform::wide::to_wide_null;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServiceOpOutcome {

@@ -50,7 +50,9 @@ impl Theme {
     /// El tema concreto que se pinta: `System` se resuelve con la preferencia de Windows.
     pub fn resolved(self) -> Self {
         match self {
-            Self::System if crate::core::platform::win32::apps_use_light_theme() => Self::Light,
+            Self::System if crate::core::platform::user_settings::apps_use_light_theme() => {
+                Self::Light
+            }
             Self::System => Self::Dark,
             other => other,
         }

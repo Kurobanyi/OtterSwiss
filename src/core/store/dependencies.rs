@@ -6,9 +6,9 @@ use winreg::RegKey;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::folders::{program_files_dir, program_files_x86_dir, windows_dir};
 use crate::core::platform::process::{run_in_job, Launch, ProcessExit};
 use crate::core::platform::safe_fs::delete_verified_file;
-use crate::core::platform::win32::{program_files_dir, program_files_x86_dir, windows_dir};
 use crate::core::security::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
     DownloadPolicy,

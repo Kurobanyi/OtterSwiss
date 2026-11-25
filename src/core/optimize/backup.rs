@@ -5,8 +5,8 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::tweaks_catalog::{
     is_allowed_registry_entry, is_allowed_service_name, is_valid_service_start_type, RegHive,
 };
+use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::platform::win32::NamedMutex;
 
 const BACKUP_SCHEMA_VERSION: u32 = 2;
 const MAX_BACKUP_BYTES: u64 = 2 * 1024 * 1024;

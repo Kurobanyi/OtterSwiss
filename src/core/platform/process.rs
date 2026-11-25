@@ -33,7 +33,8 @@ use windows::Win32::UI::Shell::GetUserProfileDirectoryW;
 use windows::Win32::UI::WindowsAndMessaging::{GetShellWindow, GetWindowThreadProcessId};
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::win32::{to_wide_null, JobObject, SafeHandle};
+use crate::core::platform::handles::{JobObject, SafeHandle};
+use crate::core::platform::wide::to_wide_null;
 
 /// Carpeta `System32` real, sin depender de variables de entorno.
 pub fn system32_dir() -> CoreResult<PathBuf> {

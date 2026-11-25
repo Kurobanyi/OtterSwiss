@@ -42,7 +42,7 @@ impl Lang {
 
     /// IN-01: sin preferencia guardada se usa el idioma de Windows (español si es español, si no inglés).
     pub fn from_system() -> Self {
-        if crate::core::platform::win32::user_ui_language_is_spanish() {
+        if crate::core::platform::user_settings::user_ui_language_is_spanish() {
             Self::Es
         } else {
             Self::En

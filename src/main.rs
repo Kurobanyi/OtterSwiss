@@ -323,7 +323,7 @@ fn prepare_mini_archive_job(args: &[String]) -> Option<MiniArchiveJob> {
 
 /// Muestra un cuadro de mensaje nativo (no depende de WebView2). Devuelve `true` si se eligió «Sí».
 fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> bool {
-    use otter_swiss::core::platform::win32::to_wide_null;
+    use otter_swiss::core::platform::wide::to_wide_null;
     use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, IDYES, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO,

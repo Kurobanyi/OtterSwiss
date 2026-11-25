@@ -16,7 +16,7 @@ use crate::core::platform::safe_fs::{
     is_safe_non_root_dir,
 };
 use crate::core::platform::services::is_service_stopped;
-use crate::core::platform::win32::wide_ptr_to_string_and_free;
+use crate::core::platform::wide::wide_ptr_to_string_and_free;
 
 #[derive(Debug, Clone, Default)]
 pub struct CategoryCleanResult {

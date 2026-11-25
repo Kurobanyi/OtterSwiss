@@ -12,6 +12,7 @@ use winreg::RegKey;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::handles::SafeHandle;
 use crate::core::platform::process::{
     duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir, Launch,
 };
@@ -19,7 +20,6 @@ use crate::core::platform::safe_fs::{
     canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
     delete_verified_file, delete_verified_file_under, path_is_strictly_under,
 };
-use crate::core::platform::win32::SafeHandle;
 use crate::core::security::trust::{
     ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
     DownloadPolicy,
@@ -39,7 +39,7 @@ fn localize_catalog_text(text: &str, spanish: bool) -> String {
 /// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá
 /// en el programa instalado.
 fn windows_ui_is_spanish() -> bool {
-    crate::core::platform::win32::user_ui_language_is_spanish()
+    crate::core::platform::user_settings::user_ui_language_is_spanish()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -530,7 +530,7 @@ fn check_spotify_presence_on_disk() -> bool {
             }
         }
     }
-    if let Some(pf) = crate::core::platform::win32::program_files_dir() {
+    if let Some(pf) = crate::core::platform::folders::program_files_dir() {
         if pf.join(r"Spotify\Spotify.exe").is_file() {
             return true;
         }

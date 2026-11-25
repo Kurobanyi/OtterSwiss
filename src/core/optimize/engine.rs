@@ -4,20 +4,21 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::hardware::profile::{HardwareProfile, HardwareTier};
 use crate::core::optimize::backup::BackupManager;
-use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
-use crate::core::platform::elevation::ElevationManager;
-use crate::core::platform::power::{
+use crate::core::optimize::power_plan::{
     activate_prepared_power_scheme, capture_and_prepare_power_scheme, discard_unused_scheme,
     restore_power_snapshot, GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
 };
+use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
+use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{
     apply_registry_tweak, capture_registry_tweak, restore_registry_snapshot,
 };
 use crate::core::platform::services::{
     apply_service_tweak, capture_service_tweak, restore_service_snapshot, ServiceOpOutcome,
 };
-use crate::core::platform::win32::{HardwareProfile, HardwareTier, NamedMutex};
 
 const ENGINE_MUTEX_NAME: &str = r"Global\OtterSwiss_Engine_Execution";
 
