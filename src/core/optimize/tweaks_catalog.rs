@@ -1,28 +1,7 @@
 use crate::core::hardware::profile::HardwareTier;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RegHive {
-    Hklm,
-    Hkcu,
-}
-
-impl RegHive {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Hklm => "HKLM",
-            Self::Hkcu => "HKCU",
-        }
-    }
-
-    pub fn from_str_strict(s: &str) -> Option<Self> {
-        match s {
-            "HKLM" => Some(Self::Hklm),
-            "HKCU" => Some(Self::Hkcu),
-            _ => None,
-        }
-    }
-}
+pub use crate::core::platform::registry::RegHive;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RegValueKind {
@@ -260,7 +239,4 @@ pub fn is_allowed_service_name(service_name: &str) -> bool {
         .any(|spec| spec.service_name.eq_ignore_ascii_case(service_name))
 }
 
-/// Valida tipos de inicio de servicio permitidos (2 = AUTO, 3 = DEMAND, 4 = DISABLED).
-pub fn is_valid_service_start_type(start_type: u32) -> bool {
-    matches!(start_type, 2..=4)
-}
+pub use crate::core::platform::services::is_valid_service_start_type;

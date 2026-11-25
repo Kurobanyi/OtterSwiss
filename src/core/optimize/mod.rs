@@ -3,4 +3,6 @@
 pub mod backup;
 pub mod engine;
 pub mod power_plan;
+pub mod registry_tweaks;
+pub mod service_tweaks;
 pub mod tweaks_catalog;
