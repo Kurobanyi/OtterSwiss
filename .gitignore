@@ -19,3 +19,5 @@ staging/
 *.user
 *.suo
 
+# HE-08: permisos y rutas locales de Claude Code
+.claude/settings.local.json

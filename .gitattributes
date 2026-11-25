@@ -1,0 +1,8 @@
+# HE-02: finales de línea fijos en el repo, no según la configuración de cada máquina.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.sh text eol=lf
+*.ico binary
+*.png binary
+*.gif binary
