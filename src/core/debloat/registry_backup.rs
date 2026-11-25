@@ -146,7 +146,7 @@ impl DebloaterManager {
                 existed: prev.is_some(),
                 previous_dword: None,
                 previous_type: prev.as_ref().map(|r| reg_type_to_u32(&r.vtype)),
-                previous_raw: prev.map(|r| r.bytes),
+                previous_raw: prev.map(|r| r.bytes.into_owned()),
             });
         }
 
@@ -227,7 +227,7 @@ impl DebloaterManager {
                 (Some(raw), Some(t), _) => key.set_raw_value(
                     entry.value_name,
                     &RegValue {
-                        bytes: raw.clone(),
+                        bytes: raw.as_slice().into(),
                         vtype: u32_to_reg_type(t),
                     },
                 )?,

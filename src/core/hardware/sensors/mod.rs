@@ -85,7 +85,8 @@ impl SensorSession {
     }
 
     pub fn poll_all(&self, started: Instant) -> SystemSensorsSnapshot {
-        let (cpu_temps, wmi_note) = self.poll_wmi_acpi();
+        let (mut cpu_temps, wmi_note) = self.poll_wmi_acpi();
+        disambiguate_sensor_names(&mut cpu_temps);
         let (mut gpu_temps, gpu_note) = self.poll_gpu();
         disambiguate_sensor_names(&mut gpu_temps);
         let storage_temps = self.poll_storage();

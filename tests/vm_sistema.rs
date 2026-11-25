@@ -68,7 +68,7 @@ fn raw_value(hklm: bool, subkey: &str, name: &str) -> Option<(u32, Vec<u8>)> {
     };
     let key = root.open_subkey_with_flags(subkey, flags).ok()?;
     let v = key.get_raw_value(name).ok()?;
-    Some((v.vtype as u32, v.bytes))
+    Some((v.vtype as u32, v.bytes.into_owned()))
 }
 
 fn service_start(name: &str) -> Option<u32> {

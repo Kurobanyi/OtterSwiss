@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use crate::core::context_menu::ContextMenuManager;
 use crate::core::error::CoreError;
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::store::app_store::{AppCategory, AppStoreManager};
+use crate::core::store::app_store::{AppCategory, AppIcon, AppStoreManager};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
@@ -15,6 +15,92 @@ use crate::ui::i18n::{Lang, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
 };
+
+fn render_generic_icon(icon: AppIcon) -> Element {
+    let (p1, p2) = match icon {
+        AppIcon::Gamepad => (
+            "M6 12h4m-2-2v4",
+            "M15 11h.01M18 13h.01M17.5 7A5.5 5.5 0 0 0 12 12.5a5.5 5.5 0 0 0-5.5-5.5A5.5 5.5 0 0 0 2 12.5C2 16.5 6 20 12 20s10-3.5 10-7.5A5.5 5.5 0 0 0 17.5 7z",
+        ),
+        AppIcon::Browser => (
+            "M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z",
+            "M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z",
+        ),
+        AppIcon::Chat => (
+            "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+            "",
+        ),
+        AppIcon::Video => (
+            "M23 7l-7 5 7 5V7z",
+            "M1 5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V5z",
+        ),
+        AppIcon::Code => ("M16 18l6-6-6-6", "M8 6l-6 6 6 6"),
+        AppIcon::Terminal => ("M4 17l6-6-6-6", "M12 19h8"),
+        AppIcon::Archive => ("M21 8v13H3V8", "M1 3h22v5H1zM10 12h4"),
+        AppIcon::Download => (
+            "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
+            "M7 10l5 5 5-5M12 15V3",
+        ),
+        AppIcon::Search => ("M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z", "M21 21l-4.35-4.35"),
+        AppIcon::Wrench => (
+            "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
+            "",
+        ),
+        AppIcon::Disk => (
+            "M22 12H2",
+            "M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11zM6 16h.01M10 16h.01",
+        ),
+        AppIcon::Camera => (
+            "M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z",
+            "M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+        ),
+        AppIcon::Clock => ("M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z", "M12 6v6l4 2"),
+        AppIcon::Calculator => (
+            "M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z",
+            "M8 6h8M16 14v4M12 14v4M8 14v4M16 10h.01M12 10h.01M8 10h.01",
+        ),
+        AppIcon::Microphone => (
+            "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z",
+            "M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8",
+        ),
+        AppIcon::Phone => (
+            "M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z",
+            "M12 18h.01",
+        ),
+        AppIcon::Checklist => (
+            "M9 11l3 3L22 4",
+            "M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+        ),
+        AppIcon::Store => (
+            "M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18",
+            "M16 10a4 4 0 0 1-8 0",
+        ),
+        AppIcon::Paint => (
+            "M18.37 2.63L14 7l3 3 4.37-4.37a2.12 2.12 0 1 0-3-3z",
+            "M9 12l-7 7a1 1 0 0 0 0 1.41l1.59 1.59a1 1 0 0 0 1.41 0l7-7M12 15l3 3",
+        ),
+        AppIcon::Scissors => (
+            "M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+            "M20 4L8.12 15.88M14.47 14.48L20 20M8.12 8.12L12 12",
+        ),
+    };
+
+    rsx! {
+        div {
+            style: "width: 28px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); display: flex; align-items: center; justify-content: center; flex-shrink: 0;",
+            svg {
+                style: "width: 16px; height: 16px; stroke: var(--accent); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round;",
+                view_box: "0 0 24 24",
+                if !p1.is_empty() {
+                    path { d: "{p1}" }
+                }
+                if !p2.is_empty() {
+                    path { d: "{p2}" }
+                }
+            }
+        }
+    }
+}
 
 #[component]
 pub fn ToolsView() -> Element {
@@ -341,6 +427,9 @@ pub fn BatchAppStoreCard() -> Element {
     let en = lang.read().is_en();
 
     let mut selected = use_signal(HashSet::<&'static str>::new);
+    let mut search_query = use_signal(String::new);
+    let mut selected_cat = use_signal(|| Option::<AppCategory>::None);
+
     let tools_state = use_context::<Signal<ToolsSharedState>>();
     let dispatcher = use_context::<InstallerDispatcher>();
 
@@ -350,6 +439,7 @@ pub fn BatchAppStoreCard() -> Element {
         AppCategory::Utilities,
         AppCategory::Browsers,
         AppCategory::Development,
+        AppCategory::UwpRestoration,
     ];
 
     let on_install_selected = {
@@ -372,27 +462,89 @@ pub fn BatchAppStoreCard() -> Element {
     let is_running = state.is_working;
 
     let store_title = if en {
-        "Silent App Store"
+        "Silent App Store & UWP Restoration"
     } else {
-        "Tienda silenciosa"
+        "App Store Silenciosa y Restaurador UWP"
     }
     .to_string();
     let store_sub = Some(
         (if en {
-            "Official vendor downloads • Batch unattended install"
+            "Official vendor downloads & Microsoft Store restoration via Winget"
         } else {
-            "Descarga oficial • Instalación desatendida en lote"
+            "Descargas oficiales e instalación de apps de Microsoft Store vía Winget"
         })
         .to_string(),
     );
+
+    let search_placeholder = if en {
+        "Search app, tool or publisher..."
+    } else {
+        "Buscar aplicación, herramienta o desarrollador..."
+    };
+
+    let filter_all_lbl = if en {
+        "All Categories"
+    } else {
+        "Todas las categorías"
+    };
+
+    let q = search_query.read().trim().to_ascii_lowercase();
+    let cur_cat = *selected_cat.read();
+
+    let filtered_catalog: Vec<&'static crate::core::store::app_store::CuratedPackage> =
+        AppStoreManager::get_catalog()
+            .iter()
+            .filter(|p| cur_cat.is_none_or(|c| p.category == c))
+            .filter(|p| {
+                if q.is_empty() {
+                    return true;
+                }
+                p.name.to_ascii_lowercase().contains(&q)
+                    || p.copyright_holder.to_ascii_lowercase().contains(&q)
+                    || p.description_es.to_ascii_lowercase().contains(&q)
+                    || p.description_en.to_ascii_lowercase().contains(&q)
+            })
+            .collect();
 
     rsx! {
         Card {
             title: store_title,
             subtitle: store_sub,
-            div { class: "stack-3",
-                div { class: "row-between gap-3 wrap",
-                    div { class: "flex gap-2",
+            div { style: "display: flex; flex-direction: column; gap: var(--space-3);",
+                div { style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
+                    input {
+                        r#type: "text",
+                        placeholder: "{search_placeholder}",
+                        value: "{search_query.read()}",
+                        style: "flex: 1; min-width: 240px; padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: var(--font-size-xs);",
+                        oninput: move |evt| search_query.set(evt.value()),
+                    }
+                    button {
+                        class: if cur_cat.is_none() { "btn btn-primary" } else { "btn btn-secondary" },
+                        style: "padding: var(--space-1) var(--space-2); font-size: var(--font-size-xs);",
+                        onclick: move |_| selected_cat.set(None),
+                        "{filter_all_lbl}"
+                    }
+                    for cat in categories {
+                        {
+                            let cat_label = cat.label(en);
+                            let is_selected_cat = cur_cat == Some(cat);
+                            let btn_cat_cls = if is_selected_cat { "btn btn-primary" } else { "btn btn-secondary" };
+                            rsx! {
+                                button {
+                                    key: "{cat_label}",
+                                    class: "{btn_cat_cls}",
+                                    style: "padding: var(--space-1) var(--space-2); font-size: var(--font-size-xs);",
+                                    onclick: move |_| selected_cat.set(Some(cat)),
+                                    "{cat_label}"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                div { style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); flex-wrap: wrap;",
+                    div { style: "display: flex; gap: var(--space-2);",
                         button {
                             class: "btn btn-primary",
                             disabled: is_running || selected_count == 0,
@@ -425,77 +577,76 @@ pub fn BatchAppStoreCard() -> Element {
                     }
                 }
 
-                for cat in categories {
-                    div { key: "{cat.label(en)}", class: "stack-2",
-                        h4 { style: "font-size: var(--font-size-xs); color: var(--accent-text); border-bottom: 1px solid var(--border); padding-bottom: var(--space-1);",
-                            "{cat.label(en)}"
-                        }
-                        for pkg in AppStoreManager::get_catalog().iter().filter(|p| p.category == cat) {
-                            {
-                                let pkg_id = pkg.id;
-                                let is_checked = selected.read().contains(pkg_id);
-                                let is_installed = state.installed_app_ids.contains(pkg_id);
-                                let st = state.app_statuses.get(pkg_id).cloned();
-                                let desc = if en { pkg.description_en } else { pkg.description_es };
-                                // UI-15: «Evergreen» no es un número de versión.
-                                let version_label = if pkg.version == "Evergreen" {
-                                    if en { "latest version".to_string() } else { "última versión".to_string() }
-                                } else {
-                                    format!("v{}", pkg.version)
-                                };
+                div { class: "modal-list", style: "max-height: 480px; gap: var(--space-2);",
+                    for pkg in filtered_catalog.into_iter() {
+                        {
+                            let pkg_id = pkg.id;
+                            let is_checked = selected.read().contains(pkg_id);
+                            let is_installed = state.installed_app_ids.contains(pkg_id);
+                            let st = state.app_statuses.get(pkg_id).cloned();
+                            let desc = if en { pkg.description_en } else { pkg.description_es };
+                            let cat_tag = pkg.category.label(en);
+                            let version_label = if pkg.is_winget {
+                                "MS Store".to_string()
+                            } else if pkg.version == "Evergreen" {
+                                if en { "latest".to_string() } else { "última".to_string() }
+                            } else {
+                                format!("v{}", pkg.version)
+                            };
 
-                                rsx! {
-                                    div {
-                                        key: "{pkg_id}",
-                                        style: "display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius);",
-                                        label {
-                                            style: "display: flex; justify-content: space-between; align-items: center; cursor: pointer;",
-                                            div { class: "row gap-3",
-                                                input {
-                                                    r#type: "checkbox",
-                                                    checked: is_checked,
-                                                    disabled: is_running,
-                                                    onchange: move |evt| {
-                                                        let mut set = selected.write();
-                                                        if evt.checked() {
-                                                            set.insert(pkg_id);
-                                                        } else {
-                                                            set.remove(pkg_id);
-                                                        }
-                                                    },
-                                                }
-                                                div {
-                                                    div { class: "text-sm fw-semibold",
-                                                        "{pkg.name} "
-                                                        span { style: "font-weight: 400; font-size: var(--font-size-xs); color: var(--text-muted);",
-                                                            "{version_label} • © {pkg.copyright_holder} ({pkg.license})"
-                                                        }
+                            rsx! {
+                                div {
+                                    key: "{pkg_id}",
+                                    style: "display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);",
+                                    label {
+                                        style: "display: flex; justify-content: space-between; align-items: center; cursor: pointer; gap: var(--space-2);",
+                                        div { style: "display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0;",
+                                            input {
+                                                r#type: "checkbox",
+                                                checked: is_checked,
+                                                disabled: is_running,
+                                                onchange: move |evt| {
+                                                    let mut set = selected.write();
+                                                    if evt.checked() {
+                                                        set.insert(pkg_id);
+                                                    } else {
+                                                        set.remove(pkg_id);
                                                     }
-                                                    div { class: "text-xs text-muted",
-                                                        "{desc}"
-                                                    }
-                                                }
+                                                },
                                             }
-
-                                            div { class: "row",
-                                                if is_installed {
-                                                    span { class: "badge badge-success", "{strings(en).installed_app}" }
-                                                }
-                                                if let Some(ref status) = st {
-                                                    match status {
-                                                        InstallStatus::Queued => rsx! { span { class: "badge badge-info", if en { "Queued" } else { "En cola" } } },
-                                                        InstallStatus::Installing => rsx! { span { class: "badge badge-warning", "{strings(en).installing}" } },
-                                                        InstallStatus::Done => rsx! { span { class: "badge badge-success", if en { "Done" } else { "Listo" } } },
-                                                        InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "Error" } },
+                                            {render_generic_icon(pkg.icon)}
+                                            div { style: "min-width: 0; flex: 1;",
+                                                div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
+                                                    span { style: "font-weight: 600; font-size: var(--font-size-sm);", "{pkg.name}" }
+                                                    span { class: "badge badge-info", "{cat_tag}" }
+                                                    span { class: "text-xs text-muted",
+                                                        "{version_label} • © {pkg.copyright_holder}"
                                                     }
+                                                }
+                                                div { class: "text-xs text-muted", style: "margin-top: 2px;",
+                                                    "{desc}"
                                                 }
                                             }
                                         }
-                                        if let Some(InstallStatus::Failed(err_msg)) = st {
-                                            div {
-                                                style: "font-size: var(--font-size-xs); color: var(--danger-text); margin-left: var(--space-5);",
-                                                "{err_msg}"
+
+                                        div { style: "display: flex; gap: var(--space-2); align-items: center;",
+                                            if is_installed {
+                                                span { class: "badge badge-success", if en { "Installed" } else { "Instalada" } }
                                             }
+                                            if let Some(ref status) = st {
+                                                match status {
+                                                    InstallStatus::Queued => rsx! { span { class: "badge badge-info", if en { "Queued" } else { "En cola" } } },
+                                                    InstallStatus::Installing => rsx! { span { class: "badge badge-warning", if en { "Installing..." } else { "Instalando..." } } },
+                                                    InstallStatus::Done => rsx! { span { class: "badge badge-success", if en { "Done" } else { "Listo" } } },
+                                                    InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "Error" } },
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if let Some(InstallStatus::Failed(err_msg)) = st {
+                                        div {
+                                            style: "font-size: var(--font-size-xs); color: var(--danger); margin-left: var(--space-5);",
+                                            "{err_msg}"
                                         }
                                     }
                                 }

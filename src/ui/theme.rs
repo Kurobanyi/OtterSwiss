@@ -16,11 +16,15 @@ pub enum Theme {
     Nord,
     Emerald,
     Crimson,
+    Dracula,
+    TokyoNight,
+    Solarized,
+    Sakura,
 }
 
 impl Theme {
     /// Orden en el selector de tema.
-    pub const ALL: [Theme; 7] = [
+    pub const ALL: [Theme; 11] = [
         Self::System,
         Self::Dark,
         Self::Light,
@@ -28,6 +32,10 @@ impl Theme {
         Self::Nord,
         Self::Emerald,
         Self::Crimson,
+        Self::Dracula,
+        Self::TokyoNight,
+        Self::Solarized,
+        Self::Sakura,
     ];
 
     /// Identificador estable: se guarda en `theme.json` y es el `value` del selector.
@@ -40,6 +48,10 @@ impl Theme {
             Self::Nord => "nord",
             Self::Emerald => "emerald",
             Self::Crimson => "crimson",
+            Self::Dracula => "dracula",
+            Self::TokyoNight => "tokyonight",
+            Self::Solarized => "solarized",
+            Self::Sakura => "sakura",
         }
     }
 
@@ -73,6 +85,10 @@ impl Theme {
             Self::Nord => (0x2e, 0x34, 0x40, 0xff),
             Self::Emerald => (0x07, 0x13, 0x0e, 0xff),
             Self::Crimson => (0x12, 0x09, 0x0c, 0xff),
+            Self::Dracula => (0x28, 0x2a, 0x36, 0xff),
+            Self::TokyoNight => (0x1a, 0x1b, 0x26, 0xff),
+            Self::Solarized => (0x00, 0x2b, 0x36, 0xff),
+            Self::Sakura => (0x19, 0x17, 0x24, 0xff),
         }
     }
 
@@ -90,6 +106,11 @@ impl Theme {
             (Self::Emerald, true) => "Emerald",
             (Self::Crimson, false) => "Carmesí",
             (Self::Crimson, true) => "Crimson",
+            (Self::Dracula, _) => "Dracula",
+            (Self::TokyoNight, _) => "Tokyo Night",
+            (Self::Solarized, false) => "Solarizado",
+            (Self::Solarized, true) => "Solarized",
+            (Self::Sakura, _) => "Sakura",
         }
     }
 

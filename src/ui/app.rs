@@ -11,6 +11,7 @@ use crate::ui::views::cleaner::CleanerView;
 use crate::ui::views::dashboard::DashboardView;
 use crate::ui::views::debloater::DebloaterView;
 use crate::ui::views::dns::DnsView;
+use crate::ui::views::drivers::DriversView;
 use crate::ui::views::hardware::HardwareView;
 use crate::ui::views::sensors::SensorsView;
 use crate::ui::views::tools::ToolsView;
@@ -36,6 +37,7 @@ pub enum ActiveTab {
     Cleaner,
     Debloater,
     Dns,
+    Drivers,
     Archiver,
     Tools,
     Uninstaller,
@@ -45,11 +47,12 @@ pub enum ActiveTab {
 
 impl ActiveTab {
     /// Orden de la barra superior.
-    const ALL: [ActiveTab; 9] = [
+    const ALL: [ActiveTab; 10] = [
         Self::Dashboard,
         Self::Cleaner,
         Self::Debloater,
         Self::Dns,
+        Self::Drivers,
         Self::Archiver,
         Self::Tools,
         Self::Uninstaller,
@@ -65,6 +68,7 @@ impl ActiveTab {
             (Self::Cleaner, false) => "Limpiador",
             (Self::Debloater, _) => "Debloater",
             (Self::Dns, _) => "DNS",
+            (Self::Drivers, _) => "Drivers",
             (Self::Archiver, true) => "Archiver",
             (Self::Archiver, false) => "Archivos",
             (Self::Tools, true) => "Tools & Store",
@@ -78,11 +82,12 @@ impl ActiveTab {
     }
 }
 
-const KEEP_ALIVE_TABS: [ActiveTab; 7] = [
+const KEEP_ALIVE_TABS: [ActiveTab; 8] = [
     ActiveTab::Dashboard,
     ActiveTab::Cleaner,
     ActiveTab::Debloater,
     ActiveTab::Dns,
+    ActiveTab::Drivers,
     ActiveTab::Archiver,
     ActiveTab::Tools,
     ActiveTab::Uninstaller,
@@ -390,6 +395,7 @@ pub fn App() -> Element {
                                 ActiveTab::Cleaner => rsx! { CleanerView {} },
                                 ActiveTab::Debloater => rsx! { DebloaterView {} },
                                 ActiveTab::Dns => rsx! { DnsView {} },
+                                ActiveTab::Drivers => rsx! { DriversView {} },
                                 ActiveTab::Archiver => rsx! { ArchiverView {} },
                                 ActiveTab::Tools => rsx! { ToolsView {} },
                                 ActiveTab::Uninstaller => rsx! { UninstallerView {} },

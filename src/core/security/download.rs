@@ -148,7 +148,7 @@ pub fn secure_download_and_verify_with_progress(
     file.sync_all()?;
 
     if let Some(expected_sha) = policy.expected_sha256_hex {
-        let actual_sha = format!("{:x}", hasher.finalize());
+        let actual_sha = hex_lower(&hasher.finalize());
         if !actual_sha.eq_ignore_ascii_case(expected_sha.trim()) {
             return Err(CoreError::Trust {
                 message: format!(
@@ -206,8 +206,15 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
 
     if let Some(expected_sha) = policy.expected_sha256_hex {
         let mut hasher = Sha256::new();
-        std::io::copy(&mut file, &mut hasher)?;
-        let actual = format!("{:x}", hasher.finalize());
+        let mut buf = [0u8; 32 * 1024];
+        loop {
+            let n = std::io::Read::read(&mut file, &mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        let actual = hex_lower(&hasher.finalize());
         if !actual.eq_ignore_ascii_case(expected_sha.trim()) {
             return Err(CoreError::Trust {
                 message: format!(
@@ -306,4 +313,15 @@ impl Drop for StagedDownload {
     fn drop(&mut self) {
         let _ = delete_verified_file(&self.path);
     }
+}
+
+/// Hexadecimal en minúsculas de un digest.
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
 }

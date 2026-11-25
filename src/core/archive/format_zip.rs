@@ -55,24 +55,32 @@ impl ArchiveManager {
                     source: Some(Box::new(e)),
                 })?;
 
+                let entry_name = entry
+                    .name()
+                    .map_err(|e| CoreError::Archive {
+                        message: format!("Nombre de entrada ZIP inválido #{}: {}", i, e),
+                        source: Some(Box::new(e)),
+                    })?
+                    .into_owned();
+
                 if entry
                     .unix_mode()
                     .is_some_and(|m| (m & 0o170000) == 0o120000)
                 {
                     return Err(CoreError::Validation(format!(
                         "Symlink rechazado en archivo ZIP: {}",
-                        entry.name()
+                        entry_name
                     )));
                 }
 
                 if entry.enclosed_name().is_none() {
                     return Err(CoreError::Validation(format!(
                         "Ruta insegura en archivo ZIP: {}",
-                        entry.name()
+                        entry_name
                     )));
                 }
                 // Mismo saneo que 7z y tar: rechaza también ':' (flujos alternos NTFS) y rutas profundas.
-                let raw_path = sanitize_archive_rel_path(entry.name())?;
+                let raw_path = sanitize_archive_rel_path(&entry_name)?;
                 let rel_display = raw_path.to_string_lossy().into_owned();
                 let out_path = tmp_dir.join(&raw_path);
 

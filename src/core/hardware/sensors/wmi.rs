@@ -5,7 +5,9 @@ use windows::Win32::System::Com::{
     RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
 };
 use windows::Win32::System::Variant::VARIANT;
-use windows::Win32::System::Variant::{VariantClear, VariantToInt32, VariantToStringAlloc};
+use windows::Win32::System::Variant::{
+    VariantClear, VariantToDouble, VariantToInt32, VariantToStringAlloc,
+};
 use windows::Win32::System::Wmi::{
     IWbemClassObject, IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY,
     WbemLocator,
@@ -30,6 +32,23 @@ pub(super) fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
             return None;
         }
         let val = VariantToInt32(&var).ok();
+        let _ = VariantClear(&mut var);
+        val
+    }
+}
+
+fn read_wmi_f32(obj: &IWbemClassObject, prop: &str) -> Option<f32> {
+    let w = to_wide_null(prop);
+    let mut var = VARIANT::default();
+    // SAFETY: `w` termina en NUL y vive hasta el final; `var` es un VARIANT inicializado que se libera abajo.
+    unsafe {
+        if obj
+            .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
+            .is_err()
+        {
+            return None;
+        }
+        let val = VariantToDouble(&var).ok().map(|v| v as f32);
         let _ = VariantClear(&mut var);
         val
     }
@@ -62,8 +81,13 @@ fn decikelvin_to_c(tenths_k: i32) -> f32 {
     (tenths_k as f32 / 10.0) - 273.15
 }
 
-/// Ejecuta `query` en el espacio de nombres `namespace` y devuelve hasta 16 objetos. Vacío si WMI falla.
-fn wmi_query(locator: &IWbemLocator, namespace: &str, query: &str) -> Vec<IWbemClassObject> {
+/// Ejecuta `query` en el espacio de nombres `namespace` y devuelve hasta `max` objetos. Vacío si WMI falla.
+fn wmi_query(
+    locator: &IWbemLocator,
+    namespace: &str,
+    query: &str,
+    max: usize,
+) -> Vec<IWbemClassObject> {
     let mut out = Vec::new();
     let ns = BSTR::from(namespace);
     let empty = BSTR::default();
@@ -91,7 +115,7 @@ fn wmi_query(locator: &IWbemLocator, namespace: &str, query: &str) -> Vec<IWbemC
         ) else {
             return out;
         };
-        for _ in 0..16 {
+        for _ in 0..max {
             let mut objs: [Option<IWbemClassObject>; 1] = [None];
             let mut returned = 0u32;
             if enumerator.Next(1200, &mut objs, &mut returned).is_err() || returned == 0 {
@@ -106,6 +130,50 @@ fn wmi_query(locator: &IWbemLocator, namespace: &str, query: &str) -> Vec<IWbemC
     out
 }
 
+/// Temperaturas de CPU que publica LibreHardwareMonitor u OpenHardwareMonitor en WMI, si el usuario tiene uno
+/// abierto. Así hay lecturas reales de CPU sin que OtterSwiss cargue un driver de kernel propio.
+fn poll_external_cpu_wmi(locator: &IWbemLocator) -> Vec<SensorReading> {
+    for (namespace, label) in [
+        (r"root\LibreHardwareMonitor", "CPU (LibreHardwareMonitor)"),
+        (r"root\OpenHardwareMonitor", "CPU (OpenHardwareMonitor)"),
+    ] {
+        let sensors = wmi_query(
+            locator,
+            namespace,
+            "SELECT Name, SensorType, Value, Max FROM Sensor WHERE SensorType = 'Temperature'",
+            256,
+        );
+        let out: Vec<SensorReading> = sensors
+            .iter()
+            .filter_map(|obj| {
+                let name = read_wmi_string(obj, "Name")?;
+                if !is_cpu_sensor_name(&name) {
+                    return None;
+                }
+                let current = read_wmi_f32(obj, "Value").filter(|v| *v > 1.0 && *v < 125.0)?;
+                Some(SensorReading {
+                    name,
+                    sensor_type: label.into(),
+                    current_celsius: current,
+                    max_celsius: read_wmi_f32(obj, "Max").filter(|v| *v > 1.0 && *v < 150.0),
+                })
+            })
+            .collect();
+        if !out.is_empty() {
+            return out;
+        }
+    }
+    Vec::new()
+}
+
+/// Nombres de sensor de LibreHardwareMonitor que corresponden a la CPU.
+fn is_cpu_sensor_name(name: &str) -> bool {
+    let low = name.to_ascii_lowercase();
+    ["cpu", "package", "core", "tctl", "tdie", "ccd"]
+        .iter()
+        .any(|k| low.contains(k))
+}
+
 impl SensorSession {
     pub fn poll_wmi_acpi(&self) -> (Vec<SensorReading>, Option<String>) {
         let mut readings = Vec::new();
@@ -115,11 +183,13 @@ impl SensorSession {
                 Ok(l) => l,
                 Err(e) => return (readings, Some(format!("WMI locator no disponible: {}", e))),
             };
+        readings.extend(poll_external_cpu_wmi(&locator));
 
         let zones = wmi_query(
             &locator,
             r"root\WMI",
             "SELECT InstanceName, CurrentTemperature, CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
+            16,
         );
         for (idx, obj) in zones.iter().enumerate() {
             let Some(c) = read_wmi_i32(obj, "CurrentTemperature").map(decikelvin_to_c) else {
@@ -148,6 +218,7 @@ impl SensorSession {
                 &locator,
                 r"root\CIMV2",
                 "SELECT Name, Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
+                16,
             );
             for (idx, obj) in zones.iter().enumerate() {
                 let hp = read_wmi_i32(obj, "HighPrecisionTemperature")
@@ -172,7 +243,7 @@ impl SensorSession {
 
         let note = if readings.is_empty() {
             Some(
-                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo."
+                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo (opcionalmente puedes tener abierto LibreHardwareMonitor en segundo plano)."
                     .into(),
             )
         } else {
