@@ -1,5 +1,4 @@
-//! Drivers: dispositivos presentes, búsqueda de actualizaciones (Windows Update, Catálogo de Microsoft, NVIDIA e
-//! Intel), instalación verificada e historial para revertir. Este módulo tiene los tipos públicos, la fachada
+//! Drivers: dispositivos presentes, búsqueda de actualizaciones (Windows Update, Catálogo de Microsoft y NVIDIA), instalación verificada e historial para revertir. Este módulo tiene los tipos públicos, la fachada
 //! [`DriverManager`] y lo que comparten los submódulos: la política del equipo (SYS-25) y las peticiones HTTPS.
 
 mod catalog;
@@ -90,7 +89,6 @@ pub struct VendorDriverUpdate {
     pub size_label: String,
     pub expected_signer_cn: Option<String>,
     pub allowed_hosts: Vec<String>,
-    pub is_zip_inf: bool,
     pub matched_hw_id: String,
 }
 
@@ -150,19 +148,13 @@ impl DriverManager {
         // ERR-20: lo que no se pudo consultar se informa en `notes`, no se confunde con «sin actualizaciones».
         let mut notes = Vec::new();
         let mut vendor_updates = Vec::new();
-        type VendorCheck = fn(&[InstalledDriverDevice]) -> CoreResult<Vec<VendorDriverUpdate>>;
-        let vendors: [(&str, VendorCheck); 2] = [
-            ("NVIDIA", Self::check_nvidia_updates),
-            ("Intel", Self::check_intel_updates),
-        ];
-        for (source, check) in vendors {
-            if cancelled() {
-                return FullDriverScanResult::default();
-            }
-            match check(devices) {
-                Ok(found) => vendor_updates.extend(found),
-                Err(e) => notes.push(format!("{source}: {e}")),
-            }
+        // ERR-25: Intel no publica un catálogo de drivers legible por máquina; sus drivers llegan por Windows Update.
+        if cancelled() {
+            return FullDriverScanResult::default();
+        }
+        match Self::check_nvidia_updates(devices) {
+            Ok(found) => vendor_updates.extend(found),
+            Err(e) => notes.push(format!("NVIDIA: {e}")),
         }
 
         let mut catalog_matches = Vec::new();

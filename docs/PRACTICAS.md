@@ -79,7 +79,7 @@ dependencias directas se usan.
 
 ## Siguiente
 
-1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags`, `url_encode` y el JSON de Intel) y el resto de `AR-24` (tabla PCI).
+1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags` y `url_encode`) y el resto de `AR-24` (tabla PCI).
 2. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 3. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
 4. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.

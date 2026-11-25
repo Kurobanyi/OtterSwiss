@@ -137,7 +137,6 @@ impl DriverManager {
                 size_label: attrs.file_size.unwrap_or_else(|| "—".into()),
                 expected_signer_cn: Some(NVIDIA_SIGNER.into()),
                 allowed_hosts: NVIDIA_DOWNLOAD_HOSTS.iter().map(|h| (*h).into()).collect(),
-                is_zip_inf: false,
                 matched_hw_id: nv_gpu.short_hw_id().unwrap_or_default(),
             });
         }

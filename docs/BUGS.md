@@ -26,17 +26,17 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
 | Seguridad (`SEC-`) | 37 | 2 | 1 | 0 | 34 |
-| Sistema y rollback (`SYS-`) | 27 | 1 | 1 | 0 | 25 |
-| Errores y procesos (`ERR-`) | 25 | 1 | 0 | 1 | 23 |
+| Sistema y rollback (`SYS-`) | 27 | 0 | 1 | 0 | 26 |
+| Errores y procesos (`ERR-`) | 25 | 1 | 0 | 0 | 24 |
 | Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
 | Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
-| Pruebas (`TST-`) | 2 | 2 | 0 | 0 | 0 |
-| **Total** | **125** | **7** | **3** | **2** | **113** |
+| Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
+| **Total** | **125** | **4** | **3** | **1** | **117** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; quedan abiertos `SEC-32` (parcial: el
-proxy del usuario), `SEC-35`, `SYS-27`, `ERR-24` (parcial) y `TST-02` (parcial). Sin probar instalando en una VM.
+proxy del usuario), `SEC-35` y `ERR-24` (parcial); `ERR-25` (Intel) se cerró quitando esa fuente. Sin probar instalando en una VM.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -49,10 +49,7 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Parcial |
 | [`SEC-32`](BUGS-detalle.md#sec-32) | Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN | Sistema | Alta | Parcial |
 | [`SEC-35`](BUGS-detalle.md#sec-35) | Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar | Sistema | Baja | Pendiente |
-| [`SYS-27`](BUGS-detalle.md#sys-27) | El JSON de Intel puede ofrecer el paquete de otro dispositivo | Sistema, Usuario | Media | Pendiente |
-| [`ERR-25`](BUGS-detalle.md#err-25) | La búsqueda de drivers de Intel nunca funcionó: el servicio devuelve un ZIP, no JSON | Usuario | Media | Pendiente de decisión |
 | [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
-| [`TST-02`](BUGS-detalle.md#tst-02) | El código nuevo de drivers, tienda y sensores no tiene tests | Desarrollador | Media | Parcial |
 
 ## Diferidos y pendientes de decisión
 
@@ -67,12 +64,12 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. Decisión del autor: `SEC-32` (WinInet sin el proxy del usuario rompe redes con proxy obligatorio) y `SEC-35` (fijar SHA-256 en
-   las entradas versionadas obliga a actualizarlos con cada versión).
-2. Drivers: `SYS-27` (formato real del JSON de Intel; la búsqueda sin elevar ya muestra «Respuesta inesperada»).
-3. En una VM: instalar y quitar un driver de cada camino, quitar una app Appx, `ERR-24` (Moonlight, GOG) y la ventana en tamaño chico.
-4. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`), `UI-11`.
-5. Mejoras de `docs/PRACTICAS.md`.
+1. `SEC-32`: el proxy de la máquina (WinHTTP de HKLM) o directo, nunca el de HKCU (decidido el 25/11).
+2. `SEC-35` y `ERR-24`: la tienda pasa a `winget download` con verificación propia (decidido el 25/11).
+3. `UI-11`: core devuelve datos y la UI pone el texto, junto con `IN-03` de PRACTICAS (decidido el 25/11).
+4. En una VM: instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
+5. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
+6. Mejoras de `docs/PRACTICAS.md`.
 
 ## Patrones
 

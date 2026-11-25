@@ -1,5 +1,5 @@
-//! Descarga e instalación verificada de paquetes de fabricante (SEC-30): ejecutable firmado dentro de un Job, o ZIP
-//! extraído con el archivador endurecido y agregado con `pnputil`. Los temporales viven en carpetas solo-admin.
+//! Descarga e instalación verificada de paquetes de fabricante (SEC-30): ejecutable firmado dentro de un Job. Los
+//! temporales viven en carpetas solo-admin.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,12 +7,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::vendor::vendor_policy;
 use super::{
-    DriverInstallReport, DriverManager, PNPUTIL_TIMEOUT, VendorDriverUpdate,
-    ensure_driver_updates_allowed,
+    DriverInstallReport, DriverManager, VendorDriverUpdate, ensure_driver_updates_allowed,
 };
-use crate::core::archive::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::process::{Launch, run_captured, run_in_job, system32_dir};
+use crate::core::platform::process::{Launch, run_in_job};
 use crate::core::platform::safe_fs::{create_verified_new_file, delete_tree_verified};
 use crate::core::security::acl::create_admin_only_dir;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
@@ -24,7 +22,6 @@ use crate::core::security::http;
 /// Un instalador de drivers puede pedir interacción (NVIDIA no tiene modo silencioso aquí): margen amplio antes de
 /// cortarlo, porque matar un instalador de drivers a mitad es peor que esperar.
 const VENDOR_INSTALLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 60);
-const MAX_VENDOR_ZIP_BYTES: u64 = 900 * 1024 * 1024;
 
 impl DriverManager {
     /// SEC-30: descarga e instala una actualización de fabricante. Hosts y firmante salen de [`vendor_policy`] (fijos en el
@@ -47,10 +44,6 @@ impl DriverManager {
                 }
             })
             .collect();
-
-        if upd.is_zip_inf {
-            return install_vendor_zip(upd, &safe_id, hosts, signer);
-        }
 
         let policy = DownloadPolicy {
             url: &upd.download_url,
@@ -168,78 +161,4 @@ pub(super) fn download_to_file(
     }
     f.sync_all()?;
     Ok(())
-}
-
-/// SEC-30: paquete ZIP de Intel. Se baja con el cliente HTTPS común validando el host final, se extrae con el
-/// archivador endurecido (rutas, symlinks, cuota) y solo se ejecuta un instalador firmado por Intel; si no hay
-/// instalador, `pnputil` agrega los INF del paquete.
-fn install_vendor_zip(
-    upd: &VendorDriverUpdate,
-    safe_id: &str,
-    hosts: &'static [&'static str],
-    signer: &'static str,
-) -> CoreResult<DriverInstallReport> {
-    use std::sync::atomic::AtomicBool;
-
-    let scratch = ScratchDir::new("Vendor", safe_id)?;
-    let zip_path = scratch.dir.join("package.zip");
-    download_to_file(&upd.download_url, hosts, &zip_path, MAX_VENDOR_ZIP_BYTES)?;
-
-    let extract_dir = scratch.dir.join("extracted");
-    let cancel = AtomicBool::new(false);
-    ArchiveManager::extract_archive(&zip_path, &extract_dir, 4 * MAX_VENDOR_ZIP_BYTES, &cancel)?;
-
-    if let Some(setup_exe) = find_installer_in_dir(&extract_dir) {
-        let policy = DownloadPolicy {
-            url: &upd.download_url,
-            allowed_final_hosts: hosts,
-            expected_sha256_hex: None,
-            expected_cert_thumbprint_sha1: None,
-            expected_signer_cn: Some(signer),
-            max_bytes: MAX_VENDOR_ZIP_BYTES,
-        };
-        return run_verified_vendor_installer(&setup_exe, &policy, &upd.title);
-    }
-
-    // ERR-21: pnputil no admite `**`; `/subdirs` ya recorre las subcarpetas.
-    let inf_pattern = extract_dir.join("*.inf");
-    let out = run_captured(
-        &system32_dir()?.join("pnputil.exe"),
-        &[
-            std::ffi::OsStr::new("/add-driver"),
-            inf_pattern.as_os_str(),
-            std::ffi::OsStr::new("/subdirs"),
-            std::ffi::OsStr::new("/install"),
-        ],
-        PNPUTIL_TIMEOUT,
-    )?;
-    if out.success || out.code == Some(3010) {
-        Ok(DriverInstallReport::single(
-            format!("Driver '{}' instalado vía Driver Store.", upd.title),
-            out.code == Some(3010),
-        ))
-    } else {
-        Err(CoreError::SystemTool {
-            message: format!("pnputil devolvió error: {}", out.stdout.trim()),
-            source: None,
-        })
-    }
-}
-
-fn find_installer_in_dir(dir: &Path) -> Option<PathBuf> {
-    let entries = std::fs::read_dir(dir).ok()?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_file() {
-            let name = path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_ascii_lowercase();
-            if name == "setup.exe" || name == "installer.exe" || name == "igxpin.exe" {
-                return Some(path);
-            }
-        }
-    }
-    None
 }

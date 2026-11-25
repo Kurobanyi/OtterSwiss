@@ -60,7 +60,7 @@ pub struct DriversStrings {
 
 pub static ES: DriversStrings = DriversStrings {
     title: "Gestor y actualizador de drivers",
-    subtitle: "Windows Update, NVIDIA e Intel oficiales y el Catálogo de Microsoft (.cab)",
+    subtitle: "Windows Update, NVIDIA oficial y el Catálogo de Microsoft (.cab)",
     full_scan: "Buscar actualizaciones",
     refresh_hardware: "Releer hardware",
     backup_oem: "Respaldar drivers OEM",
@@ -71,7 +71,7 @@ pub static ES: DriversStrings = DriversStrings {
             plural(n, ("dispositivo detectado", "dispositivos detectados"))
         )
     },
-    scanning_sources: "Buscando en Windows Update, NVIDIA e Intel y el Catálogo de Microsoft…",
+    scanning_sources: "Buscando en Windows Update, NVIDIA y el Catálogo de Microsoft…",
     scan_cancelled: "Búsqueda cancelada.",
     no_updates: "No hay actualizaciones de drivers pendientes.",
     updates_found: |n| {
@@ -98,7 +98,7 @@ pub static ES: DriversStrings = DriversStrings {
     install: "Instalar",
     firmware_warning: "Incluye firmware o BIOS: si la actualización se interrumpe, el equipo puede no arrancar. Mantenlo enchufado.",
     backup_first: "Respaldar antes los drivers instalados (ProgramData\\OtterSwiss\\DriverBackup)",
-    vendor_title: "Actualizaciones de fabricantes (NVIDIA e Intel)",
+    vendor_title: "Actualizaciones de NVIDIA",
     vendor_subtitle: "Instaladores oficiales firmados, elegidos por Hardware ID",
     download_install: "Descargar e instalar",
     history_title: "Drivers instalados desde OtterSwiss",
@@ -144,13 +144,13 @@ pub static ES: DriversStrings = DriversStrings {
 
 pub static EN: DriversStrings = DriversStrings {
     title: "Driver manager and updater",
-    subtitle: "Windows Update, official NVIDIA and Intel feeds and the Microsoft Update Catalog (.cab)",
+    subtitle: "Windows Update, official NVIDIA drivers and the Microsoft Update Catalog (.cab)",
     full_scan: "Check for updates",
     refresh_hardware: "Reload hardware",
     backup_oem: "Back up OEM drivers",
     scanning_devices: "Reading hardware and drivers…",
     devices_detected: |n| format!("{} detected.", plural(n, ("device", "devices"))),
-    scanning_sources: "Checking Windows Update, NVIDIA and Intel, and the Microsoft Update Catalog…",
+    scanning_sources: "Checking Windows Update, NVIDIA and the Microsoft Update Catalog…",
     scan_cancelled: "Search cancelled.",
     no_updates: "No pending driver updates.",
     updates_found: |n| format!("Scan complete: {} found.", plural(n, ("update", "updates"))),
@@ -169,7 +169,7 @@ pub static EN: DriversStrings = DriversStrings {
     install: "Install",
     firmware_warning: "Includes firmware or BIOS: an interrupted update can leave the PC unable to boot. Keep it plugged in.",
     backup_first: "Back up installed drivers first (ProgramData\\OtterSwiss\\DriverBackup)",
-    vendor_title: "Vendor updates (NVIDIA and Intel)",
+    vendor_title: "NVIDIA updates",
     vendor_subtitle: "Official signed installers matched by Hardware ID",
     download_install: "Download and install",
     history_title: "Drivers installed from OtterSwiss",

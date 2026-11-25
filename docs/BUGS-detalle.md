@@ -1084,11 +1084,12 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sys-27"></a>
 ### SYS-27 · El JSON de Intel puede ofrecer el paquete de otro dispositivo
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: derivado (formato de `dsadata` desconocido) · **Estado**: Pendiente
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: derivado (formato de `dsadata` desconocido) · **Estado**: Resuelto
 - **Qué pasa**: el primer objeto que contiene `VEN_x&DEV_y` en algún descendiente (puede ser la raíz) toma la primera URL de todo el
   subárbol. `seen_urls.insert` consume la URL aunque no se ofrezca. Serializa cada subárbol de un JSON de 32 MB por objeto: lento.
 - **Dónde**: `src/core/drivers.rs:1755-1777`.
 - **Propuesta**: emparejar a nivel de paquete (objeto con URL e IDs propios). Test con un fixture de dos paquetes.
+- **Cierre** (2026-11-25): el código que emparejaba el JSON de Intel ya no existe (`ERR-25`): ese servicio nunca devolvió JSON.
 
 <a id="err-15"></a>
 ### ERR-15 · Winget toma como éxito «no se encontró la app»
@@ -1175,7 +1176,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-25"></a>
 ### ERR-25 · La búsqueda de drivers de Intel nunca funcionó: el servicio devuelve un ZIP, no JSON
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: recorrido de la pestaña Drivers (25/11) · **Evidencia**: confirmado · **Estado**: Pendiente de decisión
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: recorrido de la pestaña Drivers (25/11) · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: la búsqueda completa siempre avisa «Intel: … Respuesta inesperada del servicio de drivers». `https://dsadata.intel.com/data/en`
   responde `200 application/zip` (147 KB): los datos del cliente Driver & Support Assistant (`DSARules*.dll` con las reglas,
   `software-configurations.json`, `os.json`, `system-gather.xml`…). `check_intel_updates` lo parsea como JSON, falla siempre y nunca
@@ -1185,6 +1186,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers/vendor/intel.rs`.
 - **Propuesta**: quitar la fuente Intel (los drivers de Intel siguen llegando por Windows Update y el Catálogo de Microsoft) o, si se
   quiere conservar, otro origen documentado. Decide el autor.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): por decisión del autor, sin una fuente oficial legible por máquina se quita la fuente Intel (no se encontró ninguna: solo catálogos de terceros que son copias de un momento). Fuera `vendor/intel.rs`, el camino ZIP de `install.rs` (`install_vendor_zip`, `find_installer_in_dir`) y el campo `is_zip_inf`; los drivers de Intel llegan por Windows Update y el Catálogo de Microsoft. Verificado: `cargo test` (70 + 2), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="err-24"></a>
 ### ERR-24 · Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo
@@ -1254,7 +1256,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="tst-02"></a>
 ### TST-02 · El código nuevo de drivers, tienda y sensores no tiene tests
-- **Afecta**: Desarrollador · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Parcial
+- **Afecta**: Desarrollador · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Resuelto
 - **Qué pasa**: `short_hw_id`, `extract_ven_dev`, `is_version_newer`, `friendly_gpu_version`, el parser HTML del Catálogo,
   `collect_intel_matches` e `is_cpu_sensor_name` no tienen ni un test, ni hay un test invariante del catálogo (verificación, hosts de
   GitHub, IDs únicos) que habría atrapado ERR-16 y ERR-17.
@@ -1262,4 +1264,4 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Propuesta**: ver `CL-22` de PRACTICAS.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de los códigos de winget, de las invariantes del catálogo y de la cadena Authenticode. Faltan los parsers de drivers y el sensor. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de IDs de hardware, versiones, versión de NVIDIA, GUID y enlace del CAB, sensores de LHM, códigos de winget, invariantes del catálogo, cadena Authenticode y detección de Python; prueba en vivo del Catálogo. Falta `collect_intel_matches` (`SYS-27`, formato desconocido). Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
-
+- **Cierre final** (2026-11-25): lo que faltaba era `collect_intel_matches`, que se quitó con la fuente Intel (`ERR-25`).
