@@ -49,7 +49,7 @@ impl UninstallerManager {
         }
         let wide = to_wide_null(raw);
         let mut buf = vec![0u16; 32_768];
-        let h = token.map(|t| t.raw()).unwrap_or_default();
+        let h = token.map(|t| t.raw());
         // SAFETY: el token y las cadenas son válidos; el búfer tiene la longitud que se pasa.
         unsafe { ExpandEnvironmentStringsForUserW(h, PCWSTR(wide.as_ptr()), &mut buf) }.map_err(
             |e| CoreError::Uninstaller {

@@ -111,7 +111,7 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
 pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
     let mut len = 0u32;
     // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
-    let _ = unsafe { GetUserProfileDirectoryW(token.raw(), PWSTR::null(), &mut len) };
+    let _ = unsafe { GetUserProfileDirectoryW(token.raw(), None, &mut len) };
     if len == 0 || len > 4096 {
         return Err(CoreError::SystemTool {
             message: "No se pudo obtener la carpeta de perfil del usuario".into(),
@@ -120,12 +120,11 @@ pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
     }
     let mut buf = vec![0u16; len as usize];
     // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
-    unsafe { GetUserProfileDirectoryW(token.raw(), PWSTR(buf.as_mut_ptr()), &mut len) }.map_err(
-        |e| CoreError::SystemTool {
+    unsafe { GetUserProfileDirectoryW(token.raw(), Some(PWSTR(buf.as_mut_ptr())), &mut len) }
+        .map_err(|e| CoreError::SystemTool {
             message: format!("GetUserProfileDirectoryW falló: {}", e),
             source: Some(Box::new(e)),
-        },
-    )?;
+        })?;
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Ok(PathBuf::from(String::from_utf16_lossy(&buf[..end])))
 }
@@ -194,7 +193,7 @@ fn active_processes(job: &JobObject) -> CoreResult<u32> {
     // SAFETY: el Job es válido y la estructura de salida tiene el tamaño que se informa.
     unsafe {
         QueryInformationJobObject(
-            job.raw(),
+            Some(job.raw()),
             JobObjectBasicAccountingInformation,
             &mut info as *mut _ as *mut std::ffi::c_void,
             std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
@@ -225,7 +224,7 @@ pub fn run_in_job(
     if let Some(token) = launch.user_token {
         let mut env_block: *mut std::ffi::c_void = std::ptr::null_mut();
         // SAFETY: el token es válido; el bloque pasa al guardián que lo destruye.
-        unsafe { CreateEnvironmentBlock(&mut env_block, token.raw(), false) }
+        unsafe { CreateEnvironmentBlock(&mut env_block, Some(token.raw()), false) }
             .map_err(CoreError::sys("CreateEnvironmentBlock falló: "))?;
         let _env = EnvBlockGuard(env_block);
         // SAFETY: cadenas terminadas en NUL que viven durante la llamada; el proceso nace suspendido y los handles devueltos pasan a SafeHandle.
@@ -234,7 +233,7 @@ pub fn run_in_job(
                 token.raw(),
                 LOGON_WITH_PROFILE,
                 PCWSTR(app_w.as_ptr()),
-                PWSTR(cmd_w.as_mut_ptr()),
+                Some(PWSTR(cmd_w.as_mut_ptr())),
                 CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
                 Some(env_block),
                 PCWSTR(cwd_w.as_ptr()),
@@ -255,7 +254,7 @@ pub fn run_in_job(
         unsafe {
             CreateProcessW(
                 PCWSTR(app_w.as_ptr()),
-                PWSTR(cmd_w.as_mut_ptr()),
+                Some(PWSTR(cmd_w.as_mut_ptr())),
                 None,
                 None,
                 false,

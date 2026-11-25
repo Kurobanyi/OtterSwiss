@@ -4,12 +4,13 @@ use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, CoCreateInstance, CoSetProxyBlanket, CoTaskMemFree, EOAC_NONE,
     RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
 };
+use windows::Win32::System::Variant::VARIANT;
 use windows::Win32::System::Variant::{VariantClear, VariantToInt32, VariantToStringAlloc};
 use windows::Win32::System::Wmi::{
     IWbemClassObject, IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY,
     WbemLocator,
 };
-use windows::core::{BSTR, PCWSTR, VARIANT};
+use windows::core::{BSTR, PCWSTR};
 
 use super::{SensorReading, SensorSession};
 use crate::core::platform::wide::to_wide_null;

@@ -51,8 +51,8 @@ impl Drop for LocalMem {
         if !self.0.is_null() {
             // SAFETY: el puntero lo reservó una API con LocalAlloc y solo se libera aquí.
             unsafe {
-                let _ = windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(
-                    self.0,
+                let _ = windows::Win32::Foundation::LocalFree(Some(
+                    windows::Win32::Foundation::HLOCAL(self.0),
                 ));
             }
         }

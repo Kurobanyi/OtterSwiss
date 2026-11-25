@@ -60,8 +60,8 @@ pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
             PCWSTR(wide.as_ptr()),
             SE_FILE_OBJECT,
             DACL_SECURITY_INFORMATION | UNPROTECTED_DACL_SECURITY_INFORMATION,
-            PSID::default(),
-            PSID::default(),
+            None,
+            None,
             Some(&empty_acl),
             None,
         )
@@ -169,7 +169,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
         CreateWellKnownSid(
             WinBuiltinAdministratorsSid,
             None,
-            admin_psid,
+            Some(admin_psid),
             &mut admin_sid_len,
         )
     }
@@ -181,8 +181,15 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     let mut system_sid_len = system_sid_buf.len() as u32;
     let system_psid = PSID(system_sid_buf.as_mut_ptr() as *mut _);
     // SAFETY: el búfer tiene SECURITY_MAX_SID_SIZE bytes, el máximo que puede escribir.
-    unsafe { CreateWellKnownSid(WinLocalSystemSid, None, system_psid, &mut system_sid_len) }
-        .map_err(CoreError::trust("CreateWellKnownSid(LocalSystem) falló: "))?;
+    unsafe {
+        CreateWellKnownSid(
+            WinLocalSystemSid,
+            None,
+            Some(system_psid),
+            &mut system_sid_len,
+        )
+    }
+    .map_err(CoreError::trust("CreateWellKnownSid(LocalSystem) falló: "))?;
 
     let entries = [
         EXPLICIT_ACCESS_W {
@@ -229,8 +236,8 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
             OWNER_SECURITY_INFORMATION
                 | DACL_SECURITY_INFORMATION
                 | PROTECTED_DACL_SECURITY_INFORMATION,
-            admin_psid,
-            PSID::default(),
+            Some(admin_psid),
+            None,
             Some(new_dacl),
             None,
         )

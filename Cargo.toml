@@ -39,7 +39,7 @@ dioxus = { version = "0.7", features = ["desktop"] }
 webview2-com = "0.38"
 
 [dependencies.windows]
-version = "0.58"
+version = "0.61"
 features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Foundation",

@@ -78,7 +78,7 @@ pub fn get(url: &str, timeouts: Timeouts) -> CoreResult<HttpsResponse> {
             PCWSTR(url_w.as_ptr()),
             None,
             INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            0,
+            None,
         )
     })
     .ok_or_else(|| trust_err(format!("No se pudo conectar con '{url}'")))?;

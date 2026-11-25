@@ -228,9 +228,7 @@ fn open_for_delete(path: &Path, directory: bool) -> CoreResult<SafeHandle> {
 
 /// Marca para borrado el objeto abierto en `handle`. Se borra al cerrarse el handle.
 fn mark_handle_for_delete(handle: &SafeHandle, path: &Path) -> CoreResult<()> {
-    let disposition = FILE_DISPOSITION_INFO {
-        DeleteFile: true.into(),
-    };
+    let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };
     // SAFETY: handle válido abierto con acceso DELETE; quien llama ya validó la ruta sobre este mismo handle (SEC-01).
     unsafe {
         SetFileInformationByHandle(

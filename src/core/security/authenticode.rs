@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::ptr;
 
-use windows::Win32::Foundation::HANDLE;
+use windows::Win32::Foundation::{HANDLE, HWND};
 use windows::Win32::Security::Cryptography::{
     CERT_NAME_ATTR_TYPE, CERT_SHA1_HASH_PROP_ID, CertGetCertificateContextProperty,
     CertGetNameStringW,
@@ -38,7 +38,7 @@ pub fn verify_authenticode_on_handle(
             // SAFETY: la estructura WINTRUST_DATA y el archivo apuntan a datos vivos durante la llamada.
             unsafe {
                 let _ = WinVerifyTrust(
-                    None,
+                    HWND::default(),
                     &mut self.action,
                     &mut self.trust_data as *mut _ as *mut _,
                 );
@@ -77,7 +77,7 @@ pub fn verify_authenticode_on_handle(
     // SAFETY: la estructura WINTRUST_DATA y el archivo apuntan a datos vivos durante la llamada.
     let status = unsafe {
         WinVerifyTrust(
-            None,
+            HWND::default(),
             &mut guard.action,
             &mut guard.trust_data as *mut _ as *mut _,
         )
