@@ -71,6 +71,16 @@ una copia con `asInvoker` en `$env:TEMP\otter-ui-target` (cambiando `build.rs` s
 recorre sin elevación. Recorrido hecho: todas las pestañas en oscuro, Dashboard y Limpiador en claro e inglés, diálogos con
 foco atrapado y Escape. Falta: acciones de sistema como admin (mejor en VM o Windows Sandbox) y ventana en tamaño chico.
 
+## Decisiones del usuario (2026-11-25)
+
+- `ERR-25`: buscar otra fuente de Intel; si no hay una oficial y legible por máquina, quitarla y dejar Intel a Windows Update. No se
+  encontró ninguna (solo catálogos de terceros que son copias de un momento): se quita.
+- `SEC-32`: la app elevada usa el proxy de la máquina (WinHTTP, HKLM) o conexión directa, nunca el de HKCU.
+- Tienda (`SEC-35`, `ERR-24`): las apps de descarga directa pasan a `winget download` (última versión, SHA-256 del manifiesto) más la
+  verificación propia (firmante del fabricante, Job con plazo). Se acaban los enlaces y versiones a mano.
+- `IN-03`: los avisos guardan el evento y se traducen al mostrarse. `UI-11`/`AR-17`/`AR-26`: se hacen ahora, junto con `IN-03`.
+- `HE-11`: instalar dioxus-cli y usar `dx fmt` como paso opcional (sin CI).
+
 ## Decisiones del usuario (2026-11-24)
 
 - `SEC-17` (asInvoker + auxiliar elevado) y con él `SYS-24`: diferidos.

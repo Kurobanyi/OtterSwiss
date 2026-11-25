@@ -27,13 +27,13 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 |---|---|---|---|---|---|
 | Seguridad (`SEC-`) | 37 | 2 | 1 | 0 | 34 |
 | Sistema y rollback (`SYS-`) | 27 | 1 | 1 | 0 | 25 |
-| Errores y procesos (`ERR-`) | 24 | 1 | 0 | 0 | 23 |
+| Errores y procesos (`ERR-`) | 25 | 1 | 0 | 1 | 23 |
 | Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
 | Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 2 | 2 | 0 | 0 | 0 |
-| **Total** | **124** | **7** | **3** | **1** | **113** |
+| **Total** | **125** | **7** | **3** | **2** | **113** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; quedan abiertos `SEC-32` (parcial: el
 proxy del usuario), `SEC-35`, `SYS-27`, `ERR-24` (parcial) y `TST-02` (parcial). Sin probar instalando en una VM.
@@ -50,6 +50,7 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | [`SEC-32`](BUGS-detalle.md#sec-32) | Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN | Sistema | Alta | Parcial |
 | [`SEC-35`](BUGS-detalle.md#sec-35) | Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar | Sistema | Baja | Pendiente |
 | [`SYS-27`](BUGS-detalle.md#sys-27) | El JSON de Intel puede ofrecer el paquete de otro dispositivo | Sistema, Usuario | Media | Pendiente |
+| [`ERR-25`](BUGS-detalle.md#err-25) | La búsqueda de drivers de Intel nunca funcionó: el servicio devuelve un ZIP, no JSON | Usuario | Media | Pendiente de decisión |
 | [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
 | [`TST-02`](BUGS-detalle.md#tst-02) | El código nuevo de drivers, tienda y sensores no tiene tests | Desarrollador | Media | Parcial |
 

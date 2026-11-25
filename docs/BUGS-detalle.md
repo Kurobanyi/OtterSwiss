@@ -1173,6 +1173,19 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Propuesta**: cortar VEN/DEV en `&`; `is_newer -> Option<bool>` (`None` si no es numérica); build como `Option`. Tests de los parsers.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `hwid_field` corta cada campo del Hardware ID en `&` o `\` (`ACPI\VEN_INT&DEV_33A0` da `INT`); `is_version_newer` no ofrece nada si alguna versión no es numérica; NVIDIA solo compara su versión pública (`566.xx`) y `read_windows_build` devuelve `None` en vez de inventar `22631`. Tests `id_pci_se_acorta_a_ven_dev`, `id_acpi_y_usb`, `version_desconocida_no_ofrece_actualizar` y `version_amigable_de_nvidia`. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
+<a id="err-25"></a>
+### ERR-25 · La búsqueda de drivers de Intel nunca funcionó: el servicio devuelve un ZIP, no JSON
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: recorrido de la pestaña Drivers (25/11) · **Evidencia**: confirmado · **Estado**: Pendiente de decisión
+- **Qué pasa**: la búsqueda completa siempre avisa «Intel: … Respuesta inesperada del servicio de drivers». `https://dsadata.intel.com/data/en`
+  responde `200 application/zip` (147 KB): los datos del cliente Driver & Support Assistant (`DSARules*.dll` con las reglas,
+  `software-configurations.json`, `os.json`, `system-gather.xml`…). `check_intel_updates` lo parsea como JSON, falla siempre y nunca
+  ofreció un paquete. El único catálogo de paquetes del ZIP (`software-configurations.json`) tiene 34 entradas y la primera es un driver
+  de gráficos de 2013 para Windows 7/Vista: la lógica real de DSA vive en las DLL de reglas, que OtterSwiss no puede ni debe ejecutar.
+  `SYS-27` (emparejamiento del JSON) y la parte de Intel de `TST-02` describen código que nunca corre.
+- **Dónde**: `src/core/drivers/vendor/intel.rs`.
+- **Propuesta**: quitar la fuente Intel (los drivers de Intel siguen llegando por Windows Update y el Catálogo de Microsoft) o, si se
+  quiere conservar, otro origen documentado. Decide el autor.
+
 <a id="err-24"></a>
 ### ERR-24 · Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo
 - **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Parcial

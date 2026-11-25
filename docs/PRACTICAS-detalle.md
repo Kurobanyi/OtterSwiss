@@ -762,6 +762,8 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 - **Dónde**: `src/ui/views/uninstaller.rs:27`; `debloater.rs:84`; `dns.rs:49`; `src/ui/mod.rs:132,181,197,278`.
 - **Propuesta**: guardar el evento (`enum StatusMsg { DnsApplied { provider, count }, … }`) y traducirlo al renderizar (con `CL-10`).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Los avisos siguen guardando el texto ya traducido.
+- **Observado** (2026-11-25): en Drivers, «237 dispositivos detectados.» sigue en español después de pasar a inglés; el resto de la
+  pestaña sí cambia. Pasa igual en todas las vistas que guardan avisos.
 
 <a id="in-04"></a>
 ### IN-04 · Plurales con «(s)»
