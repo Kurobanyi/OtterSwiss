@@ -6,7 +6,7 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-25
 
-**Rama:** `auditoria/buenas-practicas`, unos 105 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
+**Rama:** `auditoria/buenas-practicas`, unos 120 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
 `origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
 viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro y se puede borrar. Árbol limpio.
 
@@ -26,21 +26,33 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   `platform/handles.rs`), regresiones de la fusión (`TE-25`, `TE-27`, `TE-28`, `IN-08`: clases `.item-row`/`.grow-wide`, filtros
   con `aria-pressed`, catálogo `ui/i18n/drivers.rs`), `OR-06` (`core/drivers/` en 10 archivos), `CON-03` (botón Cancelar en la
   búsqueda) y `HE-14` (`tests/indicadores.rs` y `too_many_lines` en core). De paso `AR-23` hecha y `AR-24` parcial.
-- **Último resultado:** `cargo test` 70 + 2 de indicadores (más 2 ignorados de red y 7 de VM), `clippy --all-targets -- -D warnings`
-  y `fmt --check` en verde. Drivers y Tienda recorridas sin elevar (oscuro y ventana chica; claro, inglés y maximizada; cancelar).
+- Sesión del 25/11 (noche): `ERR-25` (la fuente Intel nunca funcionó: el servicio devuelve un ZIP de reglas de DSA; quitada, cierra
+  `SYS-27` y `TST-02`), `SEC-32` (proxy WinHTTP de la máquina o directo, nunca el de HKCU), `CL-22`, `AR-24` (tabla PCI única en
+  `core/hardware/pci.rs`), `TE-29` (paletas corregidas, Claro con muted en AA, `tests/temas.rs` exige AA en los 10 temas), `IN-03`
+  (`ui/i18n/msg.rs`: los avisos se traducen al mostrarse) y parte de `UI-11`/`AR-17`/`AR-26` (títulos de error traducidos por
+  `CoreError::kind()`, informe de drivers como datos). `HE-11` descartada: `dx fmt` 0.7.10 borra ramas `else if` dentro de `rsx!`.
+- **Último resultado:** `cargo test` 76 + 4 de integración (`indicadores`, `temas`; más 2 ignorados de red y 7 de VM),
+  `clippy --all-targets -- -D warnings` y `fmt --check` en verde. Recorridos sin elevar: Drivers y Tienda; paletas Sakura, Dracula,
+  Solarizado, Tokyo Night y Claro; avisos y errores cambiando de idioma.
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- Decisiones del autor: `SEC-32` (WinInet usa el proxy del usuario; quitarlo rompe redes con proxy obligatorio), `SEC-35` (fijar
-  SHA-256 en las apps con versión obliga a actualizarlos), `AR-17`/`AR-26` con `UI-11` (textos en core), `AR-19`, `IN-03`, `UX-02`,
-  `UX-03`, `SEC-17` (con `SYS-24`), y si instalar `dioxus-cli` para `HE-11`.
-- Sin decisión, en el código: `SYS-27` (JSON de Intel; la búsqueda real muestra «Respuesta inesperada del servicio de drivers»),
-  `TST-02` (Intel), `CL-22` (tests de `strip_html_tags`, `url_encode`), resto de `AR-24` (tabla PCI compartida), `TE-29` (paletas
-  nuevas), y las mejoras mecánicas grandes (`IN-02`, `TE-02`, `OR-04`, `AR-06`/`CL-20`). Al bajar un indicador, bajar su techo en
-  `tests/indicadores.rs`.
+- **Tienda con `winget download` (decidido, `SEC-35` y `ERR-24`):** las 32 apps de descarga directa pasan a `winget download` (última
+  versión, SHA-256 del manifiesto) más la verificación propia (firmante del fabricante por app, Job con plazo). Diseño pendiente:
+  dónde corre winget (como admin, desde `C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*\winget.exe`, a una carpeta
+  solo-admin, para que un proceso del usuario no cambie el instalador ni su manifiesto entre la descarga y la verificación),
+  cómo leer los argumentos silenciosos del YAML del manifiesto, y qué hacer si winget falta. Registrar el diseño como decisión antes.
+- `UI-11`/`AR-17`/`AR-26`, resto: los catálogos con texto en core (ajustes y categorías del motor, Debloater, limpiador, restos, menú
+  contextual, rellenos de `specs`, «Desconocida» de NVIDIA, sensores). Sus informes y su progreso llevan la etiqueta en español y no el
+  ID: hay que agregar el ID a `OptimizationStepResult`, `PlannedOptimizationItem`, `DebloatItemOutcome` y los progresos, y poner los
+  textos (ES y EN) en `ui/i18n/`.
+- Mecánicas de a un archivo: `AR-06`/`CL-20` (al bajar `source: None` bajar el techo de `tests/indicadores.rs`), `TE-02`, `IN-02`,
+  `OR-04`; y `CL-21`, `CL-25`, `AR-25`, `AR-27`, `AR-28`, `AR-29`, `TE-26`, `IN-09`, `IN-10`, `OR-07`, `CL-24`.
+- Decisiones del autor: `AR-19`, `UX-02`, `UX-03`, `SEC-17` (con `SYS-24`).
 - Con una VM o Windows Sandbox, como administrador: `tests/vm_sistema.rs`, instalar y quitar un driver de cada camino, quitar una app
-  Appx, `ERR-24` (Moonlight `/quiet`, versión de GOG), confirmar que los CAB del Catálogo traen firma Authenticode.
-- Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32` (v4.2.0 ya está etiquetada en
-  `main`), y de que LibreWolf y Rufus salieron del catálogo.
+  Appx, `ERR-24` (Moonlight `/quiet`, versión de GOG; se resuelve con la tienda por winget), CAB del Catálogo con firma Authenticode,
+  y las descargas detrás de un proxy de máquina (`netsh winhttp set proxy`).
+- Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32`, de que LibreWolf, Rufus e Intel
+  salieron, y del cambio de paletas.
 
 ## Prompt para seguir
 
@@ -48,9 +60,10 @@ Pegar en una sesión nueva, en la carpeta del repo:
 
 > Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
 > (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
-> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente que no depende de mí (en este orden:
-> `CL-22`, resto de `AR-24`, `TE-29`, luego las mecánicas de a un archivo: `AR-06`/`CL-20`, `TE-02`, `IN-02`, `OR-04`), sin tocar lo
-> diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`, `UI-11`) ni las decisiones abiertas (`SEC-32`, `SEC-35`, `IN-03`). Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
+> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente, en este orden: la tienda con
+> `winget download` y verificación propia (ya decidida: primero investiga y registra el diseño, y pregúntame lo que cambie el
+> comportamiento), el resto de `UI-11` (catálogos de core con ID y textos en la UI) y las mecánicas de a un archivo. Sin tocar lo
+> diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`) ni `AR-19`. Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
 > cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida. Español neutro, respuestas breves.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
@@ -63,8 +76,8 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 70
-tests + 2 de indicadores y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 76
+tests + 4 de integración y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
 Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila
 una copia con `asInvoker` en `$env:TEMP\otter-ui-target` (cambiando `build.rs` solo para esa compilación y restaurándolo) y se
