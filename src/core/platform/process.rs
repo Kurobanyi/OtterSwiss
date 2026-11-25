@@ -74,21 +74,15 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
     }
 
     let proc_raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, shell_pid) }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("OpenProcess(explorer.exe) falló: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys("OpenProcess(explorer.exe) falló: "))?;
     let proc_h = SafeHandle::new(proc_raw)
-        .ok_or_else(|| CoreError::from_win32("Handle de explorer.exe inválido"))?;
+        .ok_or_else(|| CoreError::invalid_handle("Handle de explorer.exe inválido"))?;
 
     let mut tok_raw = HANDLE::default();
     unsafe { OpenProcessToken(proc_h.raw(), TOKEN_DUPLICATE | TOKEN_QUERY, &mut tok_raw) }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("OpenProcessToken(explorer.exe) falló: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys("OpenProcessToken(explorer.exe) falló: "))?;
     let tok_h = SafeHandle::new(tok_raw)
-        .ok_or_else(|| CoreError::from_win32("Token de explorer.exe inválido"))?;
+        .ok_or_else(|| CoreError::invalid_handle("Token de explorer.exe inválido"))?;
 
     let mut primary_raw = HANDLE::default();
     unsafe {
@@ -101,13 +95,10 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
             &mut primary_raw,
         )
     }
-    .map_err(|e| CoreError::SystemTool {
-        message: format!("DuplicateTokenEx falló: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::sys("DuplicateTokenEx falló: "))?;
 
     SafeHandle::new(primary_raw)
-        .ok_or_else(|| CoreError::from_win32("Token primario duplicado inválido"))
+        .ok_or_else(|| CoreError::invalid_handle("Token primario duplicado inválido"))
 }
 
 /// Carpeta de perfil del usuario dueño de `token` (p. ej. `C:\Users\Ana`).
@@ -200,10 +191,7 @@ fn active_processes(job: &JobObject) -> CoreResult<u32> {
             None,
         )
     }
-    .map_err(|e| CoreError::SystemTool {
-        message: format!("QueryInformationJobObject falló: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::sys("QueryInformationJobObject falló: "))?;
     Ok(info.ActiveProcesses)
 }
 
@@ -226,12 +214,8 @@ pub fn run_in_job(
 
     if let Some(token) = launch.user_token {
         let mut env_block: *mut std::ffi::c_void = std::ptr::null_mut();
-        unsafe { CreateEnvironmentBlock(&mut env_block, token.raw(), false) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("CreateEnvironmentBlock falló: {}", e),
-                source: None,
-            }
-        })?;
+        unsafe { CreateEnvironmentBlock(&mut env_block, token.raw(), false) }
+            .map_err(CoreError::sys("CreateEnvironmentBlock falló: "))?;
         let _env = EnvBlockGuard(env_block);
         unsafe {
             CreateProcessWithTokenW(
@@ -280,9 +264,9 @@ pub fn run_in_job(
     }
 
     let process = SafeHandle::new(pi.hProcess)
-        .ok_or_else(|| CoreError::from_win32("Handle de proceso inválido"))?;
+        .ok_or_else(|| CoreError::invalid_handle("Handle de proceso inválido"))?;
     let thread = SafeHandle::new(pi.hThread)
-        .ok_or_else(|| CoreError::from_win32("Handle de hilo inválido"))?;
+        .ok_or_else(|| CoreError::invalid_handle("Handle de hilo inválido"))?;
 
     if let Err(e) = job.assign(process.raw()) {
         unsafe {

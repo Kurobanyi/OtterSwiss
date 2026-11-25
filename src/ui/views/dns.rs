@@ -6,7 +6,7 @@ use crate::core::dns::{
     benchmark_dns_presets, list_active_adapters, DnsBenchmarkResult, DnsManager,
     NetworkAdapterInfo, DNS_PRESETS,
 };
-use crate::core::security::data_dir::ensure_admin_only_data_dir;
+use crate::core::error::CoreError;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
@@ -20,8 +20,8 @@ fn spawn_refresh(mut adapters: Signal<AdaptersState>, mut has_backup: Signal<boo
     spawn(async move {
         let res = tokio::task::spawn_blocking(|| {
             let list = list_active_adapters().map_err(|e| e.to_string());
-            let backup = ensure_admin_only_data_dir()
-                .map(|dir| DnsManager::new(&dir).has_backup())
+            let backup = DnsManager::open_default()
+                .map(|mgr| mgr.has_backup())
                 .unwrap_or(false);
             (list, backup)
         })
@@ -120,30 +120,16 @@ pub fn DnsView() -> Element {
             return;
         };
 
-        let v4_csv = format!("{},{}", p.ipv4_primary, p.ipv4_secondary);
-        let v6_csv = format!("{},{}", p.ipv6_primary, p.ipv6_secondary);
+        let preset = *p;
         let p_name = p.name;
 
         is_working.set(true);
         spawn(async move {
-            let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
-                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
-                let dns_mgr = DnsManager::new(&data_dir);
-                let active = list_active_adapters().map_err(|e| e.to_string())?;
-                let guids: Vec<String> = active
-                    .iter()
-                    .filter(|a| !a.is_virtual_or_vpn)
-                    .map(|a| a.interface_guid.clone())
-                    .collect();
-                if guids.is_empty() {
-                    return Err(String::new());
-                }
-                dns_mgr
-                    .apply_dns_to_selected(&guids, &v4_csv, &v6_csv)
-                    .map_err(|e| e.to_string())
+            let res = tokio::task::spawn_blocking(move || {
+                DnsManager::open_default()?.apply_preset_to_physical(&preset)
             })
             .await
-            .unwrap_or_else(|e| Err(e.to_string()));
+            .unwrap_or_else(|e| Err(CoreError::Panic(e.to_string())));
 
             status_msg.set(Some(match res {
                 Ok(count) => (
@@ -154,7 +140,7 @@ pub fn DnsView() -> Element {
                     },
                     Tone::Success,
                 ),
-                Err(e) if e.is_empty() => (
+                Err(CoreError::NoActiveAdapters) => (
                     if en {
                         "There are no active physical adapters."
                     } else {
@@ -174,9 +160,8 @@ pub fn DnsView() -> Element {
         is_working.set(true);
         spawn(async move {
             let res = tokio::task::spawn_blocking(move || -> Result<usize, String> {
-                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
-                DnsManager::new(&data_dir)
-                    .restore_dns()
+                DnsManager::open_default()
+                    .and_then(|mgr| mgr.restore_dns())
                     .map_err(|e| e.to_string())
             })
             .await

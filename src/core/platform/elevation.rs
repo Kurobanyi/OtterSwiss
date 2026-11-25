@@ -25,7 +25,7 @@ impl ElevationManager {
         )?;
 
         let token = SafeHandle::new(raw_token)
-            .ok_or_else(|| CoreError::from_win32("Token de proceso inválido"))?;
+            .ok_or_else(|| CoreError::invalid_handle("Token de proceso inválido"))?;
 
         let mut elevation = TOKEN_ELEVATION::default();
         let mut returned_len = 0u32;
@@ -38,10 +38,9 @@ impl ElevationManager {
                 &mut returned_len,
             )
         }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("GetTokenInformation(TokenElevation) falló: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys(
+            "GetTokenInformation(TokenElevation) falló: ",
+        ))?;
 
         Ok(elevation.TokenIsElevated != 0)
     }

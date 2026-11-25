@@ -34,10 +34,9 @@ pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
             None,
         )
     }
-    .map_err(|e| CoreError::Trust {
-        message: format!("No se pudo construir el descriptor de seguridad: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::trust(
+        "No se pudo construir el descriptor de seguridad: ",
+    ))?;
 
     let attrs = SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -72,10 +71,7 @@ pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
             windows::Win32::Security::ACL_REVISION,
         )
     }
-    .map_err(|e| CoreError::Trust {
-        message: format!("InitializeAcl falló: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::trust("InitializeAcl falló: "))?;
     let wide = to_wide_null(path);
     let status = unsafe {
         SetNamedSecurityInfoW(
@@ -193,19 +189,15 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
             &mut admin_sid_len,
         )
     }
-    .map_err(|e| CoreError::Trust {
-        message: format!("CreateWellKnownSid(Administrators) falló: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::trust(
+        "CreateWellKnownSid(Administrators) falló: ",
+    ))?;
 
     let mut system_sid_buf = [0u8; SECURITY_MAX_SID_SIZE as usize];
     let mut system_sid_len = system_sid_buf.len() as u32;
     let system_psid = PSID(system_sid_buf.as_mut_ptr() as *mut _);
     unsafe { CreateWellKnownSid(WinLocalSystemSid, None, system_psid, &mut system_sid_len) }
-        .map_err(|e| CoreError::Trust {
-            message: format!("CreateWellKnownSid(LocalSystem) falló: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::trust("CreateWellKnownSid(LocalSystem) falló: "))?;
 
     let entries = [
         EXPLICIT_ACCESS_W {

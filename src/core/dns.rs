@@ -441,6 +441,31 @@ impl DnsManager {
         }
     }
 
+    /// AR-07: abre el gestor sobre la carpeta de datos solo-admin.
+    pub fn open_default() -> CoreResult<Self> {
+        Ok(Self::new(
+            &crate::core::security::data_dir::ensure_admin_only_data_dir()?,
+        ))
+    }
+
+    /// AR-15: aplica `preset` (IPv4 e IPv6) a todos los adaptadores físicos activos, sin VPN ni virtuales.
+    /// `NoActiveAdapters` si no hay ninguno. Devuelve a cuántos se aplicó.
+    pub fn apply_preset_to_physical(&self, preset: &DnsPreset) -> CoreResult<usize> {
+        let guids: Vec<String> = list_active_adapters()?
+            .into_iter()
+            .filter(|a| !a.is_virtual_or_vpn)
+            .map(|a| a.interface_guid)
+            .collect();
+        if guids.is_empty() {
+            return Err(CoreError::NoActiveAdapters);
+        }
+        self.apply_dns_to_selected(
+            &guids,
+            &format!("{},{}", preset.ipv4_primary, preset.ipv4_secondary),
+            &format!("{},{}", preset.ipv6_primary, preset.ipv6_secondary),
+        )
+    }
+
     pub fn apply_dns_to_selected(
         &self,
         selected_guids: &[String],

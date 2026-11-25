@@ -32,10 +32,9 @@ impl NamedMutex {
                 None,
             )
         }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("No se pudo construir el descriptor del mutex: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys(
+            "No se pudo construir el descriptor del mutex: ",
+        ))?;
         let sa = SECURITY_ATTRIBUTES {
             nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
             lpSecurityDescriptor: psd.0,
@@ -52,7 +51,7 @@ impl NamedMutex {
             source: None,
         })?;
         SafeHandle::new(raw)
-            .ok_or_else(|| CoreError::from_win32("CreateMutexW devolvió handle inválido"))
+            .ok_or_else(|| CoreError::invalid_handle("CreateMutexW devolvió handle inválido"))
     }
 
     /// `WAIT_ABANDONED` significa que el dueño anterior murió sin soltarlo: el mutex ya es nuestro (CON-01).

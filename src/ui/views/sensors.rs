@@ -13,7 +13,7 @@ pub fn SensorsView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
 
-    let monitor = use_hook(|| Arc::new(SensorMonitor::new(1000)));
+    let monitor = use_hook(|| Arc::new(SensorMonitor::new(SensorMonitor::DEFAULT_POLL_MS)));
     let mut snapshot = use_signal(SystemSensorsSnapshot::default);
     let mut peaks = use_signal(HashMap::<String, f32>::new);
     let mut paused = use_signal(|| false);
@@ -40,7 +40,8 @@ pub fn SensorsView() -> Element {
                     }
                     snapshot.set(snap);
                 }
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                // La vista refresca al doble de frecuencia que el hilo lee, para no mostrar datos viejos.
+                tokio::time::sleep(Duration::from_millis(SensorMonitor::DEFAULT_POLL_MS / 2)).await;
             }
         });
     });

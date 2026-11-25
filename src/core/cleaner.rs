@@ -43,12 +43,9 @@ pub struct SystemCleaner;
 impl SystemCleaner {
     pub fn get_known_folder(id: &windows::core::GUID) -> CoreResult<PathBuf> {
         unsafe {
-            let ptr = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).map_err(|e| {
-                CoreError::SystemTool {
-                    message: format!("Error obteniendo carpeta conocida de Windows: {}", e),
-                    source: None,
-                }
-            })?;
+            let ptr = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).map_err(CoreError::sys(
+                "Error obteniendo carpeta conocida de Windows: ",
+            ))?;
             let s = wide_ptr_to_string_and_free(ptr);
             if s.is_empty() {
                 return Err(CoreError::SystemTool {

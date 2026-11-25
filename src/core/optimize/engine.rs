@@ -111,6 +111,13 @@ impl OptimizationEngine {
         }
     }
 
+    /// AR-07: abre el motor sobre la carpeta de datos solo-admin.
+    pub fn open_default() -> CoreResult<Self> {
+        Ok(Self::new(
+            &crate::core::security::data_dir::ensure_admin_only_data_dir()?,
+        ))
+    }
+
     pub fn preview_plan(
         requested: OptimizationProfile,
         hw: &HardwareProfile,

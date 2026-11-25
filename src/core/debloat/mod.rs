@@ -39,6 +39,30 @@ pub struct DebloatScanResult {
     pub has_reg_backup: bool,
 }
 
+impl DebloatScanResult {
+    /// AR-15: lo que viene marcado al abrir: apps instaladas marcadas como recomendadas en el catálogo (SYS-20) y
+    /// los ajustes de registro recomendados.
+    pub fn recommended_selection(
+        &self,
+    ) -> (
+        std::collections::HashSet<&'static str>,
+        std::collections::HashSet<&'static str>,
+    ) {
+        let apps = self
+            .apps
+            .iter()
+            .filter(|a| a.installed && a.default_selected)
+            .map(|a| a.id)
+            .collect();
+        let regs = DEBLOAT_REG_TWEAKS
+            .iter()
+            .filter(|r| r.default_selected)
+            .map(|r| r.id)
+            .collect();
+        (apps, regs)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DebloatProgress {
     pub current_step: usize,

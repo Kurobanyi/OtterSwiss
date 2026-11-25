@@ -10,8 +10,6 @@ use gpu::read_dxgi_gpus;
 use smbios::read_smbios_board_and_memory;
 use storage::read_storage_devices;
 
-use std::path::Path;
-
 use serde::{Deserialize, Serialize};
 use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::RegKey;
@@ -166,10 +164,14 @@ pub fn collect_system_specs() -> CoreResult<SystemSpecs> {
     })
 }
 
-pub fn export_specs_json(specs: &SystemSpecs, destination: &Path) -> CoreResult<()> {
-    let json = serde_json::to_string_pretty(specs)
+/// AR-15: guarda las especificaciones en el Escritorio como `OtterSwiss-Hardware-Specs.json`. Se escribe sin seguir
+/// junctions (SEC-20: el Escritorio se puede redirigir). Devuelve la ruta escrita.
+pub fn export_to_desktop(specs: &SystemSpecs) -> CoreResult<std::path::PathBuf> {
+    let desktop = dirs::desktop_dir()
+        .ok_or_else(|| CoreError::Validation("No se encontró la carpeta Escritorio".into()))?;
+    let json = serde_json::to_vec_pretty(specs)
         .map_err(|e| CoreError::Validation(format!("Error serializando especificaciones: {e}")))?;
-    safe_fs::atomic_write_new(destination, json.as_bytes())
+    safe_fs::write_file_inside(&desktop, "", "OtterSwiss-Hardware-Specs.json", &json)
 }
 
 fn read_os_specs() -> OsSpecs {

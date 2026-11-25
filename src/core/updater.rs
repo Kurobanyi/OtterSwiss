@@ -159,11 +159,9 @@ pub fn check_for_updates() -> CoreResult<Option<UpdateReleaseInfo>> {
     validate_https_host(&response.final_url()?, &["api.github.com"])?;
     let json_bytes = response.read_to_end_capped(MAX_RELEASE_JSON_BYTES)?;
 
-    let release: GitHubRelease =
-        serde_json::from_slice(&json_bytes).map_err(|e| CoreError::Trust {
-            message: format!("Error interpretando respuesta JSON de GitHub: {}", e),
-            source: None,
-        })?;
+    let release: GitHubRelease = serde_json::from_slice(&json_bytes).map_err(CoreError::trust(
+        "Error interpretando respuesta JSON de GitHub: ",
+    ))?;
 
     if release.draft || release.prerelease {
         return Ok(None);
@@ -278,10 +276,9 @@ pub fn launch_installer_and_exit(
     std::process::Command::new(installer_path)
         .current_dir(working_dir)
         .spawn()
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("No se pudo ejecutar el instalador actualizado: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys(
+            "No se pudo ejecutar el instalador actualizado: ",
+        ))?;
 
     std::process::exit(0);
 }

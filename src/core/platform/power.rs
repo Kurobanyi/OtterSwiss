@@ -35,21 +35,15 @@ pub fn reboot_system_now() -> CoreResult<()> {
             &mut raw_token,
         )
     }
-    .map_err(|e| CoreError::SystemTool {
-        message: format!("OpenProcessToken falló para reiniciar: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::sys("OpenProcessToken falló para reiniciar: "))?;
 
     let token = SafeHandle::new(raw_token)
-        .ok_or_else(|| CoreError::from_win32("Token de proceso inválido"))?;
+        .ok_or_else(|| CoreError::invalid_handle("Token de proceso inválido"))?;
 
     let mut luid = LUID::default();
-    unsafe { LookupPrivilegeValueW(PCWSTR::null(), SE_SHUTDOWN_NAME, &mut luid) }.map_err(|e| {
-        CoreError::SystemTool {
-            message: format!("LookupPrivilegeValueW(SE_SHUTDOWN_NAME) falló: {}", e),
-            source: None,
-        }
-    })?;
+    unsafe { LookupPrivilegeValueW(PCWSTR::null(), SE_SHUTDOWN_NAME, &mut luid) }.map_err(
+        CoreError::sys("LookupPrivilegeValueW(SE_SHUTDOWN_NAME) falló: "),
+    )?;
 
     let tp = TOKEN_PRIVILEGES {
         PrivilegeCount: 1,
@@ -72,10 +66,7 @@ pub fn reboot_system_now() -> CoreResult<()> {
             SHTDN_REASON_MAJOR_APPLICATION | SHTDN_REASON_FLAG_PLANNED,
         )
     }
-    .map_err(|e| CoreError::SystemTool {
-        message: format!("ExitWindowsEx(EWX_REBOOT) falló: {}", e),
-        source: None,
-    })?;
+    .map_err(CoreError::sys("ExitWindowsEx(EWX_REBOOT) falló: "))?;
 
     Ok(())
 }

@@ -40,7 +40,8 @@ pub fn CleanerView() -> Element {
         is_cleaning.set(true);
         progress_state.set(CleanProgress {
             current_step: 0,
-            total_steps: 6,
+            // AR-16: el total lo pone el core en el primer paso; aquí no se inventa.
+            total_steps: 0,
             current_category: if en { "Starting..." } else { "Iniciando..." }.to_string(),
             percent: 2,
             bytes_freed_so_far: 0,

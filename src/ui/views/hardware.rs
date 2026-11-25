@@ -85,21 +85,8 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     button {
                         class: "btn btn-primary",
                         onclick: move |_| {
-                            let res = dirs::desktop_dir()
-                                .ok_or_else(|| if en { "Desktop folder not available" } else { "Escritorio no disponible" }.to_string())
-                                .and_then(|desk| {
-                                    serde_json::to_vec_pretty(&specs_for_export)
-                                        .map_err(|e| e.to_string())
-                                        .and_then(|json| {
-                                            crate::core::platform::safe_fs::write_file_inside(
-                                                &desk,
-                                                "",
-                                                "OtterSwiss-Hardware-Specs.json",
-                                                &json,
-                                            )
-                                            .map_err(|e| e.to_string())
-                                        })
-                                });
+                            let res = crate::core::hardware::specs::export_to_desktop(&specs_for_export)
+                                .map_err(|e| e.to_string());
                             match res {
                                 Ok(path) => status_msg.set(Some(if en {
                                     format!("Saved: {}", path.display())

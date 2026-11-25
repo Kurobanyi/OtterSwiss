@@ -128,14 +128,11 @@ pub struct JobObject(SafeHandle);
 
 impl JobObject {
     pub fn new_kill_on_close() -> CoreResult<Self> {
-        let raw = unsafe { CreateJobObjectW(None, PCWSTR::null()) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("Error creando Job Object: {}", e),
-                source: None,
-            }
+        let raw = unsafe { CreateJobObjectW(None, PCWSTR::null()) }
+            .map_err(CoreError::sys("Error creando Job Object: "))?;
+        let handle = SafeHandle::new(raw).ok_or_else(|| {
+            CoreError::invalid_handle("CreateJobObjectW devolvió handle inválido")
         })?;
-        let handle = SafeHandle::new(raw)
-            .ok_or_else(|| CoreError::from_win32("CreateJobObjectW devolvió handle inválido"))?;
 
         let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
@@ -148,21 +145,16 @@ impl JobObject {
                 std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
             )
         }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("Error configurando límites del Job Object: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys(
+            "Error configurando límites del Job Object: ",
+        ))?;
 
         Ok(Self(handle))
     }
 
     pub fn assign(&self, process: HANDLE) -> CoreResult<()> {
-        unsafe { AssignProcessToJobObject(self.0.raw(), process) }.map_err(|e| {
-            CoreError::SystemTool {
-                message: format!("Error asignando proceso al Job Object: {}", e),
-                source: None,
-            }
-        })
+        unsafe { AssignProcessToJobObject(self.0.raw(), process) }
+            .map_err(CoreError::sys("Error asignando proceso al Job Object: "))
     }
 
     pub fn raw(&self) -> HANDLE {

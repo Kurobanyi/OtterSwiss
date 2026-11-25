@@ -128,6 +128,9 @@ impl Default for SensorMonitor {
 }
 
 impl SensorMonitor {
+    /// Intervalo de lectura de los sensores en el hilo de fondo.
+    pub const DEFAULT_POLL_MS: u64 = 1000;
+
     pub fn new(poll_interval_ms: u64) -> Self {
         let cached = Arc::new(Mutex::new(SystemSensorsSnapshot::default()));
         let cached_clone = Arc::clone(&cached);

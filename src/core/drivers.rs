@@ -24,10 +24,7 @@ impl DriverManager {
         let h_dev_info: HDEVINFO = unsafe {
             SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT)
         }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("SetupDiGetClassDevsW falló: {}", e),
-            source: None,
-        })?;
+        .map_err(CoreError::sys("SetupDiGetClassDevsW falló: "))?;
 
         let mut devices = Vec::new();
         let mut dev_data = SP_DEVINFO_DATA {

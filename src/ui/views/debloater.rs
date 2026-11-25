@@ -17,17 +17,7 @@ fn apply_recommended_defaults(
     mut selected_apps: Signal<HashSet<&'static str>>,
     mut selected_regs: Signal<HashSet<&'static str>>,
 ) {
-    let apps: HashSet<&'static str> = scan
-        .apps
-        .iter()
-        .filter(|a| a.installed && a.default_selected)
-        .map(|a| a.id)
-        .collect();
-    let regs: HashSet<&'static str> = DEBLOAT_REG_TWEAKS
-        .iter()
-        .filter(|r| r.default_selected)
-        .map(|r| r.id)
-        .collect();
+    let (apps, regs) = scan.recommended_selection();
     selected_apps.set(apps);
     selected_regs.set(regs);
 }

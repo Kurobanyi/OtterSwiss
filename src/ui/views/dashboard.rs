@@ -12,7 +12,6 @@ use crate::core::optimize::power_plan::get_active_scheme_guid;
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
-use crate::core::security::data_dir::ensure_admin_only_data_dir;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
 
@@ -57,7 +56,7 @@ pub fn DashboardView() -> Element {
         last_rollback.set(None);
         progress_state.set(EngineProgress {
             current_step: 0,
-            total_steps: 13,
+            total_steps: 0,
             current_label: if en {
                 "Creating backup..."
             } else {
@@ -73,9 +72,7 @@ pub fn DashboardView() -> Element {
 
         spawn(async move {
             let handle = tokio::task::spawn_blocking(move || {
-                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
-
-                let engine = OptimizationEngine::new(&data_dir);
+                let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
                 engine
                     .apply_profile_with_progress(
                         OptimizationProfile::AutoDetected,
@@ -126,7 +123,7 @@ pub fn DashboardView() -> Element {
         last_report.set(None);
         progress_state.set(EngineProgress {
             current_step: 0,
-            total_steps: 13,
+            total_steps: 0,
             current_label: if en {
                 "Reading backup..."
             } else {
@@ -142,9 +139,7 @@ pub fn DashboardView() -> Element {
 
         spawn(async move {
             let handle = tokio::task::spawn_blocking(move || {
-                let data_dir = ensure_admin_only_data_dir().map_err(|e| e.to_string())?;
-
-                let engine = OptimizationEngine::new(&data_dir);
+                let engine = OptimizationEngine::open_default().map_err(|e| e.to_string())?;
                 engine
                     .rollback_with_progress(false, Some(&prog_worker))
                     .map_err(|e| e.to_string())
