@@ -12,6 +12,8 @@
 //! cargo test --release --test vm_sistema -- --ignored --nocapture --test-threads=1
 //! ```
 //!
+//! Un área sola: `cargo test --release --test vm_sistema dns -- --ignored --nocapture`.
+//!
 //! Escribe cada comprobación como `OK`/`FALLO` y termina en `panic` si alguna falló.
 
 #![cfg(windows)]
@@ -304,7 +306,7 @@ fn limpiador(c: &mut Checks) {
 
 fn archivador(c: &mut Checks) {
     println!("\n== Archivador");
-    let base = std::env::temp_dir().join("otter-arch");
+    let base = std::env::temp_dir().join(format!("otter-arch-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let src = base.join("proyecto");
     std::fs::create_dir_all(src.join("sub")).ok();
@@ -469,21 +471,56 @@ fn revertir_todo(c: &mut Checks, data: &Path) {
     c.check(debloat_snapshot() == before_debloat, "Debloater revertido");
 }
 
-#[test]
-#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
-fn recorrido_de_sistema_como_admin() {
+/// Corre un área con su propia lista de comprobaciones y falla si alguna falló.
+fn run_area(name: &str, area: impl FnOnce(&mut Checks, &Path)) {
     let mut c = Checks::new();
     let data = ensure_admin_only_data_dir().expect("carpeta de datos (¿corre como admin?)");
-    optimizar_y_revertir(&mut c, &data);
-    debloater(&mut c);
-    dns(&mut c, &data);
-    limpiador(&mut c);
-    archivador(&mut c);
-    desinstalador(&mut c);
-    revertir_todo(
-        &mut c,
-        &ensure_admin_only_data_dir().expect("carpeta de datos"),
-    );
-    println!("\n== {} fallos", c.failed.len());
-    assert!(c.failed.is_empty(), "fallaron: {:#?}", c.failed);
+    println!("\n##### {name}");
+    area(&mut c, &data);
+    println!("== {}: {} fallos", name, c.failed.len());
+    assert!(c.failed.is_empty(), "{name}: fallaron {:#?}", c.failed);
+}
+
+// CL-18: un test por área para poder correr una sola (`cargo test --test vm_sistema dns -- --ignored`). Con
+// `--test-threads=1` corren en el orden de su nombre, así que «revertir todo» va al final.
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_1_optimizar_y_revertir() {
+    run_area("optimizar", optimizar_y_revertir);
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_2_debloater() {
+    run_area("debloater", |c, _| debloater(c));
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_3_dns() {
+    run_area("dns", dns);
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_4_limpiador() {
+    run_area("limpiador", |c, _| limpiador(c));
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_5_archivador() {
+    run_area("archivador", |c, _| archivador(c));
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_6_desinstalador() {
+    run_area("desinstalador", |c, _| desinstalador(c));
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
+fn paso_7_revertir_todo() {
+    run_area("revertir todo", revertir_todo);
 }
