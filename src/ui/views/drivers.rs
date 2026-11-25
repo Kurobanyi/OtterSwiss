@@ -6,8 +6,64 @@ use crate::core::drivers::{
     CatalogDriverMatch, DriverManager, DriverUpdateCandidate, InstalledDriverDevice,
     VendorDriverUpdate, describe_cm_problem,
 };
-use crate::ui::components::{Card, StatusBanner, Tone};
+use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
+
+/// SEC-37: instalación que espera confirmación del usuario.
+#[derive(Debug, Clone)]
+enum PendingInstall {
+    Wua(Vec<String>),
+    Vendor(Box<VendorDriverUpdate>),
+    Catalog { uid: String, title: String },
+}
+
+/// Resultado de una instalación ya confirmada: mensaje, si pide reinicio y si hubo fallos parciales.
+struct InstallOutcome {
+    message: String,
+    reboot: bool,
+    partial: bool,
+}
+
+/// Corre en un hilo bloqueante: respaldo opcional del Driver Store y luego la instalación. Si el respaldo pedido
+/// falla, no se instala nada.
+fn execute_install(
+    pending: PendingInstall,
+    backup: bool,
+    en: bool,
+) -> Result<InstallOutcome, String> {
+    if backup {
+        DriverManager::export_driver_store_backup().map_err(|e| {
+            if en {
+                format!("Backup failed, nothing was installed: {e}")
+            } else {
+                format!("Falló el respaldo, no se instaló nada: {e}")
+            }
+        })?;
+    }
+    match pending {
+        PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids)
+            .map(|rep| InstallOutcome {
+                partial: rep.failed_count > 0,
+                reboot: rep.reboot_required,
+                message: rep.message,
+            })
+            .map_err(|e| format!("Error: {e}")),
+        PendingInstall::Vendor(upd) => DriverManager::install_vendor_update(&upd)
+            .map(|message| InstallOutcome {
+                message,
+                reboot: false,
+                partial: false,
+            })
+            .map_err(|e| format!("Error: {e}")),
+        PendingInstall::Catalog { uid, .. } => DriverManager::install_catalog_driver(&uid)
+            .map(|message| InstallOutcome {
+                reboot: message.contains("Reinicio"),
+                message,
+                partial: false,
+            })
+            .map_err(|e| format!("Error: {e}")),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DeviceFilter {
@@ -76,6 +132,8 @@ pub fn DriversView() -> Element {
     let mut is_working = use_signal(|| false);
     let mut status_msg = use_signal(|| Option::<(String, Tone)>::None);
     let mut reboot_alert = use_signal(|| false);
+    let mut pending_install = use_signal(|| Option::<PendingInstall>::None);
+    let mut backup_first = use_signal(|| true);
 
     use_hook(move || {
         trigger_device_scan(en, is_working, status_msg, devices);
@@ -109,7 +167,7 @@ pub fn DriversView() -> Element {
                     let safe_wua_ids: HashSet<String> = report
                         .wua_updates
                         .iter()
-                        .filter(|u| !u.is_firmware)
+                        .filter(|u| !u.is_firmware && !u.is_optional)
                         .map(|u| u.id.clone())
                         .collect();
 
@@ -163,54 +221,52 @@ pub fn DriversView() -> Element {
 
     let on_install_wua = move |_| {
         let ids: Vec<String> = selected_wua.read().iter().cloned().collect();
-        if ids.is_empty() {
-            return;
+        if !ids.is_empty() {
+            pending_install.set(Some(PendingInstall::Wua(ids)));
         }
+    };
+
+    let on_confirm_install = move |_| {
+        let Some(pending) = pending_install.take() else {
+            return;
+        };
+        let backup = *backup_first.read();
+        let is_wua = matches!(pending, PendingInstall::Wua(_));
         is_working.set(true);
         status_msg.set(Some((
             if en {
-                format!(
-                    "Installing {} WHQL driver(s) via Windows Update...",
-                    ids.len()
-                )
+                "Installing drivers…".to_string()
             } else {
-                format!(
-                    "Instalando {} driver(s) WHQL vía Windows Update...",
-                    ids.len()
-                )
+                "Instalando drivers…".to_string()
             },
             Tone::Info,
         )));
-
         spawn(async move {
             let res =
-                tokio::task::spawn_blocking(move || DriverManager::install_driver_updates(&ids))
-                    .await;
+                tokio::task::spawn_blocking(move || execute_install(pending, backup, en)).await;
             match res {
-                Ok(Ok(rep)) => {
-                    if rep.reboot_required {
+                Ok(Ok(outcome)) => {
+                    if outcome.reboot {
                         reboot_alert.set(true);
                     }
-                    let tone = if rep.failed_count > 0 {
+                    let tone = if outcome.partial {
                         Tone::Warning
                     } else {
                         Tone::Success
                     };
-                    status_msg.set(Some((rep.message, tone)));
+                    status_msg.set(Some((outcome.message, tone)));
+                    if is_wua {
+                        wua_updates.write().clear();
+                        selected_wua.write().clear();
+                    }
                     if let Ok(Ok(refreshed)) =
                         tokio::task::spawn_blocking(DriverManager::list_present_devices).await
                     {
                         devices.set(refreshed);
                     }
-                    wua_updates.write().clear();
-                    selected_wua.write().clear();
                 }
-                Ok(Err(e)) => {
-                    status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
-                }
-                Err(e) => {
-                    status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
-                }
+                Ok(Err(msg)) => status_msg.set(Some((msg, Tone::Danger))),
+                Err(e) => status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger))),
             }
             is_working.set(false);
         });
@@ -351,9 +407,9 @@ pub fn DriversView() -> Element {
     };
 
     let policy_warn_txt = if en {
-        "Notice: Windows policy 'ExcludeWUDriversInQualityUpdate' is blocking driver updates in Windows Update.".to_string()
+        "This PC is managed: a policy (driver exclusion or WSUS) decides driver updates, so OtterSwiss does not search for or install drivers.".to_string()
     } else {
-        "Aviso: La política de Windows 'ExcludeWUDriversInQualityUpdate' está bloqueando drivers en Windows Update.".to_string()
+        "Este equipo está gestionado: una política (exclusión de drivers o WSUS) decide las actualizaciones de drivers, así que OtterSwiss no las busca ni las instala.".to_string()
     };
 
     let reboot_banner_txt = if en {
@@ -496,6 +552,70 @@ pub fn DriversView() -> Element {
                         }
                     }
 
+                    if let Some(pending) = pending_install.read().clone() {
+                        {
+                            let items: Vec<(String, bool)> = match &pending {
+                                PendingInstall::Wua(ids) => wua_updates
+                                    .read()
+                                    .iter()
+                                    .filter(|u| ids.contains(&u.id))
+                                    .map(|u| (u.title.clone(), u.is_firmware))
+                                    .collect(),
+                                PendingInstall::Vendor(upd) => vec![(
+                                    format!("{} {} → {}", upd.vendor, upd.title, upd.latest_version),
+                                    false,
+                                )],
+                                PendingInstall::Catalog { title, .. } => vec![(title.clone(), false)],
+                            };
+                            let has_firmware = items.iter().any(|(_, fw)| *fw);
+                            rsx! {
+                                ConfirmDialog {
+                                    title: if en { "Install drivers?".to_string() } else { "¿Instalar drivers?".to_string() },
+                                    subtitle: Some(if en {
+                                        "A bad driver can leave a device without working. Windows can only undo it from Device Manager or a restore point.".to_string()
+                                    } else {
+                                        "Un driver equivocado puede dejar un dispositivo sin funcionar. Solo se deshace desde el Administrador de dispositivos o un punto de restauración.".to_string()
+                                    }),
+                                    confirm_label: if en { "Install".to_string() } else { "Instalar".to_string() },
+                                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                                    tone: if has_firmware { Tone::Danger } else { Tone::Warning },
+                                    on_confirm: on_confirm_install,
+                                    on_cancel: move |_| pending_install.set(None),
+                                    ul { class: "stack-1",
+                                        for (title, fw) in items.iter() {
+                                            li { key: "{title}", class: "text-sm",
+                                                "{title}"
+                                                if *fw {
+                                                    span { class: "badge badge-danger", " FIRMWARE / BIOS" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if has_firmware {
+                                        StatusBanner {
+                                            text: if en {
+                                                "Includes firmware or BIOS: an interrupted update can leave the PC unable to boot. Keep it plugged in.".to_string()
+                                            } else {
+                                                "Incluye firmware o BIOS: si la actualización se interrumpe, el equipo puede no arrancar. Mantenlo enchufado.".to_string()
+                                            },
+                                            tone: Tone::Danger,
+                                        }
+                                    }
+                                    label { class: "row gap-2 clickable",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: *backup_first.read(),
+                                            onchange: move |evt| backup_first.set(evt.checked()),
+                                        }
+                                        span { class: "text-sm",
+                                            if en { "Back up installed drivers first (ProgramData\\OtterSwiss\\DriverBackup)" } else { "Respaldar antes los drivers instalados (ProgramData\\OtterSwiss\\DriverBackup)" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if *wua_policy_warn.read() {
                         StatusBanner { text: policy_warn_txt, tone: Tone::Warning }
                     }
@@ -538,32 +658,7 @@ pub fn DriversView() -> Element {
                                             class: "btn btn-primary",
                                             disabled: *is_working.read(),
                                             onclick: move |_| {
-                                                let item = upd_clone.clone();
-                                                is_working.set(true);
-                                                status_msg.set(Some((
-                                                    if en {
-                                                        format!("Downloading & verifying '{}'...", item.title)
-                                                    } else {
-                                                        format!("Descargando y verificando '{}'...", item.title)
-                                                    },
-                                                    Tone::Info,
-                                                )));
-                                                spawn(async move {
-                                                    let res = tokio::task::spawn_blocking(move || {
-                                                        DriverManager::install_vendor_update(&item)
-                                                    })
-                                                    .await;
-                                                    match res {
-                                                        Ok(Ok(m)) => status_msg.set(Some((m, Tone::Success))),
-                                                        Ok(Err(e)) => {
-                                                            status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
-                                                        }
-                                                        Err(e) => {
-                                                            status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
-                                                        }
-                                                    }
-                                                    is_working.set(false);
-                                                });
+                                                pending_install.set(Some(PendingInstall::Vendor(Box::new(upd_clone.clone()))));
                                             },
                                             "{vendor_install_lbl}"
                                         }
@@ -598,45 +693,10 @@ pub fn DriversView() -> Element {
                                             class: "btn btn-primary",
                                             disabled: *is_working.read(),
                                             onclick: move |_| {
-                                                let target_uid = uid.clone();
-                                                let t_name = title_c.clone();
-                                                is_working.set(true);
-                                                status_msg.set(Some((
-                                                    if en {
-                                                        format!("Downloading & installing .CAB for '{}'...", t_name)
-                                                    } else {
-                                                        format!("Descargando e instalando .CAB para '{}'...", t_name)
-                                                    },
-                                                    Tone::Info,
-                                                )));
-                                                spawn(async move {
-                                                    let res = tokio::task::spawn_blocking(move || {
-                                                        DriverManager::install_catalog_driver(&target_uid)
-                                                    })
-                                                    .await;
-                                                    match res {
-                                                        Ok(Ok(msg)) => {
-                                                            if msg.contains("Reinicio") || msg.contains("Reboot") {
-                                                                reboot_alert.set(true);
-                                                            }
-                                                            status_msg.set(Some((msg, Tone::Success)));
-                                                            if let Ok(Ok(refreshed)) = tokio::task::spawn_blocking(
-                                                                DriverManager::list_present_devices,
-                                                            )
-                                                            .await
-                                                            {
-                                                                devices.set(refreshed);
-                                                            }
-                                                        }
-                                                        Ok(Err(e)) => {
-                                                            status_msg.set(Some((format!("Error: {}", e), Tone::Danger)));
-                                                        }
-                                                        Err(e) => {
-                                                            status_msg.set(Some((format!("Error de hilo: {}", e), Tone::Danger)));
-                                                        }
-                                                    }
-                                                    is_working.set(false);
-                                                });
+                                                pending_install.set(Some(PendingInstall::Catalog {
+                                                    uid: uid.clone(),
+                                                    title: title_c.clone(),
+                                                }));
                                             },
                                             "{catalog_install_lbl}"
                                         }
