@@ -40,29 +40,17 @@ fn execute_install(
             }
         })?;
     }
-    match pending {
-        PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids)
-            .map(|rep| InstallOutcome {
-                partial: rep.failed_count > 0,
-                reboot: rep.reboot_required,
-                message: rep.message,
-            })
-            .map_err(|e| format!("Error: {e}")),
-        PendingInstall::Vendor(upd) => DriverManager::install_vendor_update(&upd)
-            .map(|message| InstallOutcome {
-                message,
-                reboot: false,
-                partial: false,
-            })
-            .map_err(|e| format!("Error: {e}")),
-        PendingInstall::Catalog { uid, .. } => DriverManager::install_catalog_driver(&uid)
-            .map(|message| InstallOutcome {
-                reboot: message.contains("Reinicio"),
-                message,
-                partial: false,
-            })
-            .map_err(|e| format!("Error: {e}")),
+    let report = match pending {
+        PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids),
+        PendingInstall::Vendor(upd) => DriverManager::install_vendor_update(&upd),
+        PendingInstall::Catalog { uid, .. } => DriverManager::install_catalog_driver(&uid),
     }
+    .map_err(|e| format!("Error: {e}"))?;
+    Ok(InstallOutcome {
+        partial: report.failed_count > 0,
+        reboot: report.reboot_required,
+        message: report.message,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,32 +170,34 @@ pub fn DriversView() -> Element {
                     catalog_matches.set(report.catalog_matches);
                     has_checked_updates.set(true);
 
-                    if total_found == 0 {
-                        if let Some(note) = report.wua_note {
-                            status_msg.set(Some((note, Tone::Warning)));
+                    // ERR-20: avisos de lo que no se pudo consultar (Windows Update, fabricantes, Catálogo).
+                    let warnings: Vec<String> =
+                        report.wua_note.into_iter().chain(report.notes).collect();
+                    let summary = if total_found == 0 {
+                        if en {
+                            "No pending driver updates found.".to_string()
                         } else {
-                            status_msg.set(Some((
-                                if en {
-                                    "No pending updates found across WUA, Vendors, or MS Catalog."
-                                        .to_string()
-                                } else {
-                                    "No se encontraron actualizaciones pendientes en WUA, Fabricantes ni Catálogo MS."
-                                        .to_string()
-                                },
-                                Tone::Success,
-                            )));
+                            "No se encontraron actualizaciones de drivers pendientes.".to_string()
                         }
+                    } else if en {
+                        format!("Scan complete: {} update(s) found.", total_found)
                     } else {
+                        format!(
+                            "Escaneo completo: {} actualización(es) encontrada(s).",
+                            total_found
+                        )
+                    };
+                    if warnings.is_empty() {
+                        status_msg.set(Some((summary, Tone::Success)));
+                    } else {
+                        let lead = if en {
+                            "Some sources could not be checked:"
+                        } else {
+                            "No se pudieron consultar algunas fuentes:"
+                        };
                         status_msg.set(Some((
-                            if en {
-                                format!("Full scan complete: {} candidate(s) found.", total_found)
-                            } else {
-                                format!(
-                                    "Escaneo completo: {} paquete(s) encontrado(s).",
-                                    total_found
-                                )
-                            },
-                            Tone::Success,
+                            format!("{summary}\n{lead}\n• {}", warnings.join("\n• ")),
+                            Tone::Warning,
                         )));
                     }
                 }
@@ -255,7 +245,8 @@ pub fn DriversView() -> Element {
                         Tone::Success
                     };
                     status_msg.set(Some((outcome.message, tone)));
-                    if is_wua {
+                    // ERR-18: con fallos la lista queda para reintentar o ver cuál falló.
+                    if is_wua && !outcome.partial {
                         wua_updates.write().clear();
                         selected_wua.write().clear();
                     }

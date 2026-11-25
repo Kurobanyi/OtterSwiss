@@ -14,13 +14,6 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
     SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
 };
 use windows::Win32::Foundation::{RPC_E_CHANGED_MODE, VARIANT_BOOL};
-use windows::Win32::Networking::WinInet::{
-    HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpOpenRequestW, HttpQueryInfoW,
-    HttpSendRequestW, INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE,
-    INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT,
-    INTERNET_OPTION_SEND_TIMEOUT, INTERNET_SERVICE_HTTP, InternetConnectW, InternetOpenUrlW,
-    InternetOpenW, InternetReadFile, InternetSetOptionW,
-};
 use windows::Win32::System::Com::{
     CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
     CoUninitialize,
@@ -29,7 +22,7 @@ use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
 use windows::Win32::System::UpdateAgent::{
     IUpdate3, IUpdateCollection, IUpdateSession, IWindowsDriverUpdate, UpdateCollection,
-    UpdateSession, orcSucceeded, orcSucceededWithErrors, ssDefault,
+    UpdateSession, orcFailed, orcSucceeded, orcSucceededWithErrors, ssDefault,
 };
 use windows::core::{BSTR, Interface, PCWSTR};
 use winreg::RegKey;
@@ -37,11 +30,9 @@ use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::archive::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::handles::WinInetHandle;
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::process::{Launch, run_captured, run_in_job, system32_dir};
 use crate::core::platform::safe_fs::{create_verified_new_file, delete_tree_verified};
-use crate::core::platform::wide::to_wide_null;
 use crate::core::security::acl::create_admin_only_dir;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 use crate::core::security::download::{
@@ -83,56 +74,14 @@ impl InstalledDriverDevice {
             .unwrap_or(false)
     }
 
+    /// ID corto para buscar en el Catálogo: `PCI\VEN_x&DEV_y`, `USB\VID_x&PID_y` o los dos primeros campos.
     pub fn short_hw_id(&self) -> Option<String> {
-        let raw = self.hardware_id.as_deref()?.trim();
-        if raw.is_empty() {
-            return None;
-        }
-        let up = raw.to_ascii_uppercase();
-        if let Some(idx) = up.find("VEN_") {
-            let prefix = if up.starts_with("PCI\\") { "PCI\\" } else { "" };
-            let rest = &up[idx..];
-            let ven = rest.get(4..8)?;
-            if let Some(d_idx) = rest.find("DEV_") {
-                let dev = rest.get(d_idx + 4..d_idx + 8)?;
-                return Some(format!("{}VEN_{}&DEV_{}", prefix, ven, dev));
-            }
-        }
-        if let Some(idx) = up.find("VID_") {
-            let prefix = if up.starts_with("USB\\") { "USB\\" } else { "" };
-            let rest = &up[idx..];
-            let vid = rest.get(4..8)?;
-            if let Some(p_idx) = rest.find("PID_") {
-                let pid = rest.get(p_idx + 4..p_idx + 8)?;
-                return Some(format!("{}VID_{}&PID_{}", prefix, vid, pid));
-            }
-        }
-        Some(raw.split('&').take(2).collect::<Vec<_>>().join("&"))
+        short_hw_id_of(self.hardware_id.as_deref()?)
     }
 
+    /// `(fabricante, dispositivo, subsistema)` del Hardware ID (VEN/DEV o VID/PID).
     pub fn extract_ven_dev(&self) -> Option<(String, String, Option<String>)> {
-        let raw = self.hardware_id.as_deref()?.to_ascii_uppercase();
-        let ven = if let Some(i) = raw.find("VEN_") {
-            raw.get(i + 4..i + 8)?.to_string()
-        } else {
-            let i = raw.find("VID_")?;
-            raw.get(i + 4..i + 8)?.to_string()
-        };
-
-        let dev = if let Some(i) = raw.find("DEV_") {
-            raw.get(i + 4..i + 8)?.to_string()
-        } else {
-            let i = raw.find("PID_")?;
-            raw.get(i + 4..i + 8)?.to_string()
-        };
-
-        let subsys = if let Some(i) = raw.find("SUBSYS_") {
-            raw.get(i + 7..i + 15).map(|s| s.to_string())
-        } else {
-            None
-        };
-
-        Some((ven, dev, subsys))
+        ven_dev_of(self.hardware_id.as_deref()?)
     }
 
     pub fn decoded_vendor_name(&self) -> Option<&'static str> {
@@ -224,6 +173,18 @@ pub struct DriverInstallReport {
     pub failed_count: usize,
     pub reboot_required: bool,
     pub message: String,
+}
+
+impl DriverInstallReport {
+    /// ARQ-05: un paquete instalado; el reinicio viaja como dato (código 3010/1641), no dentro del texto.
+    fn single(message: String, reboot_required: bool) -> Self {
+        Self {
+            succeeded_count: 1,
+            failed_count: 0,
+            reboot_required,
+            message,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -487,200 +448,30 @@ fn url_encode(s: &str) -> String {
     out
 }
 
-fn wininet_get_bytes(url: &str, user_agent: &str, max_bytes: usize) -> CoreResult<Vec<u8>> {
-    let agent_w = to_wide_null(user_agent);
-    let h_internet = WinInetHandle::new(unsafe {
-        InternetOpenW(
-            PCWSTR(agent_w.as_ptr()),
-            INTERNET_OPEN_TYPE_PRECONFIG.0,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: "InternetOpenW falló".into(),
-        source: None,
-    })?;
-
-    let timeout_ms: u32 = 20_000;
-    unsafe {
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_CONNECT_TIMEOUT,
-            Some(&timeout_ms as *const _ as *const _),
-            4,
-        );
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_SEND_TIMEOUT,
-            Some(&timeout_ms as *const _ as *const _),
-            4,
-        );
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_RECEIVE_TIMEOUT,
-            Some(&timeout_ms as *const _ as *const _),
-            4,
-        );
-    }
-
-    let url_w = to_wide_null(url);
-    let h_url = WinInetHandle::new(unsafe {
-        InternetOpenUrlW(
-            h_internet.raw(),
-            PCWSTR(url_w.as_ptr()),
-            None,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            None,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: format!("No se pudo abrir URL '{}'", url),
-        source: None,
-    })?;
-
-    let mut status_code: u32 = 0;
-    let mut status_len: u32 = std::mem::size_of::<u32>() as u32;
-    unsafe {
-        HttpQueryInfoW(
-            h_url.raw(),
-            HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
-            Some(&mut status_code as *mut _ as *mut _),
-            &mut status_len,
-            None,
-        )
-    }
-    .map_err(|e| CoreError::Trust {
-        message: format!("HttpQueryInfoW falló: {}", e),
-        source: None,
-    })?;
-
-    if status_code != 200 {
-        return Err(CoreError::Trust {
-            message: format!("HTTP {} desde '{}'", status_code, url),
-            source: None,
-        });
-    }
-
-    let mut data = Vec::new();
-    let mut chunk = [0u8; 32 * 1024];
-    loop {
-        let mut read_bytes = 0u32;
-        let ok = unsafe {
-            InternetReadFile(
-                h_url.raw(),
-                chunk.as_mut_ptr() as *mut _,
-                chunk.len() as u32,
-                &mut read_bytes,
-            )
-        };
-        if ok.is_err() || read_bytes == 0 {
-            break;
-        }
-        if data.len() + (read_bytes as usize) > max_bytes {
-            return Err(CoreError::Trust {
-                message: "La respuesta excede el límite permitido".into(),
-                source: None,
-            });
-        }
-        data.extend_from_slice(&chunk[..read_bytes as usize]);
-    }
-
-    Ok(data)
+/// AR-21 y ERR-19: GET de datos (JSON o HTML) con el cliente común: estado 200, host final en `hosts` y tope que falla
+/// en vez de cortar en silencio. `agent` solo para servicios que exigen el de su cliente.
+fn fetch_bytes(
+    url: &str,
+    hosts: &[&str],
+    agent: Option<&str>,
+    max_bytes: usize,
+) -> CoreResult<Vec<u8>> {
+    let resp = match agent {
+        Some(a) => http::get_with_agent(url, a, DATA_TIMEOUTS)?,
+        None => http::get(url, DATA_TIMEOUTS)?,
+    };
+    resp.require_ok()?;
+    validate_https_host(&resp.final_url()?, hosts)?;
+    resp.read_to_end_capped(max_bytes)
 }
 
-fn wininet_post_form(host: &str, path: &str, form_body: &str) -> CoreResult<String> {
-    let agent_w = to_wide_null("OtterSwiss-Catalog/4.0");
-    let h_internet = WinInetHandle::new(unsafe {
-        InternetOpenW(
-            PCWSTR(agent_w.as_ptr()),
-            INTERNET_OPEN_TYPE_PRECONFIG.0,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: "InternetOpenW falló".into(),
-        source: None,
-    })?;
-
-    let host_w = to_wide_null(host);
-    let h_conn = WinInetHandle::new(unsafe {
-        InternetConnectW(
-            h_internet.raw(),
-            PCWSTR(host_w.as_ptr()),
-            443,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            INTERNET_SERVICE_HTTP,
-            0,
-            None,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: format!("InternetConnectW falló para {}", host),
-        source: None,
-    })?;
-
-    let verb_w = to_wide_null("POST");
-    let path_w = to_wide_null(path);
-    let h_req = WinInetHandle::new(unsafe {
-        HttpOpenRequestW(
-            h_conn.raw(),
-            PCWSTR(verb_w.as_ptr()),
-            PCWSTR(path_w.as_ptr()),
-            PCWSTR::null(),
-            PCWSTR::null(),
-            None,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            None,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: format!("HttpOpenRequestW falló para {}", path),
-        source: None,
-    })?;
-
-    let hdrs_w = to_wide_null("Content-Type: application/x-www-form-urlencoded\r\n");
-    let body_bytes = form_body.as_bytes();
-    unsafe {
-        HttpSendRequestW(
-            h_req.raw(),
-            Some(&hdrs_w[..hdrs_w.len() - 1]),
-            Some(body_bytes.as_ptr() as *const _),
-            body_bytes.len() as u32,
-        )
-    }
-    .map_err(|e| CoreError::Trust {
-        message: format!("HttpSendRequestW falló: {}", e),
-        source: None,
-    })?;
-
-    let mut data = Vec::new();
-    let mut chunk = [0u8; 16 * 1024];
-    loop {
-        let mut read_bytes = 0u32;
-        let ok = unsafe {
-            InternetReadFile(
-                h_req.raw(),
-                chunk.as_mut_ptr() as *mut _,
-                chunk.len() as u32,
-                &mut read_bytes,
-            )
-        };
-        if ok.is_err() || read_bytes == 0 {
-            break;
-        }
-        data.extend_from_slice(&chunk[..read_bytes as usize]);
-        if data.len() > 4 * 1024 * 1024 {
-            break;
-        }
-    }
-
-    Ok(String::from_utf8_lossy(&data).into_owned())
-}
+const DATA_TIMEOUTS: http::Timeouts = http::Timeouts {
+    connect_ms: 15_000,
+    io_ms: 30_000,
+};
+const CATALOG_HOSTS: &[&str] = &["www.catalog.update.microsoft.com"];
+const NVIDIA_API_HOSTS: &[&str] = &["gfwsl.geforce.com"];
+const INTEL_DSA_HOSTS: &[&str] = &["dsadata.intel.com"];
 
 fn strip_html_tags(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -703,6 +494,46 @@ fn strip_html_tags(input: &str) -> String {
         .join(" ")
 }
 
+/// ERR-23: valor de `key` en un Hardware ID en mayúsculas (`PCI\VEN_1002&DEV_744C&SUBSYS_…`): lo que sigue a la clave
+/// hasta `&` o `\`. Así `ACPI\VEN_INT&DEV_33A0` da `INT` y no `INT&`.
+fn hwid_field<'a>(up: &'a str, key: &str) -> Option<&'a str> {
+    let start = up.find(key)? + key.len();
+    let rest = &up[start..];
+    let end = rest.find(['&', '\\']).unwrap_or(rest.len());
+    let value = &rest[..end];
+    (!value.is_empty()).then_some(value)
+}
+
+fn short_hw_id_of(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let up = raw.to_ascii_uppercase();
+    let bus = up
+        .split('\\')
+        .next()
+        .filter(|_| up.contains('\\'))
+        .map(|b| format!("{b}\\"));
+    if let (Some(ven), Some(dev)) = (hwid_field(&up, "VEN_"), hwid_field(&up, "DEV_")) {
+        let prefix = bus.as_deref().filter(|b| *b == "PCI\\").unwrap_or("");
+        return Some(format!("{prefix}VEN_{ven}&DEV_{dev}"));
+    }
+    if let (Some(vid), Some(pid)) = (hwid_field(&up, "VID_"), hwid_field(&up, "PID_")) {
+        let prefix = bus.as_deref().filter(|b| *b == "USB\\").unwrap_or("");
+        return Some(format!("{prefix}VID_{vid}&PID_{pid}"));
+    }
+    Some(raw.split('&').take(2).collect::<Vec<_>>().join("&"))
+}
+
+fn ven_dev_of(raw: &str) -> Option<(String, String, Option<String>)> {
+    let up = raw.to_ascii_uppercase();
+    let ven = hwid_field(&up, "VEN_").or_else(|| hwid_field(&up, "VID_"))?;
+    let dev = hwid_field(&up, "DEV_").or_else(|| hwid_field(&up, "PID_"))?;
+    let subsys = hwid_field(&up, "SUBSYS_").map(str::to_string);
+    Some((ven.to_string(), dev.to_string(), subsys))
+}
+
 fn parse_version_tuple(v: &str) -> Vec<u32> {
     v.split(|c: char| !c.is_ascii_digit())
         .filter(|s| !s.is_empty())
@@ -713,11 +544,9 @@ fn parse_version_tuple(v: &str) -> Vec<u32> {
 fn is_version_newer(candidate: &str, current: &str) -> bool {
     let a = parse_version_tuple(candidate);
     let b = parse_version_tuple(current);
-    if a.is_empty() {
+    // ERR-23: si alguna de las dos no es numérica no se sabe cuál es más nueva; no se ofrece la actualización.
+    if a.is_empty() || b.is_empty() {
         return false;
-    }
-    if b.is_empty() {
-        return true;
     }
     let len = a.len().max(b.len());
     for i in 0..len {
@@ -741,15 +570,15 @@ fn is_system_laptop() -> bool {
     false
 }
 
-fn read_windows_build() -> String {
+/// Número de build de Windows, o `None` si no se puede leer (antes se inventaba `22631`, ERR-23).
+fn read_windows_build() -> Option<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    if let Ok(key) =
-        hklm.open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", KEY_READ)
-        && let Ok(b) = key.get_value::<String, _>("CurrentBuildNumber")
-    {
-        return b.trim().to_string();
-    }
-    "22631".to_string()
+    let key = hklm
+        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", KEY_READ)
+        .ok()?;
+    let build: String = key.get_value("CurrentBuildNumber").ok()?;
+    let build = build.trim().to_string();
+    build.chars().all(|c| c.is_ascii_digit()).then_some(build)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1130,8 +959,10 @@ impl DriverManager {
                 if !is_dl {
                     let _ = unsafe { to_download.Add(&update) };
                 }
-                let _ = unsafe { to_install.Add(&update) };
-                matched += 1;
+                // ERR-18: solo cuenta lo que de verdad entró en la colección a instalar.
+                if unsafe { to_install.Add(&update) }.is_ok() {
+                    matched += 1;
+                }
             }
 
             if matched == 0 {
@@ -1161,7 +992,7 @@ impl DriverManager {
                         message: format!("Error descargando drivers desde Microsoft: {}", e),
                         source: None,
                     })?;
-                let dl_code = unsafe { dl_res.ResultCode() }.unwrap_or(orcSucceededWithErrors);
+                let dl_code = unsafe { dl_res.ResultCode() }.unwrap_or(orcFailed);
                 if dl_code != orcSucceeded && dl_code != orcSucceededWithErrors {
                     return Err(CoreError::SystemTool {
                         message: format!("La descarga oficial falló con estado {:?}", dl_code.0),
@@ -1185,27 +1016,37 @@ impl DriverManager {
                 source: None,
             })?;
 
-            let res_code = unsafe { inst_res.ResultCode() }.unwrap_or(orcSucceededWithErrors);
             let reboot_required = unsafe { inst_res.RebootRequired() }
                 .map(|b| b.0 != 0)
                 .unwrap_or(false);
 
-            let (succeeded_count, failed_count) = if res_code == orcSucceeded {
-                (matched, 0)
-            } else if res_code == orcSucceededWithErrors {
-                (matched.saturating_sub(1), 1)
-            } else {
-                (0, matched)
-            };
+            // ERR-18: el resultado de cada driver, no una estimación desde el código global. Si no se puede leer el
+            // resultado de uno, cuenta como fallo.
+            let total = unsafe { to_install.Count() }.unwrap_or(0);
+            let mut succeeded_count = 0usize;
+            let mut failed_count = 0usize;
+            for i in 0..total {
+                let ok = unsafe { inst_res.GetUpdateResult(i) }
+                    .and_then(|r| unsafe { r.ResultCode() })
+                    .is_ok_and(|code| code == orcSucceeded || code == orcSucceededWithErrors);
+                if ok {
+                    succeeded_count += 1;
+                } else {
+                    failed_count += 1;
+                }
+            }
 
             Ok(DriverInstallReport {
                 succeeded_count,
                 failed_count,
                 reboot_required,
-                message: format!(
-                    "Resultado WUA: {:?} (OK: {}, Fallos: {})",
-                    res_code.0, succeeded_count, failed_count
-                ),
+                message: if failed_count == 0 {
+                    format!("Windows Update instaló {succeeded_count} driver(s).")
+                } else {
+                    format!(
+                        "Windows Update instaló {succeeded_count} driver(s); {failed_count} fallaron."
+                    )
+                },
             })
         });
 
@@ -1220,25 +1061,31 @@ impl DriverManager {
             "https://www.catalog.update.microsoft.com/Search.aspx?q={}",
             url_encode(hw_id_query)
         );
-        let bytes = wininet_get_bytes(&url, "OtterSwiss-Catalog/4.0", 4 * 1024 * 1024)?;
+        let bytes = fetch_bytes(&url, CATALOG_HOSTS, None, 4 * 1024 * 1024)?;
         let html = String::from_utf8_lossy(&bytes);
 
         let mut matches = Vec::new();
         let mut cursor = 0usize;
 
-        while let Some(pos) = html[cursor..].find("_link\"") {
+        // El Catálogo marca cada resultado con `<a id='<guid>_link' …>` (comillas simples o dobles).
+        while let Some(pos) = html[cursor..].find("_link") {
             let abs_pos = cursor + pos;
-            cursor = abs_pos + 6;
+            cursor = abs_pos + 5;
+            if !matches!(html.as_bytes().get(abs_pos + 5), Some(b'\'' | b'"')) {
+                continue;
+            }
 
             let mut back = abs_pos.saturating_sub(64);
             while !html.is_char_boundary(back) {
                 back += 1;
             }
             let search_back = &html[back..abs_pos];
-            let Some(id_start) = search_back.rfind("id=\"") else {
+            let Some(id_start) = search_back.rfind("id=") else {
                 continue;
             };
-            let guid = search_back[id_start + 4..].trim();
+            let guid = search_back[id_start + 3..]
+                .trim_start_matches(['\'', '"'])
+                .trim();
             if !is_guid(guid) {
                 continue;
             }
@@ -1296,7 +1143,7 @@ impl DriverManager {
     /// se acepta solo si su host es de Windows Update y termina en `.cab`; el CAB se baja con el cliente HTTPS común
     /// (host final validado), tiene que estar firmado por Microsoft antes de expandirse y todo vive en una carpeta
     /// temporal que se borra al terminar.
-    pub fn install_catalog_driver(update_id: &str) -> CoreResult<String> {
+    pub fn install_catalog_driver(update_id: &str) -> CoreResult<DriverInstallReport> {
         ensure_driver_updates_allowed()?;
         if !is_guid(update_id) {
             return Err(CoreError::Validation(
@@ -1304,23 +1151,7 @@ impl DriverManager {
             ));
         }
 
-        let json_payload = format!(
-            r#"[{{"size":0,"languages":"","uidInfo":"{}","updateID":"{}"}}]"#,
-            update_id, update_id
-        );
-        let form_body = format!("updateIDs={}", url_encode(&json_payload));
-        let dialog_html = wininet_post_form(
-            "www.catalog.update.microsoft.com",
-            "/DownloadDialog.aspx",
-            &form_body,
-        )?;
-
-        let download_url =
-            find_catalog_cab_url(&dialog_html).ok_or_else(|| CoreError::SystemTool {
-                message: "No se encontró enlace de descarga .CAB válido en Microsoft Catalog."
-                    .into(),
-                source: None,
-            })?;
+        let download_url = catalog_cab_url(update_id)?;
 
         let scratch = ScratchDir::new("Catalog", update_id)?;
         let cab_path = scratch.dir.join("driver.cab");
@@ -1373,14 +1204,9 @@ impl DriverManager {
         )?;
         let code = pnp_out.code.unwrap_or(-1);
         if pnp_out.success || code == 3010 {
-            let reboot_msg = if code == 3010 {
-                " (Reinicio requerido)"
-            } else {
-                ""
-            };
-            return Ok(format!(
-                "Driver instalado nativamente desde Microsoft Catalog{}.",
-                reboot_msg
+            return Ok(DriverInstallReport::single(
+                "Driver instalado desde el Catálogo de Microsoft.".into(),
+                code == 3010,
             ));
         }
         Err(CoreError::SystemTool {
@@ -1393,10 +1219,14 @@ impl DriverManager {
         })
     }
 
-    pub fn check_nvidia_updates(devices: &[InstalledDriverDevice]) -> Vec<VendorDriverUpdate> {
+    pub fn check_nvidia_updates(
+        devices: &[InstalledDriverDevice],
+    ) -> CoreResult<Vec<VendorDriverUpdate>> {
         let mut results = Vec::new();
         let is_laptop = is_system_laptop();
-        let os_build = read_windows_build();
+        let Some(os_build) = read_windows_build() else {
+            return Ok(results);
+        };
 
         let Some(nv_gpu) = devices.iter().find(|d| {
             let is_display = d
@@ -1410,11 +1240,11 @@ impl DriverManager {
                 .unwrap_or(false);
             is_display && is_nv
         }) else {
-            return results;
+            return Ok(results);
         };
 
         let Some((_, dev, subsys)) = nv_gpu.extract_ven_dev() else {
-            return results;
+            return Ok(results);
         };
 
         let did_entry = match (is_laptop, subsys) {
@@ -1435,29 +1265,36 @@ impl DriverManager {
             url_encode(&json_req)
         );
 
-        let Ok(bytes) = wininet_get_bytes(&url, "NvBackend/36.0.0.0", 2 * 1024 * 1024) else {
-            return results;
-        };
-        let Ok(parsed) = serde_json::from_slice::<NvidiaLookupResp>(&bytes) else {
-            return results;
-        };
+        // El servicio de NVIDIA responde a su cliente (NvBackend), no a un agente genérico.
+        let bytes = fetch_bytes(
+            &url,
+            NVIDIA_API_HOSTS,
+            Some("NvBackend/36.0.0.0"),
+            2 * 1024 * 1024,
+        )?;
+        let parsed = serde_json::from_slice::<NvidiaLookupResp>(&bytes).map_err(|e| {
+            CoreError::SystemTool {
+                message: "Respuesta inesperada del servicio de drivers".into(),
+                source: Some(Box::new(e)),
+            }
+        })?;
         let Some(attrs) = parsed.driver_attributes else {
-            return results;
+            return Ok(results);
         };
 
         let Some(latest_ver) = attrs.version else {
-            return results;
+            return Ok(results);
         };
         let Some(dl_url) = attrs.download_url_admin.or(attrs.download_url) else {
-            return results;
+            return Ok(results);
         };
         if !dl_url.starts_with("https://") {
-            return results;
+            return Ok(results);
         }
 
+        // ERR-23: la versión interna (`32.0.15.x`) no se compara con la pública (`566.xx`).
         let current_ver = nv_gpu
             .friendly_gpu_version()
-            .or_else(|| nv_gpu.driver_version.clone())
             .unwrap_or_else(|| "Desconocida".into());
 
         if nv_gpu.has_problem || is_version_newer(&latest_ver, &current_ver) {
@@ -1480,10 +1317,12 @@ impl DriverManager {
             });
         }
 
-        results
+        Ok(results)
     }
 
-    pub fn check_intel_updates(devices: &[InstalledDriverDevice]) -> Vec<VendorDriverUpdate> {
+    pub fn check_intel_updates(
+        devices: &[InstalledDriverDevice],
+    ) -> CoreResult<Vec<VendorDriverUpdate>> {
         let mut results = Vec::new();
 
         let mut local_intel: HashMap<String, (Option<String>, bool)> = HashMap::new();
@@ -1505,30 +1344,30 @@ impl DriverManager {
         }
 
         if local_intel.is_empty() {
-            return results;
+            return Ok(results);
         }
 
-        let Ok(bytes) = wininet_get_bytes(
+        let bytes = fetch_bytes(
             "https://dsadata.intel.com/data/en",
-            "OtterSwiss-IntelDSA/4.0",
+            INTEL_DSA_HOSTS,
+            None,
             32 * 1024 * 1024,
-        ) else {
-            return results;
-        };
+        )?;
 
-        let Ok(root) = serde_json::from_slice::<Value>(&bytes) else {
-            return results;
-        };
+        let root = serde_json::from_slice::<Value>(&bytes).map_err(|e| CoreError::SystemTool {
+            message: "Respuesta inesperada del servicio de drivers".into(),
+            source: Some(Box::new(e)),
+        })?;
 
         let mut seen_urls = HashSet::new();
         collect_intel_matches(&root, &local_intel, &mut seen_urls, &mut results);
-        results
+        Ok(results)
     }
 
     /// SEC-30: descarga e instala una actualización de fabricante. Hosts y firmante salen de [`vendor_policy`] (fijos en el
     /// binario), nunca de `upd`, que viene del escaneo (de la red) y la vista devuelve tal cual. Todo ejecutable pasa por
     /// Authenticode con el firmante del fabricante y corre dentro de un Job; los temporales se borran al terminar.
-    pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<String> {
+    pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
         ensure_driver_updates_allowed()?;
         let (hosts, signer) = vendor_policy(&upd.vendor)?;
         validate_https_host(&upd.download_url, hosts)?;
@@ -1574,8 +1413,18 @@ impl DriverManager {
             Err(e) => (Vec::new(), Some(e.to_string())),
         };
 
-        let mut vendor_updates = Self::check_nvidia_updates(devices);
-        vendor_updates.extend(Self::check_intel_updates(devices));
+        // ERR-20: lo que no se pudo consultar se informa en `notes`, no se confunde con «sin actualizaciones».
+        let mut notes = Vec::new();
+        let mut vendor_updates = Vec::new();
+        for (source, result) in [
+            ("NVIDIA", Self::check_nvidia_updates(devices)),
+            ("Intel", Self::check_intel_updates(devices)),
+        ] {
+            match result {
+                Ok(found) => vendor_updates.extend(found),
+                Err(e) => notes.push(format!("{source}: {e}")),
+            }
+        }
 
         let mut catalog_matches = Vec::new();
         let mut queried_hw_ids = HashSet::new();
@@ -1589,10 +1438,16 @@ impl DriverManager {
             if !queried_hw_ids.insert(short_id.clone()) {
                 continue;
             }
-            if let Ok(mut found) = Self::search_microsoft_catalog(&short_id)
-                && let Some(first) = found.drain(..).next()
-            {
-                catalog_matches.push(first);
+            match Self::search_microsoft_catalog(&short_id) {
+                Ok(mut found) => {
+                    if let Some(first) = found.drain(..).next() {
+                        catalog_matches.push(first);
+                    }
+                }
+                Err(e) => {
+                    notes.push(format!("Catálogo de Microsoft: {e}"));
+                    break;
+                }
             }
             if catalog_matches.len() >= 10 {
                 break;
@@ -1605,9 +1460,32 @@ impl DriverManager {
             wua_note,
             vendor_updates,
             catalog_matches,
-            notes: Vec::new(),
+            notes,
         }
     }
+}
+
+/// Enlace del CAB de una actualización del Catálogo, pedido a `DownloadDialog.aspx` (`update_id` ya validado como GUID).
+fn catalog_cab_url(update_id: &str) -> CoreResult<String> {
+    let json_payload = format!(
+        r#"[{{"size":0,"languages":"","uidInfo":"{}","updateID":"{}"}}]"#,
+        update_id, update_id
+    );
+    let form_body = format!("updateIDs={}", url_encode(&json_payload));
+    let resp = http::post_form(
+        CATALOG_HOSTS[0],
+        "/DownloadDialog.aspx",
+        &form_body,
+        DATA_TIMEOUTS,
+    )?;
+    resp.require_ok()?;
+    validate_https_host(&resp.final_url()?, CATALOG_HOSTS)?;
+    let dialog_html =
+        String::from_utf8_lossy(&resp.read_to_end_capped(4 * 1024 * 1024)?).into_owned();
+    find_catalog_cab_url(&dialog_html).ok_or_else(|| CoreError::SystemTool {
+        message: "No se encontró enlace de descarga .CAB válido en Microsoft Catalog.".into(),
+        source: None,
+    })
 }
 
 /// Hosts de los que se aceptan CAB del Microsoft Update Catalog (SEC-33).
@@ -1687,7 +1565,7 @@ fn run_verified_vendor_installer(
     path: &Path,
     policy: &DownloadPolicy<'_>,
     title: &str,
-) -> CoreResult<String> {
+) -> CoreResult<DriverInstallReport> {
     let _exec_lock = reopen_verified_for_exec(path, policy)?;
     let working_dir = path.parent().unwrap_or(path);
     let exit = run_in_job(
@@ -1701,8 +1579,9 @@ fn run_verified_vendor_installer(
         None,
     )?;
     if exit.is_success() {
-        Ok(format!(
-            "Instalador oficial '{title}' verificado y terminado."
+        Ok(DriverInstallReport::single(
+            format!("Instalador oficial '{title}' verificado y terminado."),
+            exit.exit_code == 3010 || exit.exit_code == 1641,
         ))
     } else {
         Err(CoreError::SystemTool {
@@ -1789,7 +1668,7 @@ fn install_vendor_zip(
     safe_id: &str,
     hosts: &'static [&'static str],
     signer: &'static str,
-) -> CoreResult<String> {
+) -> CoreResult<DriverInstallReport> {
     use std::sync::atomic::AtomicBool;
 
     let scratch = ScratchDir::new("Vendor", safe_id)?;
@@ -1825,9 +1704,9 @@ fn install_vendor_zip(
         PNPUTIL_TIMEOUT,
     )?;
     if out.success || out.code == Some(3010) {
-        Ok(format!(
-            "Driver '{}' instalado vía Driver Store.",
-            upd.title
+        Ok(DriverInstallReport::single(
+            format!("Driver '{}' instalado vía Driver Store.", upd.title),
+            out.code == Some(3010),
         ))
     } else {
         Err(CoreError::SystemTool {
@@ -1971,6 +1850,64 @@ mod tests {
     use super::*;
 
     #[test]
+    fn id_pci_se_acorta_a_ven_dev() {
+        let raw = r"PCI\VEN_1002&DEV_744C&SUBSYS_0E3C1002&REV_C8";
+        assert_eq!(
+            short_hw_id_of(raw).as_deref(),
+            Some(r"PCI\VEN_1002&DEV_744C")
+        );
+        assert_eq!(
+            ven_dev_of(raw),
+            Some(("1002".into(), "744C".into(), Some("0E3C1002".into())))
+        );
+    }
+
+    #[test]
+    fn id_acpi_y_usb() {
+        assert_eq!(
+            short_hw_id_of(r"ACPI\VEN_INT&DEV_33A0").as_deref(),
+            Some("VEN_INT&DEV_33A0")
+        );
+        assert_eq!(
+            short_hw_id_of(r"USB\VID_046D&PID_C52B&REV_1200").as_deref(),
+            Some(r"USB\VID_046D&PID_C52B")
+        );
+        assert_eq!(
+            short_hw_id_of(r"ROOT\AMDXE").as_deref(),
+            Some(r"ROOT\AMDXE")
+        );
+        assert_eq!(ven_dev_of(r"ROOT\AMDXE"), None);
+    }
+
+    #[test]
+    fn version_desconocida_no_ofrece_actualizar() {
+        assert!(is_version_newer("566.36", "565.90"));
+        assert!(!is_version_newer("566.36", "566.36"));
+        assert!(!is_version_newer("566.36", "Desconocida"));
+        assert!(!is_version_newer("Latest", "31.0.101.5590"));
+    }
+
+    #[test]
+    fn version_amigable_de_nvidia() {
+        let dev = InstalledDriverDevice {
+            device_desc: None,
+            friendly_name: None,
+            manufacturer: Some("NVIDIA".into()),
+            provider_name: Some("NVIDIA".into()),
+            class_name: Some("Display".into()),
+            hardware_id: None,
+            driver_version: Some("32.0.15.6636".into()),
+            driver_date: None,
+            inf_path: None,
+            dev_inst: 0,
+            has_problem: false,
+            problem_code: 0,
+            needs_reboot: false,
+        };
+        assert_eq!(dev.friendly_gpu_version().as_deref(), Some("566.36"));
+    }
+
+    #[test]
     fn update_id_solo_guid() {
         assert!(is_guid("0a1b2c3d-4e5f-6789-abcd-ef0123456789"));
         assert!(!is_guid("C:xxx-0000-0000-0000-000000000000"));
@@ -1998,5 +1935,16 @@ mod tests {
             find_catalog_cab_url("'https://download.windowsupdate.com/a.msu'"),
             None
         );
+    }
+
+    /// Red real: busca en el Catálogo y resuelve el enlace del CAB del primer resultado (no lo descarga).
+    #[test]
+    #[ignore = "usa la red"]
+    fn catalogo_en_vivo() {
+        let found =
+            DriverManager::search_microsoft_catalog(r"PCI\VEN_8086&DEV_A0F0").expect("búsqueda");
+        let first = found.first().expect("algún resultado");
+        let url = catalog_cab_url(&first.update_id).expect("enlace del CAB");
+        assert!(url.to_ascii_lowercase().ends_with(".cab"));
     }
 }

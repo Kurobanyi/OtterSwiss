@@ -3,11 +3,12 @@
 //! con su tope de tamaño).
 
 use windows::Win32::Networking::WinInet::{
-    HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpQueryInfoW,
-    INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE,
-    INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT,
-    INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL, InternetOpenUrlW, InternetOpenW,
-    InternetQueryOptionW, InternetReadFile, InternetSetOptionW,
+    HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpOpenRequestW,
+    HttpQueryInfoW, HttpSendRequestW, INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD,
+    INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT,
+    INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
+    INTERNET_SERVICE_HTTP, InternetConnectW, InternetOpenUrlW, InternetOpenW, InternetQueryOptionW,
+    InternetReadFile, InternetSetOptionW,
 };
 use windows::core::PCWSTR;
 
@@ -24,7 +25,9 @@ pub struct Timeouts {
 
 /// Respuesta abierta de una petición GET por HTTPS. La sesión vive mientras viva la respuesta.
 pub struct HttpsResponse {
+    // Orden de los campos = orden de cierre: petición, conexión y sesión.
     request: WinInetHandle,
+    _connection: Option<WinInetHandle>,
     _session: WinInetHandle,
 }
 
@@ -38,10 +41,107 @@ fn trust_err(message: String) -> CoreError {
 /// Abre `url` (solo `https://`) sin caché. Los redireccionamientos los sigue WinInet: quien llama tiene que
 /// comprobar `final_url` contra su lista de hosts permitidos.
 pub fn get(url: &str, timeouts: Timeouts) -> CoreResult<HttpsResponse> {
+    get_with_agent(url, &default_agent(), timeouts)
+}
+
+/// Igual que [`get`] con otro user agent (algún servicio de fabricante solo responde a su cliente).
+pub fn get_with_agent(url: &str, agent: &str, timeouts: Timeouts) -> CoreResult<HttpsResponse> {
     if !url.starts_with("https://") {
         return Err(trust_err("Solo se permiten conexiones HTTPS".into()));
     }
-    let agent_w = to_wide_null(format!("OtterSwiss/{}", env!("CARGO_PKG_VERSION")));
+    let session = open_session(agent, timeouts)?;
+    let url_w = to_wide_null(url);
+    // SAFETY: `session` es una sesión válida y `url_w` termina en NUL.
+    let request = WinInetHandle::new(unsafe {
+        InternetOpenUrlW(
+            session.raw(),
+            PCWSTR(url_w.as_ptr()),
+            None,
+            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
+            None,
+        )
+    })
+    .ok_or_else(|| trust_err(format!("No se pudo conectar con '{url}'")))?;
+
+    Ok(HttpsResponse {
+        request,
+        _connection: None,
+        _session: session,
+    })
+}
+
+/// AR-21: `POST` de un formulario (`application/x-www-form-urlencoded`) a `https://{host}{path}`. Mismas reglas que
+/// [`get`]: sin caché, con timeouts, y quien llama valida estado y `final_url`.
+pub fn post_form(
+    host: &str,
+    path: &str,
+    body: &str,
+    timeouts: Timeouts,
+) -> CoreResult<HttpsResponse> {
+    let session = open_session(&default_agent(), timeouts)?;
+    let host_w = to_wide_null(host);
+    // SAFETY: `session` es válida y `host_w` termina en NUL; usuario y contraseña nulos son opcionales.
+    let connection = WinInetHandle::new(unsafe {
+        InternetConnectW(
+            session.raw(),
+            PCWSTR(host_w.as_ptr()),
+            443,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            INTERNET_SERVICE_HTTP,
+            0,
+            None,
+        )
+    })
+    .ok_or_else(|| trust_err(format!("No se pudo conectar con '{host}'")))?;
+
+    let verb_w = to_wide_null("POST");
+    let path_w = to_wide_null(path);
+    // SAFETY: `connection` es válida y las cadenas terminan en NUL; versión, referer y tipos aceptados son opcionales.
+    let request = WinInetHandle::new(unsafe {
+        HttpOpenRequestW(
+            connection.raw(),
+            PCWSTR(verb_w.as_ptr()),
+            PCWSTR(path_w.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            None,
+            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
+            None,
+        )
+    })
+    .ok_or_else(|| trust_err(format!("No se pudo abrir la petición a '{host}{path}'")))?;
+
+    let headers_w = to_wide_null("Content-Type: application/x-www-form-urlencoded\r\n");
+    let body_bytes = body.as_bytes();
+    // SAFETY: la petición es válida; las cabeceras (sin el NUL final) y el cuerpo viven durante la llamada.
+    unsafe {
+        HttpSendRequestW(
+            request.raw(),
+            Some(&headers_w[..headers_w.len() - 1]),
+            Some(body_bytes.as_ptr() as *const _),
+            body_bytes.len() as u32,
+        )
+    }
+    .map_err(|e| CoreError::Trust {
+        message: format!("No se pudo enviar el formulario a '{host}{path}'"),
+        source: Some(Box::new(e)),
+    })?;
+
+    Ok(HttpsResponse {
+        request,
+        _connection: Some(connection),
+        _session: session,
+    })
+}
+
+fn default_agent() -> String {
+    format!("OtterSwiss/{}", env!("CARGO_PKG_VERSION"))
+}
+
+/// Sesión WinInet con los tres timeouts aplicados.
+fn open_session(agent: &str, timeouts: Timeouts) -> CoreResult<WinInetHandle> {
+    let agent_w = to_wide_null(agent);
     // SAFETY: `agent_w` termina en NUL y vive durante la llamada; los punteros nulos son opcionales.
     let session = WinInetHandle::new(unsafe {
         InternetOpenW(
@@ -69,24 +169,7 @@ pub fn get(url: &str, timeouts: Timeouts) -> CoreResult<HttpsResponse> {
             );
         }
     }
-
-    let url_w = to_wide_null(url);
-    // SAFETY: `session` es una sesión válida y `url_w` termina en NUL.
-    let request = WinInetHandle::new(unsafe {
-        InternetOpenUrlW(
-            session.raw(),
-            PCWSTR(url_w.as_ptr()),
-            None,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            None,
-        )
-    })
-    .ok_or_else(|| trust_err(format!("No se pudo conectar con '{url}'")))?;
-
-    Ok(HttpsResponse {
-        request,
-        _session: session,
-    })
+    Ok(session)
 }
 
 impl HttpsResponse {
