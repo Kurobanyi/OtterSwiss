@@ -514,13 +514,6 @@ pub fn DriversView() -> Element {
         "Buscar en Catálogo"
     };
 
-    let no_updates_lbl = if en {
-        "No pending updates found across WUA, Vendors, or MS Catalog.".to_string()
-    } else {
-        "No se encontraron actualizaciones pendientes en WUA, Fabricantes ni Catálogo MS."
-            .to_string()
-    };
-
     rsx! {
         div { class: "content-body",
             Card {
@@ -776,8 +769,6 @@ pub fn DriversView() -> Element {
                         }
                     }
                 }
-            } else if *has_checked_updates.read() && vendor_guard.is_empty() && catalog_guard.is_empty() {
-                StatusBanner { text: no_updates_lbl, tone: Tone::Success }
             }
 
             Card {
