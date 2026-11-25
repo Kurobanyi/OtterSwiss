@@ -24,9 +24,10 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::parse_guid_strict;
 use crate::core::platform::handles::SafeLibrary;
+use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
+use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::platform::wide::to_wide_null;
 
 const DNS_BACKUP_MUTEX: &str = r"Global\OtterSwiss_DnsBackup_Lock";
@@ -581,21 +582,15 @@ impl DnsManager {
     /// Lee y valida el respaldo. Si existe y no se puede leer, falla; si trae servidores que no son
     /// direcciones válidas, falla (archivo manipulado).
     fn load_doc_unlocked(&self) -> CoreResult<DnsBackupDocument> {
-        if !self.dns_backup_path.exists() {
-            return Ok(DnsBackupDocument {
-                version: 1,
-                adapters: Vec::new(),
-            });
-        }
-        let bytes = read_bounded_bytes(&self.dns_backup_path, MAX_DNS_BACKUP_BYTES)?;
-        let doc: DnsBackupDocument =
-            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
-                message: format!(
-                    "dns_backup.json está dañado ({}); no se tocará el DNS para no perder la configuración original",
-                    e
-                ),
-                source: Some(Box::new(e)),
-            })?;
+        let doc: DnsBackupDocument = read_backup(
+            &self.dns_backup_path,
+            MAX_DNS_BACKUP_BYTES,
+            "no se tocará el DNS para no perder la configuración original",
+        )?
+        .unwrap_or(DnsBackupDocument {
+            version: 1,
+            adapters: Vec::new(),
+        });
         for a in &doc.adapters {
             parse_guid_strict(a.interface_guid.trim_matches(|c| c == '{' || c == '}'))?;
             validate_dns_csv(&a.previous_ipv4_nameserver, false)?;
@@ -605,11 +600,7 @@ impl DnsManager {
     }
 
     fn save_doc_unlocked(&self, doc: &DnsBackupDocument) -> CoreResult<()> {
-        let json = serde_json::to_vec_pretty(doc).map_err(|e| CoreError::Backup {
-            message: format!("Error serializando dns_backup.json: {}", e),
-            source: Some(Box::new(e)),
-        })?;
-        atomic_write_new(&self.dns_backup_path, &json)
+        write_backup(&self.dns_backup_path, doc)
     }
 
     fn record_adapter_before_apply(&self, snap: DnsAdapterSnapshot) -> CoreResult<()> {

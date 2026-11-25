@@ -5,8 +5,9 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::tweaks_catalog::{
     is_allowed_registry_entry, is_allowed_service_name, is_valid_service_start_type, RegHive,
 };
+use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
+use crate::core::platform::safe_fs::delete_verified_file;
 
 const BACKUP_SCHEMA_VERSION: u32 = 2;
 const MAX_BACKUP_BYTES: u64 = 2 * 1024 * 1024;
@@ -120,16 +121,14 @@ impl BackupManager {
     /// sin bloquear toda la recuperación del respaldo.
     pub fn load_tolerant(&self) -> CoreResult<(Option<OptimizationBackup>, Vec<String>)> {
         let _lock = NamedMutex::acquire_blocking(BACKUP_MUTEX_NAME)?;
-        if !self.file_path.exists() {
+        let Some(mut parsed) = read_backup::<OptimizationBackup>(
+            &self.file_path,
+            MAX_BACKUP_BYTES,
+            "no se puede revertir con él",
+        )?
+        else {
             return Ok((None, Vec::new()));
-        }
-
-        let bytes = read_bounded_bytes(&self.file_path, MAX_BACKUP_BYTES)?;
-        let mut parsed: OptimizationBackup =
-            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
-                message: format!("Error deserializando backup.json: {}", e),
-                source: Some(Box::new(e)),
-            })?;
+        };
 
         let mut warnings = Vec::new();
         let before_reg = parsed.registry.len();
@@ -241,38 +240,21 @@ impl BackupManager {
     /// interpretar, falla: empezar uno vacío guardaría como «original» valores ya optimizados y el
     /// estado de fábrica se perdería para siempre.
     fn load_or_init_unlocked(&self, profile_name: &str) -> CoreResult<OptimizationBackup> {
-        if !self.file_path.exists() {
+        let Some(mut parsed) = read_backup::<OptimizationBackup>(
+            &self.file_path,
+            MAX_BACKUP_BYTES,
+            "no se aplicarán cambios para no perder el estado original",
+        )?
+        else {
             return Ok(OptimizationBackup::new(profile_name));
-        }
-        let bytes = read_bounded_bytes(&self.file_path, MAX_BACKUP_BYTES).map_err(|e| {
-            CoreError::Backup {
-                message: format!(
-                    "No se pudo leer el respaldo existente ({}); no se aplicarán cambios para no perder el estado original",
-                    e
-                ),
-                source: None,
-            }
-        })?;
-        let mut parsed = serde_json::from_slice::<OptimizationBackup>(&bytes).map_err(|e| {
-            CoreError::Backup {
-                message: format!(
-                    "El respaldo existente está dañado ({}); no se aplicarán cambios para no perder el estado original",
-                    e
-                ),
-                source: Some(Box::new(e)),
-            }
-        })?;
+        };
         parsed.registry.retain(|r| r.is_valid());
         parsed.services.retain(|s| s.is_valid());
         Ok(parsed)
     }
 
     fn save_unlocked(&self, doc: &OptimizationBackup) -> CoreResult<()> {
-        let data = serde_json::to_vec_pretty(doc).map_err(|e| CoreError::Backup {
-            message: format!("Error serializando backup.json: {}", e),
-            source: Some(Box::new(e)),
-        })?;
-        atomic_write_new(&self.file_path, &data)
+        write_backup(&self.file_path, doc)
     }
 }
 

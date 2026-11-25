@@ -5,6 +5,7 @@ pub mod elevation;
 pub mod folders;
 pub mod guid;
 pub mod handles;
+pub mod json_file;
 pub mod memory;
 pub mod mutex;
 pub mod power;

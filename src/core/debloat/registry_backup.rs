@@ -9,10 +9,11 @@ use winreg::RegValue;
 use super::{DebloatRegEntry, DebloaterManager, DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::platform::registry::{RegHive, RegLocation};
-use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
+use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
 const MAX_DEBLOAT_BACKUP_BYTES: u64 = 512 * 1024;
@@ -76,21 +77,15 @@ impl DebloaterManager {
     /// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
     /// entradas que no son del catálogo, falla: el archivo fue manipulado.
     pub(super) fn load_backup_doc(path: &Path) -> CoreResult<DebloatBackupDoc> {
-        if !path.exists() {
-            return Ok(DebloatBackupDoc {
-                version: 2,
-                entries: Vec::new(),
-            });
-        }
-        let bytes = read_bounded_bytes(path, MAX_DEBLOAT_BACKUP_BYTES)?;
-        let doc: DebloatBackupDoc =
-            serde_json::from_slice(&bytes).map_err(|e| CoreError::Backup {
-                message: format!(
-                    "debloat_backup.json está dañado ({}); no se tocará el registro para no perder el estado original",
-                    e
-                ),
-                source: Some(Box::new(e)),
-            })?;
+        let doc: DebloatBackupDoc = read_backup(
+            path,
+            MAX_DEBLOAT_BACKUP_BYTES,
+            "no se tocará el registro para no perder el estado original",
+        )?
+        .unwrap_or(DebloatBackupDoc {
+            version: 2,
+            entries: Vec::new(),
+        });
         if let Some(bad) = doc.entries.iter().find(|e| !e.is_valid()) {
             return Err(CoreError::Backup {
                 message: format!(
@@ -155,11 +150,7 @@ impl DebloaterManager {
             });
         }
 
-        let json = serde_json::to_vec_pretty(&doc).map_err(|e| CoreError::Backup {
-            message: format!("Error serializando debloat_backup.json: {}", e),
-            source: Some(Box::new(e)),
-        })?;
-        atomic_write_new(&backup_file, &json)
+        write_backup(&backup_file, &doc)
     }
 
     pub(super) fn apply_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
