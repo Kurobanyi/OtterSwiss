@@ -7,7 +7,7 @@ use dioxus::prelude::*;
 use crate::core::context_menu::ContextMenuManager;
 use crate::core::error::CoreError;
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::store::app_store::{AppCategory, AppIcon, AppStoreManager};
+use crate::core::store::app_store::{AppCategory, AppIcon, AppStoreManager, InstallSource};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
@@ -564,12 +564,9 @@ pub fn BatchAppStoreCard() -> Element {
                             let st = state.app_statuses.get(pkg_id).cloned();
                             let desc = if en { pkg.description_en } else { pkg.description_es };
                             let cat_tag = pkg.category.label(en);
-                            let version_label = if pkg.is_winget {
-                                "MS Store".to_string()
-                            } else if pkg.version == "Evergreen" {
-                                strings(en).latest_version.to_string()
-                            } else {
-                                format!("v{}", pkg.version)
+                            let version_label = match pkg.source {
+                                InstallSource::Store { .. } => "Microsoft Store".to_string(),
+                                InstallSource::Winget { .. } => strings(en).latest_version.to_string(),
                             };
 
                             rsx! {

@@ -1,7 +1,4 @@
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -12,38 +9,17 @@ use winreg::enums::{
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
-use crate::core::platform::handles::SafeHandle;
-use crate::core::platform::process::INSTALLER_TIMEOUT;
 use crate::core::platform::process::{
-    Launch, duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir,
+    Launch, duplicate_desktop_shell_primary_token, run_in_job, system32_dir,
 };
-use crate::core::platform::safe_fs::{
-    canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
-    delete_verified_file_under, path_is_strictly_under,
+use crate::core::store::winget::{
+    WingetScope, machine_winget, repository_install_args, store_install_args, user_winget,
+    winget_exit_is_installed,
 };
-use crate::core::security::download::StagedDownload;
-use crate::core::security::download::{DownloadPolicy, reopen_verified_for_exec};
 
-/// Winget descarga de la Store antes de instalar: más margen que un instalador local.
-const WINGET_TIMEOUT: Duration = Duration::from_secs(420);
-
-/// ERR-17: hosts por los que pasa una descarga de GitHub Releases (los assets redirigen a `release-assets`).
-const GITHUB_DOWNLOAD_HOSTS: &[&str] = &[
-    "github.com",
-    "objects.githubusercontent.com",
-    "release-assets.githubusercontent.com",
-];
-
-/// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se
-/// piden en inglés (Firefox `lang=en-US`, Battle.net `--lang=enUS`).
-fn localize_catalog_text(text: &str, spanish: bool) -> String {
-    if spanish {
-        text.to_string()
-    } else {
-        text.replace("lang=es-ES", "lang=en-US")
-            .replace("--lang=esES", "--lang=enUS")
-    }
-}
+/// winget descarga e instala: un launcher o un IDE grande puede tardar con una conexión lenta. Pasado el plazo se corta
+/// el Job entero (winget y el instalador).
+const WINGET_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
 /// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá
 /// en el programa instalado.
@@ -109,6 +85,20 @@ pub enum AppIcon {
     Scissors,
 }
 
+/// De dónde sale una app del catálogo (AR-27: un enum, así que no hay paquete «sin verificación» posible).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallSource {
+    /// Repositorio comunitario de winget: última versión y SHA-256 del manifiesto. `id_es`, si existe, es el paquete
+    /// en español, que se pide cuando Windows está en español (IN-01).
+    Winget {
+        id: &'static str,
+        id_es: Option<&'static str>,
+        scope: WingetScope,
+    },
+    /// Microsoft Store, siempre como el usuario de la sesión.
+    Store { id: &'static str },
+}
+
 #[derive(Debug, Clone)]
 pub struct CuratedPackage {
     pub id: &'static str,
@@ -120,20 +110,9 @@ pub struct CuratedPackage {
     pub official_site: &'static str,
     pub description_es: &'static str,
     pub description_en: &'static str,
-    pub version: &'static str,
-    pub url: &'static str,
-    pub allowed_hosts: &'static [&'static str],
-    pub expected_sha256: Option<&'static str>,
-    pub signer_cn: Option<&'static str>,
-    pub cert_thumbprint_sha1: Option<&'static str>,
-    pub is_msi: bool,
-    pub is_winget: bool,
-    pub winget_id: Option<&'static str>,
-    pub run_unelevated: bool,
-    pub silent_args: &'static str,
-    pub max_bytes: u64,
-    /// Cómo se detecta instalada: prefijo del `DisplayName` en Uninstall, o, para las apps de la Store
-    /// (`is_winget`), nombre del paquete (`Microsoft.WindowsCalculator`).
+    pub source: InstallSource,
+    /// Cómo se detecta instalada: prefijo del `DisplayName` en Uninstall, o, para las apps de la Store, nombre del
+    /// paquete (`Microsoft.WindowsCalculator`).
     pub uninstall_display_prefix: &'static str,
 }
 
@@ -149,22 +128,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://store.steampowered.com/",
         description_es: "Plataforma oficial de juegos PC",
         description_en: "Official PC gaming platform",
-        version: "Evergreen",
-        url: "https://cdn.akamai.steamstatic.com/client/installer/SteamSetup.exe",
-        allowed_hosts: &[
-            "cdn.akamai.steamstatic.com",
-            "cdn.fastly.steamstatic.com",
-            "steamcdn-a.akamaihd.net",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Valve Corp.|Valve Corporation"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 15 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Valve.Steam",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Steam",
     },
     CuratedPackage {
@@ -177,23 +145,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://store.epicgames.com/",
         description_es: "Tienda y launcher oficial de Epic",
         description_en: "Official Epic Games launcher",
-        version: "Evergreen",
-        url: "https://launcher-public-service-prod06.ol.epicgames.com/launcher/api/installer/download/EpicGamesLauncherInstaller.msi",
-        allowed_hosts: &[
-            "launcher-public-service-prod06.ol.epicgames.com",
-            "epicgames-download1.akamaized.net",
-            "fastly-download.epicgames.com",
-            "download.epicgames.com",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Epic Games Inc.|Epic Games, Inc."),
-        cert_thumbprint_sha1: None,
-        is_msi: true,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/qn /norestart",
-        max_bytes: 150 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "EpicGames.EpicGamesLauncher",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Epic Games Launcher",
     },
     CuratedPackage {
@@ -206,18 +162,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.gog.com/galaxy",
         description_es: "Cliente oficial sin DRM de GOG",
         description_en: "Official DRM-free GOG gaming client",
-        version: "Evergreen",
-        url: "https://cdn.gog.com/open/galaxy/client/setup_galaxy_2.0.75.1.exe",
-        allowed_hosts: &["cdn.gog.com", "gog.com"],
-        expected_sha256: None,
-        signer_cn: Some("GOG sp. z o.o.|GOG Sp. z o.o."),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 280 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "GOG.Galaxy",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "GOG GALAXY",
     },
     CuratedPackage {
@@ -230,18 +179,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.ea.com/ea-app",
         description_es: "Plataforma oficial de juegos de Electronic Arts",
         description_en: "Official Electronic Arts gaming client",
-        version: "Evergreen",
-        url: "https://origin-a.akamaihd.net/EA-Desktop-Client-Download/installer-releases/EAappInstaller.exe",
-        allowed_hosts: &["origin-a.akamaihd.net", "ea.com"],
-        expected_sha256: None,
-        signer_cn: Some("Electronic Arts, Inc.|Electronic Arts Inc."),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/quiet",
-        max_bytes: 40 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "ElectronicArts.EADesktop",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "EA app",
     },
     CuratedPackage {
@@ -254,18 +196,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://ubisoftconnect.com/",
         description_es: "Launcher oficial para títulos Ubisoft",
         description_en: "Official Ubisoft launcher",
-        version: "Evergreen",
-        url: "https://static3.cdn.ubi.com/orbit/launcher_installer/UbisoftConnectInstaller.exe",
-        allowed_hosts: &["static3.cdn.ubi.com", "ubistatic3-a.akamaihd.net"],
-        expected_sha256: None,
-        signer_cn: Some("Ubisoft|UBISOFT ENTERTAINMENT INC.|Ubisoft Entertainment"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 320 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Ubisoft.Connect",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Ubisoft Connect",
     },
     CuratedPackage {
@@ -278,23 +213,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://shop.battle.net/",
         description_es: "Cliente oficial de Blizzard",
         description_en: "Official Blizzard client",
-        version: "Evergreen",
-        url: "https://www.battle.net/download/getInstallerForGame?os=win&gameProgram=BATTLENET_APP&version=Live",
-        allowed_hosts: &[
-            "www.battle.net",
-            "battle.net",
-            "downloader.battle.net",
-            "blzddist1-a.akamaihd.net",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Blizzard Entertainment, Inc.|Blizzard Entertainment"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "--lang=esES --installpath=\"C:\\Program Files (x86)\\Battle.net\"",
-        max_bytes: 20 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Blizzard.BattleNet",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Battle.net",
     },
     CuratedPackage {
@@ -307,18 +230,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://playnite.link/",
         description_es: "Gestor unificado de juegos open-source",
         description_en: "Open-source game library manager",
-        version: "10.65",
-        url: "https://github.com/JosefNemec/Playnite/releases/download/10.65/Playnite1065.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("99959aabf2feae11c71b8a4dbd4286f01071ed2a865b02f3c069974acf8244f1"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/SP- /VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
-        max_bytes: 180 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Playnite.Playnite",
+            id_es: None,
+            scope: WingetScope::User,
+        },
         uninstall_display_prefix: "Playnite",
     },
     CuratedPackage {
@@ -331,18 +247,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://moonlight-stream.org/",
         description_es: "Streaming de juegos de ultra baja latencia",
         description_en: "Open-source low-latency game streaming client",
-        version: "6.1.0",
-        url: "https://github.com/moonlight-stream/moonlight-qt/releases/download/v6.1.0/MoonlightSetup-6.1.0.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: None,
-        signer_cn: Some("Cameron Gutman"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 60 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "MoonlightGameStreamingProject.Moonlight",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Moonlight",
     },
     // --- COMMUNICATION & MEDIA ---
@@ -356,22 +265,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://discord.com/",
         description_es: "Chat de voz y comunidades",
         description_en: "Voice chat & gaming communities",
-        version: "Evergreen",
-        url: "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64",
-        allowed_hosts: &[
-            "discord.com",
-            "dl.discordapp.net",
-            "stable.dl2.discordapp.net",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Discord Inc."),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: true,
-        silent_args: "-s",
-        max_bytes: 160 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Discord.Discord",
+            id_es: None,
+            scope: WingetScope::User,
+        },
         uninstall_display_prefix: "Discord",
     },
     CuratedPackage {
@@ -384,18 +282,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://desktop.telegram.org/",
         description_es: "Mensajería rápida, segura y ligera",
         description_en: "Fast and secure desktop messaging app",
-        version: "Evergreen",
-        url: "https://telegram.org/dl/desktop/win64",
-        allowed_hosts: &["telegram.org", "updates.tdesktop.com"],
-        expected_sha256: None,
-        signer_cn: Some("Telegram FZ-LLC"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 55 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Telegram.TelegramDesktop",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Telegram Desktop",
     },
     CuratedPackage {
@@ -408,18 +299,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://slack.com/",
         description_es: "Mensajería para equipos (MSI oficial)",
         description_en: "Team messaging (Official MSI)",
-        version: "Evergreen",
-        url: "https://slack.com/ssb/download-win64-msi",
-        allowed_hosts: &["slack.com", "downloads.slack-edge.com"],
-        expected_sha256: None,
-        signer_cn: Some("Slack Technologies, LLC|Slack Technologies, Inc."),
-        cert_thumbprint_sha1: None,
-        is_msi: true,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/qn /norestart",
-        max_bytes: 200 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "SlackTechnologies.Slack",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Slack",
     },
     CuratedPackage {
@@ -432,18 +316,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://obsproject.com/",
         description_es: "Grabación y streaming libre",
         description_en: "Open-source recording & streaming",
-        version: "33.0.3",
-        url: "https://github.com/obsproject/obs-studio/releases/download/33.0.3/OBS-Studio-33.0.3-Windows-x64-Installer.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("700be33c01468c2a1e43820bbcc49ba914f570f0f82250022bb680fba43b2a67"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 230 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "OBSProject.OBSStudio",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "OBS Studio",
     },
     CuratedPackage {
@@ -456,18 +333,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.videolan.org/vlc/",
         description_es: "Reproductor universal de audio y vídeo",
         description_en: "Universal media player for all audio & video formats",
-        version: "3.0.21",
-        url: "https://get.videolan.org/vlc/3.0.21/win64/vlc-3.0.21-win64.exe",
-        allowed_hosts: &["get.videolan.org", "videolan.org"],
-        expected_sha256: None,
-        signer_cn: Some("VideoLAN"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 50 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "VideoLAN.VLC",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "VLC media player",
     },
     CuratedPackage {
@@ -480,20 +350,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://parsec.app/",
         description_es: "Escritorio remoto de baja latencia",
         description_en: "Low-latency remote desktop",
-        version: "Evergreen",
-        url: "https://builds.parsec.app/package/parsec-windows.exe",
-        allowed_hosts: &["builds.parsec.app"],
-        expected_sha256: None,
-        signer_cn: Some(
-            "Unity Technologies SF|Parsec Cloud, Inc.|Unity Technologies|Unity Technologies ApS",
-        ),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/silent /norun /nocleanuser /allusers",
-        max_bytes: 50 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Parsec.Parsec",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Parsec",
     },
     CuratedPackage {
@@ -506,18 +367,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.spotify.com/",
         description_es: "Música y podcasts en escritorio",
         description_en: "Desktop music & podcasts",
-        version: "Evergreen",
-        url: "https://download.scdn.co/SpotifyFullSetup.exe",
-        allowed_hosts: &["download.scdn.co", "upgrade.scdn.co"],
-        expected_sha256: None,
-        signer_cn: Some("Spotify AB"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: true,
-        silent_args: "/Silent",
-        max_bytes: 200 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Spotify.Spotify",
+            id_es: None,
+            scope: WingetScope::User,
+        },
         uninstall_display_prefix: "Spotify",
     },
     // --- BROWSERS ---
@@ -531,18 +385,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.mozilla.org/firefox/",
         description_es: "Navegador libre enfocado en privacidad",
         description_en: "Privacy-focused open browser",
-        version: "Evergreen",
-        url: "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=es-ES",
-        allowed_hosts: &["download.mozilla.org", "download-installer.cdn.mozilla.net"],
-        expected_sha256: None,
-        signer_cn: Some("Mozilla Corporation"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "-ms /TaskbarShortcut=false",
-        max_bytes: 120 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Mozilla.Firefox",
+            id_es: Some("Mozilla.Firefox.es-ES"),
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Mozilla Firefox",
     },
     CuratedPackage {
@@ -555,18 +402,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.google.com/chrome/",
         description_es: "Navegador rápido y oficial de Google",
         description_en: "Fast, secure web browser built by Google",
-        version: "Evergreen",
-        url: "https://dl.google.com/chrome/install/GoogleChromeStandaloneEnterprise64.msi",
-        allowed_hosts: &["dl.google.com", "google.com"],
-        expected_sha256: None,
-        signer_cn: Some("Google LLC"),
-        cert_thumbprint_sha1: None,
-        is_msi: true,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/qn /norestart",
-        max_bytes: 130 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Google.Chrome",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Google Chrome",
     },
     CuratedPackage {
@@ -579,22 +419,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://brave.com/",
         description_es: "Navegador rápido con bloqueo nativo de anuncios y rastreadores",
         description_en: "Privacy browser with built-in ad and tracker blocking",
-        version: "Evergreen",
-        url: "https://laptop-updates.brave.com/latest/winx64",
-        allowed_hosts: &[
-            "laptop-updates.brave.com",
-            "brave.com",
-            "brave-browser-downloads.s3.brave.com",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Brave Software, Inc.|Brave Software Inc."),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/silent /install",
-        max_bytes: 140 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Brave.Brave",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Brave",
     },
     // --- UTILITIES & SYSTEM TOOLS ---
@@ -608,18 +437,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.7-zip.org/",
         description_es: "Compresor de archivos de alto ratio",
         description_en: "High-ratio file archiver",
-        version: "26.06",
-        url: "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-x64.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("9b697f65ecc2d9b0152f5ee96d72dde522a7827690349d9307935dacf40f42ec"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 5 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "7zip.7zip",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "7-Zip",
     },
     CuratedPackage {
@@ -632,18 +454,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.qbittorrent.org/",
         description_es: "Cliente BitTorrent libre sin anuncios",
         description_en: "Ad-free open-source BitTorrent client",
-        version: "5.1.4",
-        url: "https://downloads.sourceforge.net/project/qbittorrent/qbittorrent-win32/qbittorrent-5.1.4/qbittorrent_5.1.4_x64_setup.exe",
-        allowed_hosts: &["downloads.sourceforge.net", "*.dl.sourceforge.net"],
-        expected_sha256: Some("b279e16d682299f218edf48ddf75f7c5802263b7d6a74132d9e31fd5a255aa9d"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 80 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "qBittorrent.qBittorrent",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "qBittorrent",
     },
     CuratedPackage {
@@ -656,18 +471,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.voidtools.com/",
         description_es: "Motor de búsqueda de archivos instantáneo para Windows",
         description_en: "Locate files and folders by name instantly",
-        version: "1.4.1.1026",
-        url: "https://www.voidtools.com/Everything-1.4.1.1026.x64-Setup.exe",
-        allowed_hosts: &["www.voidtools.com", "voidtools.com"],
-        expected_sha256: None,
-        signer_cn: Some("David Carpenter"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 6 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "voidtools.Everything",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Everything",
     },
     CuratedPackage {
@@ -680,18 +488,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://getsharex.com/",
         description_es: "Captura de pantalla, grabación de GIF y utilidades de productividad",
         description_en: "Screen capture, file sharing and productivity tool",
-        version: "17.0.0",
-        url: "https://github.com/ShareX/ShareX/releases/download/v17.0.0/ShareX-17.0.0-setup.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: None,
-        signer_cn: Some("ShareX Team|Jaex"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 45 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "ShareX.ShareX",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "ShareX",
     },
     CuratedPackage {
@@ -704,18 +505,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://github.com/microsoft/PowerToys",
         description_es: "Colección oficial de utilidades de productividad para Windows",
         description_en: "System utilities for Windows power users",
-        version: "0.89.0",
-        url: "https://github.com/microsoft/PowerToys/releases/download/v0.89.0/PowerToysSetup-0.89.0-x64.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: None,
-        signer_cn: Some("Microsoft Corporation"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/install /quiet /norestart",
-        max_bytes: 350 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Microsoft.PowerToys",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "PowerToys",
     },
     CuratedPackage {
@@ -728,18 +522,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.jam-software.com/treesize_free",
         description_es: "Analizador visual de espacio en disco rápido y eficiente",
         description_en: "Powerful hard disk space manager and visualizer",
-        version: "Evergreen",
-        url: "https://downloads.jam-software.de/treesize_free/TreeSizeFreeSetup.exe",
-        allowed_hosts: &["downloads.jam-software.de", "jam-software.de"],
-        expected_sha256: None,
-        signer_cn: Some("JAM Software GmbH"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /SUPPRESSMSGBOXES",
-        max_bytes: 30 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "JAMSoftware.TreeSize.Free",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "TreeSize Free",
     },
     CuratedPackage {
@@ -752,18 +539,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.bleachbit.org/",
         description_es: "Limpiador de privacidad y espacio de almacenamiento de código abierto",
         description_en: "Open-source system cleaner and privacy manager",
-        version: "4.6.2",
-        url: "https://download.bleachbit.org/BleachBit-4.6.2-setup.exe",
-        allowed_hosts: &["download.bleachbit.org", "bleachbit.org"],
-        expected_sha256: Some("43bc44163015e62c32a344f354d5d16ce3e3d45d402e9d52b79079cc7d9b4d05"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 25 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "BleachBit.BleachBit",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "BleachBit",
     },
     // --- DEVELOPMENT & EDITORS ---
@@ -777,22 +557,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://code.visualstudio.com/",
         description_es: "Editor de código ligero y extensible con ecosistema de plugins",
         description_en: "Code editing redefined, free and extensible",
-        version: "Evergreen",
-        url: "https://update.code.visualstudio.com/latest/win32-x64-user/stable",
-        allowed_hosts: &[
-            "update.code.visualstudio.com",
-            "az764295.vo.msecnd.net",
-            "vscode.download.prss.microsoft.com",
-        ],
-        expected_sha256: None,
-        signer_cn: Some("Microsoft Corporation"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: true,
-        silent_args: "/VERYSILENT /NORESTART /MERGETASKS=!runcode,addcontextmenufiles,addcontextmenufolders",
-        max_bytes: 120 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Microsoft.VisualStudioCode",
+            id_es: None,
+            scope: WingetScope::User,
+        },
         uninstall_display_prefix: "Microsoft Visual Studio Code",
     },
     CuratedPackage {
@@ -805,18 +574,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://vscodium.com/",
         description_es: "Distribución binaria de VS Code 100% libre sin telemetría de Microsoft",
         description_en: "Community-driven, freely-licensed binary distribution of VS Code without telemetry",
-        version: "1.97.2.25045",
-        url: "https://github.com/VSCodium/vscodium/releases/download/1.97.2.25045/VSCodiumSetup-x64-1.97.2.25045.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("4c4d0ab79111c2a2611e07d368b8b8236fa9ccd064abb3ccd2a90730b16242ed"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 110 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "VSCodium.VSCodium",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "VSCodium",
     },
     CuratedPackage {
@@ -829,18 +591,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.sublimetext.com/",
         description_es: "Editor de texto ultrarrápido con aceleración por GPU",
         description_en: "Sophisticated text editor for code, markup and prose",
-        version: "Build 4180",
-        url: "https://download.sublimetext.com/sublime_text_build_4180_x64_setup.exe",
-        allowed_hosts: &["download.sublimetext.com", "sublimetext.com"],
-        expected_sha256: None,
-        signer_cn: Some("Sublime HQ Pty Ltd"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 25 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "SublimeHQ.SublimeText.4",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Sublime Text",
     },
     CuratedPackage {
@@ -853,18 +608,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://gitforwindows.org/",
         description_es: "Control de versiones distribuido",
         description_en: "Distributed version control",
-        version: "2.56.1",
-        url: "https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("c330c72e10b408cc39994bfefdb63542b0d93d21699325c3e0bd874af8a5a559"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/VERYSILENT /NORESTART",
-        max_bytes: 90 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Git.Git",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Git",
     },
     CuratedPackage {
@@ -877,18 +625,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://notepad-plus-plus.org/",
         description_es: "Editor rápido de texto y código",
         description_en: "Fast source & text editor",
-        version: "8.9.9.1",
-        url: "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.9.1/npp.8.9.9.1.Installer.x64.exe",
-        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
-        expected_sha256: Some("ce3267f5c4e7e42f847e00f4b20234da6150647203033cdde34a69593efc3152"),
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 15 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Notepad++.Notepad++",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Notepad++",
     },
     CuratedPackage {
@@ -901,18 +642,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://nodejs.org/",
         description_es: "Entorno de ejecución de JavaScript para backend y herramientas",
         description_en: "JavaScript runtime built on Chrome's V8 engine",
-        version: "22.14.0",
-        url: "https://nodejs.org/dist/v22.14.0/node-v22.14.0-x64.msi",
-        allowed_hosts: &["nodejs.org"],
-        expected_sha256: None,
-        signer_cn: Some("OpenJS Foundation"),
-        cert_thumbprint_sha1: None,
-        is_msi: true,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/qn /norestart",
-        max_bytes: 40 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "OpenJS.NodeJS.LTS",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Node.js",
     },
     CuratedPackage {
@@ -925,18 +659,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.python.org/",
         description_es: "Lenguaje de programación versátil con instalador oficial de 64 bits",
         description_en: "Official 64-bit Python interpreter and standard library",
-        version: "3.12.8",
-        url: "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe",
-        allowed_hosts: &["www.python.org", "python.org"],
-        expected_sha256: None,
-        signer_cn: Some("Python Software Foundation"),
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/quiet InstallAllUsers=1 PrependPath=1",
-        max_bytes: 35 * 1024 * 1024,
+        source: InstallSource::Winget {
+            id: "Python.Python.3.12",
+            id_es: None,
+            scope: WingetScope::Machine,
+        },
         uninstall_display_prefix: "Python 3.12",
     },
     // --- UWP RESTORATION (WINGET MSSTORE) ---
@@ -950,18 +677,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.msn.com/weather",
         description_es: "Reinstalar la app oficial de Clima desde Microsoft Store",
         description_en: "Reinstall official MSN Weather from Microsoft Store",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFJ3Q2"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFJ3Q2" },
         uninstall_display_prefix: "Microsoft.BingWeather",
     },
     CuratedPackage {
@@ -974,18 +690,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Reinstalar la app oficial de Cámara de Windows",
         description_en: "Reinstall official Windows Camera app",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFJBBG"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFJBBG" },
         uninstall_display_prefix: "Microsoft.WindowsCamera",
     },
     CuratedPackage {
@@ -998,18 +703,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Temporizadores, alarmas y reloj de Windows",
         description_en: "Official Windows Clock & Alarms app",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFJ3PR"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFJ3PR" },
         uninstall_display_prefix: "Microsoft.WindowsAlarms",
     },
     CuratedPackage {
@@ -1022,18 +716,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Calculadora estándar, científica y para programador",
         description_en: "Standard, scientific and programmer calculator",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFHVN5"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFHVN5" },
         uninstall_display_prefix: "Microsoft.WindowsCalculator",
     },
     CuratedPackage {
@@ -1046,18 +729,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Grabadora oficial de audio de Windows",
         description_en: "Official Windows Voice/Sound Recorder",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFHWKN"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFHWKN" },
         uninstall_display_prefix: "Microsoft.WindowsSoundRecorder",
     },
     CuratedPackage {
@@ -1070,18 +742,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Sincronización de llamadas, SMS y notificaciones con el smartphone",
         description_en: "Sync notifications, messages and calls with your phone",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9NMPJ99VJBWV"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9NMPJ99VJBWV" },
         uninstall_display_prefix: "Microsoft.YourPhone",
     },
     CuratedPackage {
@@ -1094,18 +755,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://todo.microsoft.com/",
         description_es: "Gestor de tareas y recordatorios sincronizado",
         description_en: "Cloud task manager and daily planner",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9NBLGGH5R558"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9NBLGGH5R558" },
         uninstall_display_prefix: "Microsoft.Todos",
     },
     CuratedPackage {
@@ -1118,18 +768,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://www.xbox.com/apps/xbox-app-for-pc",
         description_es: "Acceso y gestión de juegos de PC Game Pass y comunidad Xbox",
         description_en: "Discover and download games with PC Game Pass",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9MV0B5HZVK9Z"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9MV0B5HZVK9Z" },
         uninstall_display_prefix: "Microsoft.GamingApp",
     },
     CuratedPackage {
@@ -1142,18 +781,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Superposición de juegos con captura, audio y monitor de rendimiento",
         description_en: "Gaming overlay for screen capture and performance widgets",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9NZKPSTSNW4P"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9NZKPSTSNW4P" },
         uninstall_display_prefix: "Microsoft.XboxGamingOverlay",
     },
     CuratedPackage {
@@ -1166,18 +794,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://clipchamp.com/",
         description_es: "Editor de vídeo moderno integrado en Windows 11",
         description_en: "Quick video editor with templates and transitions",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9P1J8S7CCWWT"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9P1J8S7CCWWT" },
         uninstall_display_prefix: "Clipchamp.Clipchamp",
     },
     CuratedPackage {
@@ -1190,18 +807,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://github.com/microsoft/terminal",
         description_es: "Consola moderna con pestañas para PowerShell, CMD y WSL",
         description_en: "Modern tabbed terminal for command-line tools",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9N0DX20HK701"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9N0DX20HK701" },
         uninstall_display_prefix: "Microsoft.WindowsTerminal",
     },
     CuratedPackage {
@@ -1214,18 +820,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Visor y organizador oficial de fotos con edición básica",
         description_en: "Official Windows Photos viewer and editor",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9WZDNCRFJBH4"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9WZDNCRFJBH4" },
         uninstall_display_prefix: "Microsoft.Windows.Photos",
     },
     CuratedPackage {
@@ -1238,18 +833,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Captura de pantalla rápida y grabación de pantalla (Win+Shift+S)",
         description_en: "Fast screen capture and recording utility",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9MZ95KL8MR0L"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9MZ95KL8MR0L" },
         uninstall_display_prefix: "Microsoft.ScreenSketch",
     },
     CuratedPackage {
@@ -1262,18 +846,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Clásico editor gráfico modernizado con soporte de capas y PNG",
         description_en: "Modernized classic Paint editor with transparency and layers",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9PCFS5B6T72H"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9PCFS5B6T72H" },
         uninstall_display_prefix: "Microsoft.Paint",
     },
     CuratedPackage {
@@ -1286,70 +859,10 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         official_site: "https://apps.microsoft.com/",
         description_es: "Bloc de notas oficial con pestañas y guardado automático",
         description_en: "Modern tabbed Windows Notepad with auto-save",
-        version: "Store",
-        url: "",
-        allowed_hosts: &[],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: true,
-        winget_id: Some("9MSMLRH6LZF3"),
-        run_unelevated: false,
-        silent_args: "",
-        max_bytes: 0,
+        source: InstallSource::Store { id: "9MSMLRH6LZF3" },
         uninstall_display_prefix: "Microsoft.WindowsNotepad",
     },
 ];
-
-struct UserStagedCopy {
-    dir: PathBuf,
-    path: PathBuf,
-}
-
-impl Drop for UserStagedCopy {
-    fn drop(&mut self) {
-        let _ = delete_verified_file_under(&self.path, Some(&self.dir));
-        if let Some(parent) = self.dir.parent() {
-            let _ = delete_verified_empty_dir_under(&self.dir, Some(parent));
-        }
-    }
-}
-
-fn stage_copy_for_user(
-    token: &SafeHandle,
-    src: &Path,
-    file_name: &str,
-    nonce: u128,
-) -> CoreResult<UserStagedCopy> {
-    let profile = user_profile_dir(token)?;
-    let profile_canon = canonical_dos_path(&profile)?;
-    let dir = profile.join(r"AppData\Local\Temp").join(format!(
-        "OtterSwiss_{}_{}",
-        std::process::id(),
-        nonce
-    ));
-    std::fs::create_dir(&dir)?;
-    let dir_canon = canonical_dos_path(&dir)?;
-    if !path_is_strictly_under(&dir_canon, &profile_canon) {
-        let _ = std::fs::remove_dir(&dir);
-        return Err(CoreError::Validation(format!(
-            "La carpeta temporal del usuario escapa de su perfil: '{}'",
-            dir_canon.display()
-        )));
-    }
-    let path = dir.join(file_name);
-    let staged = UserStagedCopy {
-        dir,
-        path: path.clone(),
-    };
-    let mut src_file = File::open(src)?;
-    let (mut dst, _) = create_verified_new_file(&path, false)?;
-    std::io::copy(&mut src_file, &mut dst)?;
-    dst.flush()?;
-    dst.sync_all()?;
-    Ok(staged)
-}
 
 fn check_spotify_presence_on_disk() -> bool {
     if let Some(roaming) = dirs::config_dir()
@@ -1383,38 +896,6 @@ fn check_spotify_presence_on_disk() -> bool {
     RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey(r"Software\Spotify")
         .is_ok()
-}
-
-/// `winget install` terminó sin cambios porque la app ya está al día (`APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE`).
-const WINGET_UPDATE_NOT_APPLICABLE: u32 = 0x8A15_002B;
-/// La app ya estaba instalada (`APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED`).
-const WINGET_PACKAGE_ALREADY_INSTALLED: u32 = 0x8A15_0061;
-
-/// ERR-15: códigos de `winget install` que dejan la app instalada. «No se encontró la app» (`0x8A150014`) es un fallo: un ID
-/// equivocado o la fuente msstore caída no pueden informarse como «Listo».
-fn winget_exit_is_installed(code: u32) -> bool {
-    matches!(
-        code,
-        0 | WINGET_UPDATE_NOT_APPLICABLE | WINGET_PACKAGE_ALREADY_INSTALLED
-    )
-}
-
-/// SEC-31: el alias `winget.exe` del perfil del usuario dueño del escritorio. Esa carpeta es del usuario, así que el binario
-/// solo se ejecuta con su propio token (nunca elevado): quien pueda reemplazarlo no gana nada que no tuviera.
-fn resolve_user_winget(user_token: &SafeHandle) -> CoreResult<PathBuf> {
-    let candidate =
-        user_profile_dir(user_token)?.join(r"AppData\Local\Microsoft\WindowsApps\winget.exe");
-    // El alias es un reparse point de tipo AppExecLink: no se sigue, basta con que exista.
-    if std::fs::symlink_metadata(&candidate).is_ok() {
-        Ok(candidate)
-    } else {
-        Err(CoreError::SystemTool {
-            message:
-                "winget no está instalado para este usuario (App Installer de Microsoft Store)"
-                    .into(),
-            source: None,
-        })
-    }
 }
 
 /// UI-20: paquetes de la Store instalados para el usuario (nombres completos en minúsculas). Las apps de la Store no
@@ -1454,24 +935,6 @@ fn display_name_matches(display_name: &str, prefix: &str) -> bool {
     after.chars().next().is_some_and(|c| c.is_ascii_digit()) || after.starts_with('(')
 }
 
-fn parse_numeric_version(v: &str) -> Option<Vec<u64>> {
-    let clean = v.trim().trim_start_matches(['v', 'V']);
-    let mut parts = Vec::new();
-    for seg in clean.split(['.', '-', ' ']) {
-        match seg.parse::<u64>() {
-            Ok(n) => parts.push(n),
-            Err(_) => break,
-        }
-    }
-    if parts.is_empty() {
-        return None;
-    }
-    while parts.len() > 1 && parts.last() == Some(&0) {
-        parts.pop();
-    }
-    Some(parts)
-}
-
 pub struct AppStoreManager;
 
 impl AppStoreManager {
@@ -1485,25 +948,13 @@ impl AppStoreManager {
             .find(|p| p.id.eq_ignore_ascii_case(package_id))
     }
 
-    pub fn find_newer_curated_version(
-        display_name: &str,
-        current_version: &str,
-    ) -> Option<&'static CuratedPackage> {
-        let cur_pkg = CURATED_CATALOG
-            .iter()
-            .find(|p| display_name_matches(display_name, p.uninstall_display_prefix))?;
-
-        if cur_pkg.version == "Evergreen" || cur_pkg.is_winget {
-            return None;
-        }
-
-        let installed = parse_numeric_version(current_version)?;
-        let catalog = parse_numeric_version(cur_pkg.version)?;
-        if catalog > installed {
-            Some(cur_pkg)
-        } else {
-            None
-        }
+    /// App del catálogo instalable por winget que corresponde a una entrada de «Programas instalados». `winget install`
+    /// sobre una app ya instalada la actualiza, o termina con «ya está al día».
+    pub fn winget_package_for(display_name: &str) -> Option<&'static CuratedPackage> {
+        CURATED_CATALOG.iter().find(|p| {
+            matches!(p.source, InstallSource::Winget { .. })
+                && display_name_matches(display_name, p.uninstall_display_prefix)
+        })
     }
 
     pub fn detect_installed_ids() -> HashSet<&'static str> {
@@ -1536,7 +987,7 @@ impl AppStoreManager {
         let store_packages = installed_store_packages();
         let mut installed = HashSet::new();
         for pkg in CURATED_CATALOG {
-            let found = if pkg.is_winget {
+            let found = if matches!(pkg.source, InstallSource::Store { .. }) {
                 let wanted = format!("{}_", pkg.uninstall_display_prefix.to_ascii_lowercase());
                 store_packages.iter().any(|full| full.starts_with(&wanted))
             } else {
@@ -1570,184 +1021,84 @@ impl AppStoreManager {
             ))
         })?;
 
-        if pkg.is_winget {
-            let wid = pkg.winget_id.ok_or_else(|| {
-                CoreError::Validation("Paquete UWP sin identificador Winget/Store".into())
-            })?;
-            // SEC-31: sin el token del usuario no se sigue; winget nunca corre elevado.
-            let user_token = duplicate_desktop_shell_primary_token()?;
-            let winget_exe = resolve_user_winget(&user_token)?;
-            let working_dir = system32_dir()?;
-            let cmd = format!(
-                "install --id {} --source msstore --accept-package-agreements --accept-source-agreements --disable-interactivity --silent",
-                wid
-            );
-
-            let exit = run_in_job(
-                &Launch {
-                    application: &winget_exe,
-                    command_line: format!("\"{}\" {}", winget_exe.display(), cmd),
-                    working_dir: &working_dir,
-                    user_token: Some(&user_token),
-                },
-                WINGET_TIMEOUT,
-                Some(cancel),
-            )?;
-
-            if !winget_exit_is_installed(exit.exit_code) {
-                return Err(CoreError::SystemTool {
-                    message: format!(
-                        "Winget falló reinstalando '{}' (código {})",
-                        pkg.name,
-                        exit.code_display()
-                    ),
-                    source: None,
-                });
+        let (args, scope) = match pkg.source {
+            InstallSource::Store { id } => (store_install_args(id), WingetScope::User),
+            InstallSource::Winget { id, id_es, scope } => {
+                let id = if windows_ui_is_spanish() {
+                    id_es.unwrap_or(id)
+                } else {
+                    id
+                };
+                (repository_install_args(id, scope), scope)
             }
-            return Ok(());
-        }
-
-        let url = localize_catalog_text(pkg.url, windows_ui_is_spanish());
-        let policy = DownloadPolicy {
-            url: &url,
-            allowed_final_hosts: pkg.allowed_hosts,
-            expected_sha256_hex: pkg.expected_sha256,
-            expected_cert_thumbprint_sha1: pkg.cert_thumbprint_sha1,
-            expected_signer_cn: pkg.signer_cn,
-            max_bytes: pkg.max_bytes,
         };
-        let installer =
-            StagedDownload::download(pkg.id, if pkg.is_msi { "msi" } else { "exe" }, &policy)?;
-        Self::run_verified_installer(pkg, &installer, &policy, cancel)
+        run_winget(&args, scope, pkg.name, cancel)
     }
+}
 
-    fn run_verified_installer(
-        pkg: &CuratedPackage,
-        installer: &StagedDownload,
-        policy: &DownloadPolicy<'_>,
-        cancel: &AtomicBool,
-    ) -> CoreResult<()> {
-        let installer_path = installer.path();
-        if cancel.load(Ordering::Acquire) {
-            return Err(CoreError::Cancelled);
+/// Corre `winget <args>` dentro de un Job con plazo y cancelación. Como administrador, el winget protegido de App
+/// Installer (verificado y bloqueado mientras corre); como usuario, su alias con su token, nunca elevado (SEC-31).
+fn run_winget(args: &str, scope: WingetScope, name: &str, cancel: &AtomicBool) -> CoreResult<()> {
+    let working_dir = system32_dir()?;
+    let user_token = match scope {
+        WingetScope::User => Some(duplicate_desktop_shell_primary_token()?),
+        WingetScope::Machine => None,
+    };
+    let (winget_exe, _lock) = match user_token.as_ref() {
+        Some(token) => (user_winget(token)?, None),
+        None => {
+            let (exe, lock) = machine_winget()?;
+            (exe, Some(lock))
         }
-
-        let user_token = if pkg.run_unelevated {
-            Some(duplicate_desktop_shell_primary_token()?)
-        } else {
-            None
-        };
-        let user_copy = match user_token.as_ref() {
-            Some(tok) => Some(stage_copy_for_user(
-                tok,
-                installer_path,
-                installer.file_name(),
-                installer.nonce(),
-            )?),
-            None => None,
-        };
-        let run_path: &Path = user_copy
-            .as_ref()
-            .map_or(installer_path, |c| c.path.as_path());
-
-        let _exec_lock = reopen_verified_for_exec(run_path, policy)?;
-        let working_dir = run_path.parent().unwrap_or(run_path);
-
-        let silent_args = localize_catalog_text(pkg.silent_args, windows_ui_is_spanish());
-        let (application, command_line) = if pkg.is_msi {
-            let msiexec = system32_dir()?.join("msiexec.exe");
-            let cmd = format!(
-                "\"{}\" /i \"{}\" {}",
-                msiexec.display(),
-                run_path.display(),
-                silent_args
-            );
-            (msiexec, cmd)
-        } else {
-            let cmd = format!("\"{}\" {}", run_path.display(), silent_args);
-            (run_path.to_path_buf(), cmd)
-        };
-
-        let exit = run_in_job(
-            &Launch {
-                application: &application,
-                command_line,
-                working_dir,
-                user_token: user_token.as_ref(),
-            },
-            INSTALLER_TIMEOUT,
-            Some(cancel),
-        )?;
-
-        if !exit.is_installed_ok() {
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "Instalador de '{}' terminó con código {}",
-                    pkg.name,
-                    exit.code_display()
-                ),
-                source: None,
-            });
-        }
-        Ok(())
+    };
+    let exit = run_in_job(
+        &Launch {
+            application: &winget_exe,
+            command_line: format!("\"{}\" {}", winget_exe.display(), args),
+            working_dir: &working_dir,
+            user_token: user_token.as_ref(),
+        },
+        WINGET_TIMEOUT,
+        Some(cancel),
+    )?;
+    if !winget_exit_is_installed(exit.exit_code) {
+        return Err(CoreError::SystemTool {
+            message: format!(
+                "winget no pudo instalar '{name}' (código {})",
+                exit.code_display()
+            ),
+            source: None,
+        });
     }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn codigos_de_winget() {
-        assert!(winget_exit_is_installed(0));
-        assert!(winget_exit_is_installed(WINGET_UPDATE_NOT_APPLICABLE));
-        assert!(winget_exit_is_installed(WINGET_PACKAGE_ALREADY_INSTALLED));
-        // «No se encontró la app» no es éxito (ERR-15).
-        assert!(!winget_exit_is_installed(0x8A15_0014));
-        assert!(!winget_exit_is_installed(1));
-    }
-
     /// ERR-16, ERR-17, TST-02: invariantes del catálogo que el compilador no ve.
     #[test]
     fn catalogo_verificable() {
         let mut ids = HashSet::new();
+        let mut sources = HashSet::new();
         for p in CURATED_CATALOG {
             assert!(ids.insert(p.id), "id repetido: {}", p.id);
-            if p.is_winget {
+            let (id, es) = match p.source {
+                InstallSource::Store { id } => (id, None),
+                InstallSource::Winget { id, id_es, .. } => (id, id_es),
+            };
+            for wid in std::iter::once(id).chain(es) {
                 assert!(
-                    p.winget_id.is_some_and(|w| !w.is_empty()),
-                    "{} sin winget_id",
+                    !wid.is_empty() && !wid.contains(char::is_whitespace),
+                    "{}: ID de winget inválido",
                     p.id
                 );
-                continue;
+                assert!(sources.insert(wid), "{}: ID de winget repetido", p.id);
             }
-            assert!(p.url.starts_with("https://"), "{}: URL sin HTTPS", p.id);
             assert!(
-                p.expected_sha256.is_some() || p.signer_cn.is_some(),
-                "{}: sin SHA-256 ni firmante nunca se instala",
-                p.id
-            );
-            if let Some(sha) = p.expected_sha256 {
-                assert!(
-                    sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()),
-                    "{}: SHA-256 inválido",
-                    p.id
-                );
-            }
-            if p.url.starts_with("https://github.com/") {
-                assert_eq!(
-                    p.allowed_hosts, GITHUB_DOWNLOAD_HOSTS,
-                    "{}: hosts de GitHub incompletos",
-                    p.id
-                );
-            }
-            let host = p.url["https://".len()..]
-                .split(['/', '?'])
-                .next()
-                .unwrap_or_default();
-            assert!(
-                p.allowed_hosts.contains(&host),
-                "{}: el host de la URL no está permitido",
+                !p.uninstall_display_prefix.is_empty(),
+                "{}: sin detección",
                 p.id
             );
         }
@@ -1770,27 +1121,5 @@ mod tests {
             "Python 3.12"
         ));
         assert!(!display_name_matches("Python 3.120", "Python 3.12"));
-    }
-
-    #[test]
-    fn version_numerica_no_ofrece_downgrade() {
-        assert!(parse_numeric_version("25.01") > parse_numeric_version("24.09"));
-        assert!(parse_numeric_version("2.47.1.windows.1") < parse_numeric_version("2.56.1"));
-        assert_eq!(parse_numeric_version("8.7"), parse_numeric_version("8.7.0"));
-        assert_eq!(parse_numeric_version("Evergreen"), None);
-        assert!(
-            AppStoreManager::find_newer_curated_version("7-Zip 99.00 (x64)", "99.00").is_none()
-        );
-    }
-
-    #[test]
-    fn catalogo_se_localiza_segun_idioma() {
-        let url = "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=es-ES";
-        assert_eq!(localize_catalog_text(url, true), url);
-        assert!(localize_catalog_text(url, false).ends_with("lang=en-US"));
-        assert!(
-            localize_catalog_text("--lang=esES --installpath=x", false).starts_with("--lang=enUS")
-        );
-        assert_eq!(localize_catalog_text("/S", false), "/S");
     }
 }

@@ -272,8 +272,6 @@ pub fn validate_https_host(url: &str, allowed_hosts: &[&str]) -> CoreResult<()> 
 /// AR-09: instalador descargado y verificado en la carpeta de staging. El archivo se borra al soltar el valor.
 pub struct StagedDownload {
     path: PathBuf,
-    file_name: String,
-    nonce: u128,
 }
 
 impl StagedDownload {
@@ -285,11 +283,8 @@ impl StagedDownload {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let file_name = format!("{stem}_{}_{nonce}.{ext}", std::process::id());
-        let path = staging_dir()?.join(&file_name);
         let staged = Self {
-            path,
-            file_name,
-            nonce,
+            path: staging_dir()?.join(&file_name),
         };
         // Si la descarga falla, `staged` se suelta aquí y borra lo que se haya escrito.
         drop(secure_download_and_verify(&staged.path, policy)?);
@@ -298,14 +293,6 @@ impl StagedDownload {
 
     pub fn path(&self) -> &Path {
         &self.path
-    }
-
-    pub fn file_name(&self) -> &str {
-        &self.file_name
-    }
-
-    pub fn nonce(&self) -> u128 {
-        self.nonce
     }
 }
 

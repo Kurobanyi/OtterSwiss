@@ -1036,12 +1036,13 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-35"></a>
 ### SEC-35 · Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar
-- **Afecta**: Sistema · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lectura); desconocido si los CN son reales · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Baja · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (lectura); desconocido si los CN son reales · **Estado**: Resuelto
 - **Qué pasa**: Moonlight, ShareX, PowerToys, Rufus, VLC, Everything, Sublime, Node, Python y GOG tienen versión fija y solo CN, contra
   el cierre de SEC-12 («fijar SHA-256 en todo paquete versionado»); con SEC-32 el CN es falsificable. Sin confirmar: «Cameron Gutman»,
   «ShareX Team|Jaex» y «David Carpenter» como CN reales (si no lo son, fallan de forma segura).
 - **Dónde**: `src/core/store/app_store.rs` (entradas nuevas frente a `adf794d`).
 - **Propuesta**: fijar SHA-256 en cada entrada con versión; test de catálogo que lo exija.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, decisión del autor): la tienda instala todo con `winget install` dentro de nuestro Job (plazo de 30 minutos y cancelación). Cada app del catálogo tiene una fuente (`InstallSource::Winget { id, id_es, scope }` o `Store { id }`) en vez de URL, hosts, hash, firmante, versión y argumentos. winget comprueba el SHA-256 del manifiesto revisado en el repositorio de Microsoft (como administrador no se puede saltar) y trae siempre la última versión con sus argumentos silenciosos. Como administrador corre el winget de App Installer de `Program Files\WindowsApps` (ruta por `GetPackagesByPackageFamily`, firma de Microsoft verificada y archivo bloqueado mientras corre); las apps por usuario (Discord, Spotify, Playnite, VS Code) y las de la Store corren con el token del usuario (`SEC-31`). Se pierde la segunda verificación de firma propia del instalador. Ninguna entrada tiene ya versión fija ni firmante a mano. Verificado: `cargo test` (76 + 4 de integración; `winget_de_la_maquina` en verde: encuentra App Installer y verifica su firma), `clippy --all-targets -- -D warnings` y `fmt --check`; Tienda y Desinstalador recorridos sin elevar. Sin probar: una instalación real como administrador (pide una VM o Windows Sandbox).
 
 <a id="sec-36"></a>
 ### SEC-36 · El parser del Catálogo corta el HTML por bytes y puede entrar en pánico
@@ -1198,6 +1199,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/store/app_store.rs` (entradas citadas).
 - **Propuesta**: verificar cada uno con `winget show --id X --source msstore` y probar los instaladores en una VM.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): IDs de la Store corregidos según listas de la comunidad: Calculadora `9WZDNCRFHVN5` (el anterior era Skype), Fotos `9WZDNCRFJBH4`, Enlace Móvil `9NMPJ99VJBWV`. Faltan los argumentos silenciosos de Moonlight y la versión de GOG, que piden una VM. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre parcial** (2026-11-25): con la tienda por winget (`SEC-35`), los argumentos silenciosos y la versión salen del manifiesto del repositorio (Moonlight es un Burn con sus argumentos; GOG Galaxy, la última versión), no del catálogo. Falta probar una instalación real en una VM.
 
 <a id="con-03"></a>
 ### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación

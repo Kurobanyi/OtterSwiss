@@ -25,7 +25,7 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
-| Seguridad (`SEC-`) | 37 | 1 | 1 | 0 | 35 |
+| Seguridad (`SEC-`) | 37 | 0 | 1 | 0 | 36 |
 | Sistema y rollback (`SYS-`) | 27 | 0 | 1 | 0 | 26 |
 | Errores y procesos (`ERR-`) | 25 | 1 | 0 | 0 | 24 |
 | Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
@@ -33,10 +33,10 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 | Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **125** | **3** | **3** | **1** | **118** |
+| **Total** | **125** | **2** | **3** | **1** | **119** |
 
-La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; quedan abiertos `SEC-35` y
-`ERR-24` (parcial), que se resuelven con la tienda por `winget download`; `ERR-25` (Intel) se cerró quitando esa fuente. Sin probar instalando en una VM.
+La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; queda abierto `ERR-24`
+(parcial: probar una instalación real de la tienda por winget en una VM); `ERR-25` (Intel) se cerró quitando esa fuente. Sin probar instalando en una VM.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -47,7 +47,6 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 |---|---|---|---|---|
 | [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Parcial |
-| [`SEC-35`](BUGS-detalle.md#sec-35) | Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar | Sistema | Baja | Pendiente |
 | [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
 
 ## Diferidos y pendientes de decisión
@@ -63,11 +62,10 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. `SEC-35` y `ERR-24`: la tienda pasa a `winget download` con verificación propia (decidido el 25/11).
-2. `UI-11`: avisos y títulos de error ya se traducen; faltan los catálogos de core (ajustes, Debloater, limpiador, restos).
-3. En una VM: instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
-4. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
-5. Mejoras de `docs/PRACTICAS.md`.
+1. `UI-11`: avisos y títulos de error ya se traducen; faltan los catálogos de core (ajustes, Debloater, limpiador, restos).
+2. En una VM: instalar dos apps de la tienda (una para el equipo y una por usuario), instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
+3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
+4. Mejoras de `docs/PRACTICAS.md`.
 
 ## Patrones
 

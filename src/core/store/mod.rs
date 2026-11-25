@@ -2,3 +2,4 @@
 
 pub mod app_store;
 pub mod dependencies;
+pub mod winget;

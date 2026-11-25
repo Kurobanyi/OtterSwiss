@@ -515,7 +515,11 @@ pub fn UninstallerView() -> Element {
     } else {
         "Tamaño (menor)"
     };
-    let update_lbl = if en { "Update" } else { "Actualizar" };
+    let update_lbl = if en {
+        "Check for update"
+    } else {
+        "Buscar actualización"
+    };
     let scan_lbl = if en {
         "Scan Leftovers"
     } else {
@@ -760,7 +764,7 @@ pub fn UninstallerView() -> Element {
                                 .map(|kb| format_size_mb(kb.saturating_mul(1024)))
                                 .unwrap_or_else(|| "—".to_string());
 
-                            let update_opt = AppStoreManager::find_newer_curated_version(&app.display_name, &app.display_version);
+                            let update_opt = AppStoreManager::winget_package_for(&app.display_name);
                             let tx = dispatcher.tx.clone();
 
                             rsx! {
@@ -773,11 +777,6 @@ pub fn UninstallerView() -> Element {
                                             if !app.display_version.is_empty() {
                                                 span { class: "text-xs text-muted",
                                                     "v{app.display_version}"
-                                                }
-                                            }
-                                            if let Some(newer) = update_opt {
-                                                span { class: "badge badge-warning",
-                                                    if en { "Update: v{newer.version}" } else { "Actualización: v{newer.version}" }
                                                 }
                                             }
                                         }
@@ -793,7 +792,8 @@ pub fn UninstallerView() -> Element {
                                     div { class: "row",
                                         if let Some(newer) = update_opt {
                                             button {
-                                                class: "btn btn-primary btn-sm",
+                                                class: "btn btn-secondary btn-sm",
+                                                // winget actualiza si hay versión nueva o responde «ya está al día».
                                                 disabled: *is_working.read(),
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallAppBatch(vec![newer.id]));

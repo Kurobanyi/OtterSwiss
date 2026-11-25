@@ -1021,11 +1021,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-25"></a>
 ### AR-25 · Tres comparadores de versiones con semánticas distintas
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `drivers::is_version_newer` (da «más nueva» si la actual no es numérica), `app_store::parse_numeric_version` (quita
   ceros finales) y `updater::parse_version` (semver). `1.2.0` y `1.2` son iguales en uno y distintas en otro; solo uno tiene tests.
 - **Dónde**: `src/core/drivers.rs:686-714`; `src/core/store/app_store.rs:1478-1496`; `src/core/updater.rs:106-131`.
 - **Propuesta**: `core::version::NumericVersion: Ord` con tests e `is_newer -> Option<bool>`.
+- **Cierre parcial** (2026-11-25): la tienda ya no compara versiones (`parse_numeric_version` y `find_newer_curated_version` se fueron con las versiones fijas; el Desinstalador ofrece «Buscar actualización» y winget decide). Quedan dos comparadores: `drivers::hwid::is_version_newer` y `updater::parse_version`.
 
 <a id="ar-26"></a>
 ### AR-26 · Core arma textos y la UI los vuelve a leer como datos
@@ -1040,13 +1041,14 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-27"></a>
 ### AR-27 · Booleanos y centinelas donde corresponde un enum
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `CuratedPackage` suma `is_winget` + `winget_id: Option`; las 15 UWP rellenan `url: ""`, `allowed_hosts: &[]`,
   `version: "Store"` y repiten 11 campos (unas 360 líneas). Se puede escribir un paquete directo sin verificación (`ERR-16`). `version`
   usa las cadenas mágicas «Evergreen» y «Store»; los códigos winget no tienen nombre. En drivers, `has_problem` + `problem_code`.
 - **Dónde**: `src/core/store/app_store.rs:113-126`, `998-1357`, `1588-1625`; `src/core/drivers.rs:53-68`, `240-254`.
 - **Propuesta**: `enum InstallSource { Direct { …, verify: Verify }, Store { id } }` con `enum Verify { Sha256, Signer }` para que «sin
   verificación» no compile; `enum CatalogVersion`; constantes para los códigos; `const fn store_app(...)`.
+- **Cierre parcial** (2026-11-25): `InstallSource` reemplaza `is_winget` + `winget_id: Option`, `url: ""`, `version: "Evergreen"`/`"Store"` y los 11 campos de relleno de las UWP: un paquete sin verificación ya no se puede escribir. Los códigos de winget tienen nombre (`store/winget.rs`). Falta `has_problem` + `problem_code` en drivers.
 
 <a id="ar-28"></a>
 ### AR-28 · API pública de drivers más ancha de lo que usa la UI, y campos muertos

@@ -36,11 +36,8 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   Solarizado, Tokyo Night y Claro; avisos y errores cambiando de idioma.
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- **Tienda con `winget download` (decidido, `SEC-35` y `ERR-24`):** las 32 apps de descarga directa pasan a `winget download` (última
-  versión, SHA-256 del manifiesto) más la verificación propia (firmante del fabricante por app, Job con plazo). Diseño pendiente:
-  dónde corre winget (como admin, desde `C:\Program Files\WindowsApps\Microsoft.DesktopAppInstaller_*\winget.exe`, a una carpeta
-  solo-admin, para que un proceso del usuario no cambie el instalador ni su manifiesto entre la descarga y la verificación),
-  cómo leer los argumentos silenciosos del YAML del manifiesto, y qué hacer si winget falta. Registrar el diseño como decisión antes.
+- **Tienda por winget (hecha, falta probarla):** instalar en una VM o Sandbox una app para el equipo y una por usuario; ver que la
+  cancelación corta el Job y que «Buscar actualización» del Desinstalador responde bien con una app al día.
 - `UI-11`/`AR-17`/`AR-26`, resto: los catálogos con texto en core (ajustes y categorías del motor, Debloater, limpiador, restos, menú
   contextual, rellenos de `specs`, «Desconocida» de NVIDIA, sensores). Sus informes y su progreso llevan la etiqueta en español y no el
   ID: hay que agregar el ID a `OptimizationStepResult`, `PlannedOptimizationItem`, `DebloatItemOutcome` y los progresos, y poner los
@@ -60,9 +57,8 @@ Pegar en una sesión nueva, en la carpeta del repo:
 
 > Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
 > (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
-> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente, en este orden: la tienda con
-> `winget download` y verificación propia (ya decidida: primero investiga y registra el diseño, y pregúntame lo que cambie el
-> comportamiento), el resto de `UI-11` (catálogos de core con ID y textos en la UI) y las mecánicas de a un archivo. Sin tocar lo
+> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente, en este orden: el resto de `UI-11`
+> (catálogos de core con ID y textos en la UI) y las mecánicas de a un archivo; la prueba de la tienda por winget pide una VM. Sin tocar lo
 > diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`) ni `AR-19`. Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
 > cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida. Español neutro, respuestas breves.
 
@@ -89,8 +85,9 @@ foco atrapado y Escape. Falta: acciones de sistema como admin (mejor en VM o Win
 - `ERR-25`: buscar otra fuente de Intel; si no hay una oficial y legible por máquina, quitarla y dejar Intel a Windows Update. No se
   encontró ninguna (solo catálogos de terceros que son copias de un momento): se quita.
 - `SEC-32`: la app elevada usa el proxy de la máquina (WinHTTP, HKLM) o conexión directa, nunca el de HKCU.
-- Tienda (`SEC-35`, `ERR-24`): las apps de descarga directa pasan a `winget download` (última versión, SHA-256 del manifiesto) más la
-  verificación propia (firmante del fabricante, Job con plazo). Se acaban los enlaces y versiones a mano.
+- Tienda (`SEC-35`, `ERR-24`): primero se eligió `winget download` + verificación propia; al comparar, el autor eligió
+  **`winget install` dentro de nuestro Job** (reimplementar los argumentos silenciosos de cada tipo de instalador era lo más frágil).
+  Hecho: la tienda instala todo con `winget install` dentro de nuestro Job (plazo de 30 minutos y cancelación). Cada app del catálogo tiene una fuente (`InstallSource::Winget { id, id_es, scope }` o `Store { id }`) en vez de URL, hosts, hash, firmante, versión y argumentos. winget comprueba el SHA-256 del manifiesto revisado en el repositorio de Microsoft (como administrador no se puede saltar) y trae siempre la última versión con sus argumentos silenciosos. Como administrador corre el winget de App Installer de `Program Files\WindowsApps` (ruta por `GetPackagesByPackageFamily`, firma de Microsoft verificada y archivo bloqueado mientras corre); las apps por usuario (Discord, Spotify, Playnite, VS Code) y las de la Store corren con el token del usuario (`SEC-31`). Se pierde la segunda verificación de firma propia del instalador.
 - `IN-03`: los avisos guardan el evento y se traducen al mostrarse. `UI-11`/`AR-17`/`AR-26`: se hacen ahora, junto con `IN-03`.
 - `HE-11`: se instaló dioxus-cli 0.7.10, pero `dx fmt` borra ramas `else if` dentro de `rsx!` (rompió `app.rs` y `dashboard.rs`):
   descartado y revertido. No usar `dx fmt` sin revisar el diff y compilar.

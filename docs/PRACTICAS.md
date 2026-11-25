@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **89 hechas, 11 parciales, 13 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **89 hechas, 13 parciales, 11 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -53,8 +53,8 @@ dependencias directas se usan.
 | [`AR-18`](PRACTICAS-detalle.md#ar-18) | Tres versiones del crate `windows` y dependencias duplicadas | M | Parcial |
 | [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
-| [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Pendiente |
-| [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Pendiente |
+| [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Parcial |
+| [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Parcial |
 | [`AR-28`](PRACTICAS-detalle.md#ar-28) | API pública de drivers más ancha de lo que usa la UI, y campos muertos | S | Pendiente |
 | [`AR-29`](PRACTICAS-detalle.md#ar-29) | La vista de drivers repite el ciclo de tareas en vez de usar `ui::task::run_blocking` | S | Pendiente |
 | [`CL-20`](PRACTICAS-detalle.md#cl-20) | 46 `source: None` nuevos en `drivers.rs` | S | Pendiente |

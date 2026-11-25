@@ -14,12 +14,12 @@ const INDICADORES: &[(&str, usize, &str)] = &[
     ),
     (
         "if en",
-        217,
+        216,
         "textos sueltos: usar el catálogo de ui/i18n (IN-02, IN-08)",
     ),
     (
         "source: None",
-        117,
+        116,
         "errores sin causa: conservar el error original (AR-06, CL-20)",
     ),
 ];
