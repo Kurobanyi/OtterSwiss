@@ -1061,7 +1061,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/ui/views/drivers.rs:109-121`, `164-188`, `540-553`, `600-614`; `src/core/drivers.rs:1101-1106`; `src/core/store/app_store.rs:1595`.
 - **Propuesta**: no preseleccionar opcionales; confirmar con la lista concreta (obligatorio si hay firmware); ofrecer respaldo antes;
   que el core reciba solo un ID y resuelva la URL.
-- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los tres caminos (Windows Update, fabricante y Catálogo) pasan por un `ConfirmDialog` con la lista concreta, aviso rojo si hay firmware o BIOS y una casilla, marcada por defecto, para respaldar el Driver Store antes (si el respaldo falla, no se instala). Los drivers opcionales y el firmware ya no se preseleccionan. Quedan `AcceptEula()` automático tras la confirmación y la URL que viaja con el `VendorDriverUpdate` (el core ya no confía en ella: `SEC-30`). Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM ni revisado en la app.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los tres caminos (Windows Update, fabricante y Catálogo) pasan por un `ConfirmDialog` con la lista concreta, aviso rojo si hay firmware o BIOS y una casilla, marcada por defecto, para respaldar el Driver Store antes (si el respaldo falla, no se instala). Los drivers opcionales y el firmware ya no se preseleccionan. Quedan `AcceptEula()` automático tras la confirmación y la URL que viaja con el `VendorDriverUpdate` (el core ya no confía en ella: `SEC-30`). Verificado: `cargo test` (62) y `clippy --all-targets -- -D warnings` en verde en Windows; diálogo recorrido en la app sin elevar (español e inglés, con y sin firmware, Escape y Cancelar) con actualizaciones ficticias; sin probar instalando en una VM.
 
 <a id="sys-25"></a>
 ### SYS-25 · El escaneo de drivers se salta la política de exclusión y WSUS
@@ -1187,10 +1187,11 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="ui-19"></a>
 ### UI-19 · Error de Windows Update y «no hay actualizaciones» a la vez
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: si WUA falla y no hay nada más, aparece el aviso de error junto al banner verde «No se encontraron actualizaciones».
 - **Dónde**: `src/ui/views/drivers.rs:127-129`, `719-721`.
 - **Propuesta**: «sin actualizaciones» solo si no hubo errores.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): fuera el segundo banner «sin actualizaciones»; queda solo el aviso de estado del escaneo, que con un error de Windows Update muestra el error. Verificado: escaneo real en la app sin elevar (un solo aviso) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ui-20"></a>
 ### UI-20 · Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse

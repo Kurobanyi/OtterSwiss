@@ -30,13 +30,13 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 | Errores y procesos (`ERR-`) | 24 | 5 | 0 | 0 | 19 |
 | Concurrencia (`CON-`) | 3 | 1 | 0 | 0 | 2 |
 | Arquitectura (`ARQ-`) | 5 | 1 | 0 | 0 | 4 |
-| Interfaz (`UI-`) | 22 | 5 | 0 | 0 | 17 |
+| Interfaz (`UI-`) | 22 | 4 | 0 | 0 | 18 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 2 | 2 | 0 | 0 | 0 |
-| **Total** | **124** | **18** | **3** | **1** | **102** |
+| **Total** | **124** | **17** | **3** | **1** | **103** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; ya se cerraron `SEC-30`, `SEC-31`,
-`SEC-33`, `SEC-34`, `SEC-36`, `SEC-37`, `SYS-25`, `ERR-15`, `ERR-16`, `ERR-17`, `ERR-21` y `ERR-22`; `SEC-32` y `ERR-19` quedan
+`SEC-33`, `SEC-34`, `SEC-36`, `SEC-37`, `SYS-25`, `UI-19`, `ERR-15`, `ERR-16`, `ERR-17`, `ERR-21` y `ERR-22`; `SEC-32` y `ERR-19` quedan
 parciales. Sin probar instalando en una VM.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
@@ -58,7 +58,6 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | [`ERR-23`](BUGS-detalle.md#err-23) | Parseo de IDs de hardware y versiones: IDs ACPI rotos y NVIDIA ofrecido siempre | Usuario | Baja | Pendiente |
 | [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Pendiente |
 | [`CON-03`](BUGS-detalle.md#con-03) | Windows Update se consulta e instala sin plazo ni cancelación | Usuario | Media | Pendiente |
-| [`UI-19`](BUGS-detalle.md#ui-19) | Error de Windows Update y «no hay actualizaciones» a la vez | Usuario | Media | Pendiente |
 | [`UI-20`](BUGS-detalle.md#ui-20) | Apps que nunca aparecen como «Instalada» y Rufus que se «instala» sin instalarse | Usuario | Media | Pendiente |
 | [`UI-21`](BUGS-detalle.md#ui-21) | «Instalar (N)» incluye apps que el filtro oculta | Usuario | Baja | Pendiente |
 | [`UI-22`](BUGS-detalle.md#ui-22) | Temperaturas de GPU o distancias a TjMax mostradas como CPU | Usuario | Media | Pendiente |
