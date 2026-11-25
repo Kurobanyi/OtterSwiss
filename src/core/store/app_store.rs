@@ -20,9 +20,9 @@ use crate::core::platform::safe_fs::{
     canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
     delete_verified_file, delete_verified_file_under, path_is_strictly_under,
 };
-use crate::core::security::trust::{
-    ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify,
-    DownloadPolicy,
+use crate::core::security::data_dir::ensure_admin_only_data_dir;
+use crate::core::security::download::{
+    reopen_verified_for_exec, secure_download_and_verify, DownloadPolicy,
 };
 
 /// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se

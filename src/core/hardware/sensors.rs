@@ -31,7 +31,7 @@ use crate::core::platform::handles::{ComGuard, SafeHandle, SafeLibrary};
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::safe_fs::open_verified_file_read;
 use crate::core::platform::wide::to_wide_null;
-use crate::core::security::trust::verify_authenticode_on_handle;
+use crate::core::security::authenticode::verify_authenticode_on_handle;
 
 const RPC_C_AUTHN_WINNT: u32 = 10;
 const RPC_C_AUTHZ_NONE: u32 = 0;

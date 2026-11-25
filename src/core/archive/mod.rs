@@ -18,7 +18,7 @@ use crate::core::platform::safe_fs::{
     canonical_dos_path, create_verified_new_file, delete_tree_verified, delete_verified_file,
     is_safe_non_root_dir, open_verified_file_read, write_zone_identifier_raw,
 };
-use crate::core::security::trust::{create_admin_only_dir, reset_to_inherited_acl};
+use crate::core::security::acl::{create_admin_only_dir, reset_to_inherited_acl};
 
 const RESERVED_NAMES: &[&str] = &[
     "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "COM1", "COM2", "COM3", "COM4", "COM5",

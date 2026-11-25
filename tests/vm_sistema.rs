@@ -26,7 +26,7 @@ use otter_swiss::core::debloat::{DebloatRegHive, DebloaterManager, DEBLOAT_REG_T
 use otter_swiss::core::dns::{list_active_adapters, DnsManager};
 use otter_swiss::core::optimize::engine::{OptimizationEngine, OptimizationProfile};
 use otter_swiss::core::optimize::tweaks_catalog::{RegHive, REGISTRY_TWEAKS, SERVICE_TWEAKS};
-use otter_swiss::core::security::trust::ensure_admin_only_data_dir;
+use otter_swiss::core::security::data_dir::ensure_admin_only_data_dir;
 use otter_swiss::core::uninstall::{LeftoverKind, UninstallerManager};
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_64KEY,

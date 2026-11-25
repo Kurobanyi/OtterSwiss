@@ -8,26 +8,25 @@
 //   verificación y la ejecución) desde la carpeta de datos solo-admin.
 
 use std::path::{Path, PathBuf};
-use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use serde::Deserialize;
 use windows::core::PCWSTR;
 use windows::Win32::Networking::WinInet::{
-    HttpQueryInfoW, InternetCloseHandle, InternetOpenUrlW, InternetOpenW, InternetReadFile,
-    InternetSetOptionW, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE,
-    INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE,
-    INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT,
-    INTERNET_OPTION_SEND_TIMEOUT,
+    HttpQueryInfoW, InternetOpenUrlW, InternetOpenW, InternetReadFile, InternetSetOptionW,
+    HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, INTERNET_FLAG_NO_CACHE_WRITE,
+    INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG,
+    INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT,
 };
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::handles::WinInetHandle;
 use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::platform::wide::to_wide_null;
-use crate::core::security::trust::{
-    ensure_admin_only_data_dir, reopen_verified_for_exec, secure_download_and_verify_with_progress,
-    DownloadPolicy,
+use crate::core::security::data_dir::ensure_admin_only_data_dir;
+use crate::core::security::download::{
+    reopen_verified_for_exec, secure_download_and_verify_with_progress, DownloadPolicy,
 };
 
 const GITHUB_LATEST_RELEASE_URL: &str =
@@ -46,32 +45,6 @@ const UPDATE_SIGNER_CN: Option<&str> = None;
 
 const MAX_RELEASE_JSON_BYTES: usize = 1024 * 1024;
 const MAX_INSTALLER_BYTES: u64 = 200 * 1024 * 1024;
-
-struct WinInetHandle(*mut std::ffi::c_void);
-
-impl WinInetHandle {
-    fn new(ptr: *mut std::ffi::c_void) -> Option<Self> {
-        if ptr.is_null() {
-            None
-        } else {
-            Some(Self(ptr))
-        }
-    }
-    fn raw(&self) -> *mut std::ffi::c_void {
-        self.0
-    }
-}
-
-impl Drop for WinInetHandle {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            unsafe {
-                let _ = InternetCloseHandle(self.0);
-            }
-            self.0 = ptr::null_mut();
-        }
-    }
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubAsset {

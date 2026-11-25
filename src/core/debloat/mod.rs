@@ -16,7 +16,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::platform::safe_fs::{atomic_write_new, delete_verified_file, read_bounded_bytes};
-use crate::core::security::trust::ensure_admin_only_data_dir;
+use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const DEBLOAT_MUTEX: &str = r"Global\OtterSwiss_Debloat_Lock";

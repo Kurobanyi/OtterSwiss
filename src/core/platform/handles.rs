@@ -5,6 +5,7 @@ use std::ptr;
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, FreeLibrary, HANDLE, HMODULE, INVALID_HANDLE_VALUE};
+use windows::Win32::Networking::WinInet::InternetCloseHandle;
 use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
 use windows::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
@@ -194,6 +195,33 @@ impl Drop for ComGuard {
             unsafe {
                 CoUninitialize();
             }
+        }
+    }
+}
+
+/// Handle de WinInet (sesión, conexión o petición).
+pub struct WinInetHandle(*mut std::ffi::c_void);
+
+impl WinInetHandle {
+    pub fn new(ptr: *mut std::ffi::c_void) -> Option<Self> {
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Self(ptr))
+        }
+    }
+    pub fn raw(&self) -> *mut std::ffi::c_void {
+        self.0
+    }
+}
+
+impl Drop for WinInetHandle {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                let _ = InternetCloseHandle(self.0);
+            }
+            self.0 = ptr::null_mut();
         }
     }
 }

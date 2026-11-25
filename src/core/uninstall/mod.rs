@@ -30,7 +30,7 @@ use crate::core::platform::safe_fs::{
     path_is_strictly_under,
 };
 use crate::core::platform::wide::{to_wide_null, wide_ptr_to_string_and_free};
-use crate::core::security::trust::{ensure_admin_only_data_dir, get_program_data_dir};
+use crate::core::security::data_dir::{ensure_admin_only_data_dir, get_program_data_dir};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {
