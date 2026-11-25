@@ -38,10 +38,9 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
 - **Tienda por winget (hecha, falta probarla):** instalar en una VM o Sandbox una app para el equipo y una por usuario; ver que la
   cancelación corta el Job y que «Buscar actualización» del Desinstalador responde bien con una app al día.
-- `UI-11`/`AR-17`/`AR-26`, resto: los catálogos con texto en core (ajustes y categorías del motor, Debloater, limpiador, restos, menú
-  contextual, rellenos de `specs`, «Desconocida» de NVIDIA, sensores). Sus informes y su progreso llevan la etiqueta en español y no el
-  ID: hay que agregar el ID a `OptimizationStepResult`, `PlannedOptimizationItem`, `DebloatItemOutcome` y los progresos, y poner los
-  textos (ES y EN) en `ui/i18n/`.
+- `UI-11`, resto: los catálogos de core ya se traducen en la UI (`ui/i18n/core_text.rs`, el español es la clave y
+  `catalogos_de_core_traducidos` falla si falta uno; commit sin verificar en la app). Falta: recorrer Inicio, Debloater, Limpiador y
+  restos en inglés, cerrar `UI-11`/`AR-17` en el registro, y los detalles con datos del motor que no cubren las plantillas.
 - Mecánicas de a un archivo: `AR-06`/`CL-20` (al bajar `source: None` bajar el techo de `tests/indicadores.rs`), `TE-02`, `IN-02`,
   `OR-04`; y `CL-21`, `CL-25`, `AR-25`, `AR-27`, `AR-28`, `AR-29`, `TE-26`, `IN-09`, `IN-10`, `OR-07`, `CL-24`.
 - Decisiones del autor: `AR-19`, `UX-02`, `UX-03`, `SEC-17` (con `SYS-24`).

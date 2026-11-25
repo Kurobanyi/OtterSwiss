@@ -10,6 +10,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
 
@@ -268,9 +269,9 @@ pub fn DashboardView() -> Element {
                     div { class: "modal-list",
                         for item in eligible_items.iter() {
                             div { key: "{item.category}:{item.label}",
-                                div { class: "fw-semibold", "[{item.category}] {item.label}" }
+                                div { class: "fw-semibold", "[{tr(&item.category, en)}] {tr(&item.label, en)}" }
                                 if !item.detail.is_empty() {
-                                    div { class: "text-muted", "{item.detail}" }
+                                    div { class: "text-muted", "{tr(&item.detail, en)}" }
                                 }
                             }
                         }
@@ -367,7 +368,7 @@ pub fn DashboardView() -> Element {
             if *is_running.read() {
                 Card {
                     title: active_action_label.read().text(en),
-                    subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), prog.current_label)),
+                    subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), tr(&prog.current_label, en))),
                     div { class: "stack-2",
                         div { class: "text-xs text-muted", "{prog.percent}%" }
                         ProgressBar { percent: prog.percent }
@@ -439,9 +440,9 @@ pub fn DashboardView() -> Element {
                                 key: "{step.category}:{step.label}",
                                 class: "list-row",
                                 div {
-                                    div { class: "text-sm fw-semibold", "[{step.category}] {step.label}" }
+                                    div { class: "text-sm fw-semibold", "[{tr(&step.category, en)}] {tr(&step.label, en)}" }
                                     if !step.detail.is_empty() {
-                                        div { class: "text-xs text-muted", "{step.detail}" }
+                                        div { class: "text-xs text-muted", "{tr(&step.detail, en)}" }
                                     }
                                 }
                                 span {
@@ -473,9 +474,9 @@ pub fn DashboardView() -> Element {
                                 class: "list-row",
                                 // UI-12: cada ajuste explica qué hace.
                                 div {
-                                    div { class: "text-sm fw-semibold", "[{item.category}] {item.label}" }
+                                    div { class: "text-sm fw-semibold", "[{tr(&item.category, en)}] {tr(&item.label, en)}" }
                                     if !item.detail.is_empty() {
-                                        div { class: "text-xs text-muted", "{item.detail}" }
+                                        div { class: "text-xs text-muted", "{tr(&item.detail, en)}" }
                                     }
                                 }
                                 span {

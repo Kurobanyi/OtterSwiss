@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::run_with_progress;
 #[component]
@@ -195,7 +196,7 @@ pub fn CleanerView() -> Element {
                     title: prog_title,
                     subtitle: Some(format!(
                         "{} ({}/{}) • {}",
-                        prog.current_category,
+                        tr(&prog.current_category, en),
                         prog.current_step,
                         prog.total_steps.max(1),
                         bytes_mb(prog.bytes_freed_so_far)
@@ -244,7 +245,7 @@ pub fn CleanerView() -> Element {
                                 key: "{item.category}",
                                 class: "list-row",
                                 div {
-                                    div { class: "fw-semibold", "{item.category}" }
+                                    div { class: "fw-semibold", "{tr(&item.category, en)}" }
                                     div { class: "text-xs text-muted",
                                         if en {
                                             "Removed: {item.files_removed} | Skipped: {item.skipped_recent_or_locked}"

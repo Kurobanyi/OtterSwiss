@@ -9,6 +9,7 @@ use crate::core::debloat::{
     DebloaterManager, DetectedBloatApp,
 };
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
 
@@ -353,7 +354,7 @@ pub fn DebloaterView() -> Element {
             if *is_running.read() {
                 Card {
                     title: prog_title,
-                    subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), prog.current_label)),
+                    subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), tr(&prog.current_label, en))),
                     ProgressBar { percent: prog.percent }
                 }
             }
@@ -376,7 +377,7 @@ pub fn DebloaterView() -> Element {
                                 key: "{item.label}",
                                 style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); font-size: var(--font-size-xs);",
                                 div {
-                                    div { class: "fw-semibold", "{item.label}" }
+                                    div { class: "fw-semibold", "{tr(&item.label, en)}" }
                                     if !item.message.is_empty() {
                                         div { class: "text-muted", "{item.message}" }
                                     }
@@ -413,8 +414,8 @@ pub fn DebloaterView() -> Element {
                                         },
                                     }
                                     div {
-                                        div { class: "text-sm fw-semibold", "{spec.label}" }
-                                        div { class: "text-xs text-muted", "{spec.description}" }
+                                        div { class: "text-sm fw-semibold", "{tr(&spec.label, en)}" }
+                                        div { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
                                     }
                                 }
                             }
@@ -458,9 +459,9 @@ pub fn DebloaterView() -> Element {
                                                         },
                                                     }
                                                     div {
-                                                        span { class: "text-sm fw-semibold", "{app.display_name} " }
+                                                        span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
                                                         span { class: "text-xs text-muted", "({app.package_name})" }
-                                                        div { class: "text-xs text-muted", "{app.description}" }
+                                                        div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
                                                     }
                                                 }
                                                 span {

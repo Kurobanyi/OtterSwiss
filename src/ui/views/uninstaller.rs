@@ -8,6 +8,7 @@ use crate::core::uninstall::{
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, plural, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallerDispatcher, ToolsSharedState, refresh_tools_inventory,
@@ -605,7 +606,7 @@ pub fn UninstallerView() -> Element {
                                                         }
                                                         div { class: "min-w-0",
                                                             div { class: "fw-semibold",
-                                                                "[{badge_lbl}] {item.category} "
+                                                                "[{badge_lbl}] {tr(&item.category, en)} "
                                                                 if !item.recommended {
                                                                     span { class: "badge badge-warning", "{review_lbl}" }
                                                                 }

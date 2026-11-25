@@ -1,3 +1,4 @@
+pub mod core_text;
 pub mod drivers;
 pub mod msg;
 pub mod strings;
