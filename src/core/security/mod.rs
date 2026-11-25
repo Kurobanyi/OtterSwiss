@@ -4,3 +4,4 @@ pub mod acl;
 pub mod authenticode;
 pub mod data_dir;
 pub mod download;
+pub mod http;

@@ -7,24 +7,15 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Networking::WinInet::{
-    HttpQueryInfoW, InternetOpenUrlW, InternetOpenW, InternetQueryOptionW, InternetReadFile,
-    InternetSetOptionW, HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE,
-    INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE,
-    INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT,
-    INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
-};
 use windows::Win32::Storage::FileSystem::{
     FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_NONE, FILE_SHARE_READ,
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::handles::WinInetHandle;
 use crate::core::platform::safe_fs::{inspect_handle, write_zone_identifier};
-use crate::core::platform::wide::to_wide_null;
 use crate::core::security::authenticode::verify_authenticode_on_handle;
+use crate::core::security::http::{self, Timeouts};
 
 #[derive(Debug, Clone)]
 pub struct DownloadPolicy<'a> {
@@ -84,134 +75,23 @@ pub fn secure_download_and_verify_with_progress(
         });
     }
 
-    let agent_w = to_wide_null("OtterSwiss/3.0");
-    let h_internet = WinInetHandle::new(unsafe {
-        InternetOpenW(
-            PCWSTR(agent_w.as_ptr()),
-            INTERNET_OPEN_TYPE_PRECONFIG.0,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: "InternetOpenW falló".into(),
-        source: None,
-    })?;
-
-    let conn_timeout: u32 = 15_000;
-    let io_timeout: u32 = 30_000;
-    unsafe {
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_CONNECT_TIMEOUT,
-            Some(&conn_timeout as *const _ as *const _),
-            4,
-        );
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_SEND_TIMEOUT,
-            Some(&io_timeout as *const _ as *const _),
-            4,
-        );
-        let _ = InternetSetOptionW(
-            Some(h_internet.raw()),
-            INTERNET_OPTION_RECEIVE_TIMEOUT,
-            Some(&io_timeout as *const _ as *const _),
-            4,
-        );
-    }
-
-    let url_w = to_wide_null(policy.url);
-    let h_url = WinInetHandle::new(unsafe {
-        InternetOpenUrlW(
-            h_internet.raw(),
-            PCWSTR(url_w.as_ptr()),
-            None,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: format!("InternetOpenUrlW falló para '{}'", policy.url),
-        source: None,
-    })?;
-
-    let mut status_code: u32 = 0;
-    let mut status_len: u32 = std::mem::size_of::<u32>() as u32;
-    unsafe {
-        HttpQueryInfoW(
-            h_url.raw(),
-            HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
-            Some(&mut status_code as *mut _ as *mut _),
-            &mut status_len,
-            None,
-        )
-    }
-    .map_err(|e| CoreError::Trust {
-        message: format!("No se pudo leer el código de estado HTTP: {}", e),
-        source: None,
-    })?;
-
-    if status_code != 200 {
-        return Err(CoreError::Trust {
-            message: format!("Respuesta HTTP no permitida: {}", status_code),
-            source: None,
-        });
-    }
-
-    let mut final_url_len: u32 = 0;
-    let _ = unsafe {
-        InternetQueryOptionW(
-            Some(h_url.raw()),
-            INTERNET_OPTION_URL,
-            None,
-            &mut final_url_len,
-        )
-    };
-    if final_url_len == 0 {
-        return Err(CoreError::Trust {
-            message: "No se pudo verificar la URL final tras redirecciones".into(),
-            source: None,
-        });
-    }
-    let mut url_buf = vec![0u16; (final_url_len as usize / 2) + 1];
-    unsafe {
-        InternetQueryOptionW(
-            Some(h_url.raw()),
-            INTERNET_OPTION_URL,
-            Some(url_buf.as_mut_ptr() as *mut _),
-            &mut final_url_len,
-        )
-    }
-    .map_err(|e| CoreError::Trust {
-        message: format!("InternetQueryOptionW(INTERNET_OPTION_URL) falló: {}", e),
-        source: None,
-    })?;
-    let end = url_buf
-        .iter()
-        .position(|&c| c == 0)
-        .unwrap_or(url_buf.len());
-    let final_url = String::from_utf16_lossy(&url_buf[..end]);
+    let response = http::get(
+        policy.url,
+        Timeouts {
+            connect_ms: 15_000,
+            io_ms: 30_000,
+        },
+    )?;
+    response.require_ok()?;
+    let final_url = response.final_url()?;
     validate_https_host(&final_url, policy.allowed_final_hosts)?;
 
-    let mut content_len: u32 = 0;
-    let mut cl_size: u32 = std::mem::size_of::<u32>() as u32;
-    let has_content_length = unsafe {
-        HttpQueryInfoW(
-            h_url.raw(),
-            HTTP_QUERY_CONTENT_LENGTH | HTTP_QUERY_FLAG_NUMBER,
-            Some(&mut content_len as *mut _ as *mut _),
-            &mut cl_size,
-            None,
-        )
-    }
-    .is_ok();
-    if has_content_length && (content_len as u64) > policy.max_bytes {
+    let content_len = response.content_length();
+    if let Some(len) = content_len.filter(|&len| len > policy.max_bytes) {
         return Err(CoreError::Trust {
             message: format!(
                 "Content-Length ({} bytes) excede el límite del paquete ({} bytes)",
-                content_len, policy.max_bytes
+                len, policy.max_bytes
             ),
             source: None,
         });
@@ -221,30 +101,15 @@ pub fn secure_download_and_verify_with_progress(
     let mut total_read: u64 = 0;
     let mut chunk = [0u8; 32 * 1024];
 
-    let expected_total = if has_content_length && content_len > 0 {
-        content_len as u64
-    } else {
-        policy.max_bytes
-    };
+    let expected_total = content_len
+        .filter(|&len| len > 0)
+        .unwrap_or(policy.max_bytes);
 
     loop {
         if cancel.is_some_and(|c| c.load(Ordering::Acquire)) {
             return Err(CoreError::Cancelled);
         }
-        let mut bytes_read: u32 = 0;
-        unsafe {
-            InternetReadFile(
-                h_url.raw(),
-                chunk.as_mut_ptr() as *mut _,
-                chunk.len() as u32,
-                &mut bytes_read,
-            )
-        }
-        .map_err(|e| CoreError::Trust {
-            message: format!("InternetReadFile falló: {}", e),
-            source: None,
-        })?;
-
+        let bytes_read = response.read_chunk(&mut chunk)?;
         if bytes_read == 0 {
             break;
         }
@@ -257,7 +122,7 @@ pub fn secure_download_and_verify_with_progress(
             });
         }
 
-        let slice = &chunk[..bytes_read as usize];
+        let slice = &chunk[..bytes_read];
         hasher.update(slice);
         file.write_all(slice)?;
         if let Some(p) = progress {
@@ -268,11 +133,11 @@ pub fn secure_download_and_verify_with_progress(
         }
     }
 
-    if has_content_length && total_read != content_len as u64 {
+    if let Some(len) = content_len.filter(|&len| len != total_read) {
         return Err(CoreError::Trust {
             message: format!(
                 "Descarga truncada: recibidos {} bytes de {} esperados",
-                total_read, content_len
+                total_read, len
             ),
             source: None,
         });

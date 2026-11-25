@@ -12,22 +12,15 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
 use serde::Deserialize;
-use windows::core::PCWSTR;
-use windows::Win32::Networking::WinInet::{
-    HttpQueryInfoW, InternetOpenUrlW, InternetOpenW, InternetReadFile, InternetSetOptionW,
-    HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, INTERNET_FLAG_NO_CACHE_WRITE,
-    INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG,
-    INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT,
-};
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::handles::WinInetHandle;
 use crate::core::platform::safe_fs::delete_verified_file;
-use crate::core::platform::wide::to_wide_null;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 use crate::core::security::download::{
-    reopen_verified_for_exec, secure_download_and_verify_with_progress, DownloadPolicy,
+    reopen_verified_for_exec, secure_download_and_verify_with_progress, validate_https_host,
+    DownloadPolicy,
 };
+use crate::core::security::http::{self, Timeouts};
 
 const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/Kurobanyi/OtterSwiss/releases/latest";
@@ -154,101 +147,17 @@ fn parse_sha256_digest(digest: Option<&str>) -> Option<String> {
     }
 }
 
-fn open_internet(timeout_ms: u32) -> CoreResult<WinInetHandle> {
-    let agent_w = to_wide_null(format!("OtterSwiss-Updater/{}", env!("CARGO_PKG_VERSION")));
-    let h = WinInetHandle::new(unsafe {
-        InternetOpenW(
-            PCWSTR(agent_w.as_ptr()),
-            INTERNET_OPEN_TYPE_PRECONFIG.0,
-            PCWSTR::null(),
-            PCWSTR::null(),
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: "No se pudo inicializar la conexión WinInet para buscar actualizaciones".into(),
-        source: None,
-    })?;
-    for opt in [
-        INTERNET_OPTION_CONNECT_TIMEOUT,
-        INTERNET_OPTION_SEND_TIMEOUT,
-        INTERNET_OPTION_RECEIVE_TIMEOUT,
-    ] {
-        unsafe {
-            let _ = InternetSetOptionW(
-                Some(h.raw()),
-                opt,
-                Some(&timeout_ms as *const _ as *const _),
-                4,
-            );
-        }
-    }
-    Ok(h)
-}
-
 pub fn check_for_updates() -> CoreResult<Option<UpdateReleaseInfo>> {
-    let h_internet = open_internet(10_000)?;
-    let url_w = to_wide_null(GITHUB_LATEST_RELEASE_URL);
-    let h_url = WinInetHandle::new(unsafe {
-        InternetOpenUrlW(
-            h_internet.raw(),
-            PCWSTR(url_w.as_ptr()),
-            None,
-            INTERNET_FLAG_SECURE | INTERNET_FLAG_RELOAD | INTERNET_FLAG_NO_CACHE_WRITE,
-            0,
-        )
-    })
-    .ok_or_else(|| CoreError::Trust {
-        message: "No se pudo conectar a GitHub Releases API".into(),
-        source: None,
-    })?;
-
-    let mut status_code: u32 = 0;
-    let mut status_len: u32 = std::mem::size_of::<u32>() as u32;
-    unsafe {
-        HttpQueryInfoW(
-            h_url.raw(),
-            HTTP_QUERY_STATUS_CODE | HTTP_QUERY_FLAG_NUMBER,
-            Some(&mut status_code as *mut _ as *mut _),
-            &mut status_len,
-            None,
-        )
-    }
-    .map_err(|e| CoreError::Trust {
-        message: format!("Error obteniendo estado HTTP de GitHub: {}", e),
-        source: None,
-    })?;
-
-    if status_code != 200 {
-        return Err(CoreError::Trust {
-            message: format!("GitHub API devolvió código HTTP {}", status_code),
-            source: None,
-        });
-    }
-
-    let mut json_bytes = Vec::new();
-    let mut chunk = [0u8; 8192];
-    loop {
-        let mut read_bytes: u32 = 0;
-        let ok = unsafe {
-            InternetReadFile(
-                h_url.raw(),
-                chunk.as_mut_ptr() as *mut _,
-                chunk.len() as u32,
-                &mut read_bytes,
-            )
-        };
-        if ok.is_err() || read_bytes == 0 {
-            break;
-        }
-        json_bytes.extend_from_slice(&chunk[..read_bytes as usize]);
-        if json_bytes.len() > MAX_RELEASE_JSON_BYTES {
-            return Err(CoreError::Trust {
-                message: "La respuesta de GitHub excede el tamaño máximo esperado".into(),
-                source: None,
-            });
-        }
-    }
+    let response = http::get(
+        GITHUB_LATEST_RELEASE_URL,
+        Timeouts {
+            connect_ms: 10_000,
+            io_ms: 10_000,
+        },
+    )?;
+    response.require_ok()?;
+    validate_https_host(&response.final_url()?, &["api.github.com"])?;
+    let json_bytes = response.read_to_end_capped(MAX_RELEASE_JSON_BYTES)?;
 
     let release: GitHubRelease =
         serde_json::from_slice(&json_bytes).map_err(|e| CoreError::Trust {
@@ -413,5 +322,16 @@ mod tests {
         assert_eq!(parse_sha256_digest(Some("sha1:abcd")), None);
         assert_eq!(parse_sha256_digest(Some("sha256:xyz")), None);
         assert_eq!(parse_sha256_digest(None), None);
+    }
+
+    /// CL-03: la consulta real a GitHub con el cliente HTTPS compartido. Necesita red, por eso es `#[ignore]`:
+    /// `cargo test --lib consulta_real -- --ignored`.
+    #[test]
+    #[ignore]
+    fn consulta_real_de_la_ultima_version() {
+        match check_for_updates() {
+            Ok(_) => {}
+            Err(e) => panic!("la consulta a GitHub falló: {e}"),
+        }
     }
 }
