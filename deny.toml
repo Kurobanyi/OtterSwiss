@@ -1,0 +1,37 @@
+# HE-05: cadena de suministro. Lo corre el CI (`cargo deny check`).
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[advisories]
+# Avisos de RustSec (vulnerabilidades y crates sin mantenimiento): fallan el CI.
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+# Licencias presentes hoy en el árbol (cargo metadata, 24/11/2026). Una nueva hay que revisarla antes de sumarla.
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "Unlicense",
+    "Unicode-3.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.8
+
+[bans]
+# AR-18: hoy hay tres versiones de `windows`; se avisa sin fallar hasta alinearlas.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

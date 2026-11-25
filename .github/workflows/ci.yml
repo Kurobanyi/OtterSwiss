@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # HE-01: no definir RUSTFLAGS aquí. Si existe, Cargo ignora los rustflags de .cargo/config.toml y el .exe sale sin
+  # +crt-static (vuelve ARQ-04). Los avisos se vuelven errores con `-- -D warnings` en clippy.
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      # tests/vm_sistema.rs queda fuera: es #[ignore] y cambia el sistema.
+      - run: cargo test --locked
+
+  msrv:
+    # HE-06: rust-version de Cargo.toml.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets --locked
+
+  supply-chain:
+    # HE-05: solo lee Cargo.lock y deny.toml.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
