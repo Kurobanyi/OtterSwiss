@@ -115,3 +115,30 @@ pub(crate) fn u32_to_reg_type(v: u32) -> winreg::enums::RegType {
         _ => REG_BINARY,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use winreg::enums::KEY_READ;
+
+    #[test]
+    fn la_vista_solo_aplica_a_hklm() {
+        let hkcu = RegLocation {
+            hive: RegHive::Hkcu,
+            view: RegView::Wow64_32,
+        };
+        assert_eq!(hkcu.flags(KEY_READ), KEY_READ);
+        assert_eq!(hkcu.reg_exe_view_arg(), None);
+
+        let hklm32 = RegLocation {
+            hive: RegHive::Hklm,
+            view: RegView::Wow64_32,
+        };
+        assert_eq!(hklm32.flags(KEY_READ), KEY_READ | KEY_WOW64_32KEY);
+        assert_eq!(hklm32.reg_exe_view_arg(), Some("/reg:32"));
+
+        let hklm = RegLocation::native(RegHive::Hklm);
+        assert_eq!(hklm.flags(KEY_READ), KEY_READ | KEY_WOW64_64KEY);
+        assert_eq!(hklm.reg_exe_view_arg(), Some("/reg:64"));
+    }
+}

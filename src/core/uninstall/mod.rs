@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use crate::core::error::CoreResult;
 use crate::core::platform::process::INSTALLER_TIMEOUT;
+use crate::core::platform::registry::RegLocation;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {
@@ -42,8 +43,8 @@ pub struct LeftoverItem {
     pub category: String,
     pub target_display: String,
     pub path: Option<PathBuf>,
-    pub reg_is_hkcu: bool,
-    pub reg_wow64_32: bool,
+    /// Colmena y vista de la clave (solo para restos de registro).
+    pub reg_location: RegLocation,
     pub reg_subkey: Option<String>,
     pub reg_value_name: Option<String>,
     pub size_bytes: u64,
@@ -201,8 +202,7 @@ mod tests {
             category: category.into(),
             target_display: path.into(),
             path: Some(PathBuf::from(path)),
-            reg_is_hkcu: false,
-            reg_wow64_32: false,
+            reg_location: RegLocation::native(crate::core::platform::registry::RegHive::Hklm),
             reg_subkey: None,
             reg_value_name: None,
             size_bytes: 0,

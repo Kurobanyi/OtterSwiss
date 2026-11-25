@@ -15,6 +15,7 @@ use super::{InstalledApp, LeftoverItem, LeftoverKind, UninstallerManager};
 use crate::core::error::CoreResult;
 use crate::core::platform::folders::known_folder;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
+use crate::core::platform::registry::{RegHive, RegLocation, RegView};
 use crate::core::platform::safe_fs::is_safe_non_root_dir;
 use crate::core::security::data_dir::get_program_data_dir;
 
@@ -207,13 +208,28 @@ pub(super) fn push_dir_candidate(
         category: cat.to_string(),
         target_display: dir.display().to_string(),
         path: Some(dir),
-        reg_is_hkcu: false,
-        reg_wow64_32: false,
+        reg_location: reg_location(false, false),
         reg_subkey: None,
         reg_value_name: None,
         size_bytes: sz,
         recommended: true,
     });
+}
+
+/// CL-04: convierte los datos de la entrada Uninstall (por usuario, 32 bits) a una ubicación de registro.
+pub(super) fn reg_location(is_hkcu: bool, wow64_32: bool) -> RegLocation {
+    RegLocation {
+        hive: if is_hkcu {
+            RegHive::Hkcu
+        } else {
+            RegHive::Hklm
+        },
+        view: if wow64_32 && !is_hkcu {
+            RegView::Wow64_32
+        } else {
+            RegView::Native
+        },
+    }
 }
 
 impl UninstallerManager {
@@ -355,8 +371,7 @@ impl UninstallerManager {
                                 category: cat.to_string(),
                                 target_display: p.display().to_string(),
                                 path: Some(p),
-                                reg_is_hkcu: false,
-                                reg_wow64_32: false,
+                                reg_location: reg_location(false, false),
                                 reg_subkey: None,
                                 reg_value_name: None,
                                 size_bytes: sz,
@@ -395,8 +410,7 @@ impl UninstallerManager {
                     app.registry_subkey
                 ),
                 path: None,
-                reg_is_hkcu: app.is_per_user,
-                reg_wow64_32: app.is_wow64,
+                reg_location: reg_location(app.is_per_user, app.is_wow64),
                 reg_subkey: Some(app.registry_subkey.clone()),
                 reg_value_name: None,
                 size_bytes: 0,
@@ -455,8 +469,7 @@ impl UninstallerManager {
                                     sub_path
                                 ),
                                 path: None,
-                                reg_is_hkcu: is_hkcu,
-                                reg_wow64_32: wow32,
+                                reg_location: reg_location(is_hkcu, wow32),
                                 reg_subkey: Some(sub_path),
                                 reg_value_name: None,
                                 size_bytes: 0,
@@ -483,8 +496,7 @@ impl UninstallerManager {
                                             sub_path
                                         ),
                                         path: None,
-                                        reg_is_hkcu: is_hkcu,
-                                        reg_wow64_32: wow32,
+                                        reg_location: reg_location(is_hkcu, wow32),
                                         reg_subkey: Some(sub_path),
                                         reg_value_name: None,
                                         size_bytes: 0,
@@ -516,8 +528,7 @@ impl UninstallerManager {
                                                     full_sub
                                                 ),
                                                 path: None,
-                                                reg_is_hkcu: is_hkcu,
-                                                reg_wow64_32: wow32,
+                                                reg_location: reg_location(is_hkcu, wow32),
                                                 reg_subkey: Some(full_sub),
                                                 reg_value_name: None,
                                                 size_bytes: 0,
@@ -566,8 +577,7 @@ impl UninstallerManager {
                                 val_name
                             ),
                             path: None,
-                            reg_is_hkcu: is_hkcu,
-                            reg_wow64_32: wow32,
+                            reg_location: reg_location(is_hkcu, wow32),
                             reg_subkey: Some(run_path.to_string()),
                             reg_value_name: Some(val_name),
                             size_bytes: 0,

@@ -2,11 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use winreg::enums::{
-    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_32KEY,
-    KEY_WOW64_64KEY, KEY_WRITE,
-};
-use winreg::RegKey;
+use winreg::enums::{KEY_ALL_ACCESS, KEY_READ, KEY_WRITE};
 
 use windows::Win32::UI::Shell::{FOLDERID_Desktop, FOLDERID_LocalAppData, FOLDERID_RoamingAppData};
 
@@ -17,6 +13,7 @@ use crate::core::platform::folders::known_folder;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
 use crate::core::platform::process::run_captured;
 use crate::core::platform::process::system32_dir;
+use crate::core::platform::registry::RegLocation;
 use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_tree_verified, delete_verified_file_under, is_safe_non_root_dir,
     path_is_strictly_under,
@@ -26,11 +23,7 @@ use crate::core::security::data_dir::reg_backups_dir;
 
 /// Exporta `subkey` con `reg.exe export` a `ProgramData\OtterSwiss\RegBackups`, para poder restaurarla
 /// con doble clic si se borró algo que no se debía.
-pub(super) fn export_registry_key(
-    is_hkcu: bool,
-    wow64_32: bool,
-    subkey: &str,
-) -> CoreResult<PathBuf> {
+pub(super) fn export_registry_key(loc: RegLocation, subkey: &str) -> CoreResult<PathBuf> {
     let dir = reg_backups_dir()?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -51,7 +44,7 @@ pub(super) fn export_registry_key(
         .take(60)
         .collect();
     let file = dir.join(format!("{}_{}.reg", stamp, leaf));
-    let full_key = format!("{}\\{}", if is_hkcu { "HKCU" } else { "HKLM" }, subkey);
+    let full_key = format!("{}\\{}", loc.hive.as_str(), subkey);
 
     let mut args = vec![
         "export".to_string(),
@@ -59,8 +52,8 @@ pub(super) fn export_registry_key(
         file.to_string_lossy().into_owned(),
         "/y".to_string(),
     ];
-    if !is_hkcu {
-        args.push(if wow64_32 { "/reg:32" } else { "/reg:64" }.to_string());
+    if let Some(view) = loc.reg_exe_view_arg() {
+        args.push(view.to_string());
     }
     let out = run_captured(
         &system32_dir()?.join("reg.exe"),
@@ -170,21 +163,10 @@ impl UninstallerManager {
                     else {
                         continue;
                     };
-                    let hive = if item.reg_is_hkcu {
-                        HKEY_CURRENT_USER
-                    } else {
-                        HKEY_LOCAL_MACHINE
-                    };
-                    let flags = if item.reg_is_hkcu {
-                        KEY_WRITE
-                    } else if item.reg_wow64_32 {
-                        KEY_WRITE | KEY_WOW64_32KEY
-                    } else {
-                        KEY_WRITE | KEY_WOW64_64KEY
-                    };
-                    let root = RegKey::predef(hive);
-                    match root
-                        .open_subkey_with_flags(subkey, flags)
+                    match item
+                        .reg_location
+                        .root()
+                        .open_subkey_with_flags(subkey, item.reg_location.flags(KEY_WRITE))
                         .and_then(|k| k.delete_value(val_name))
                     {
                         Ok(()) => report.removed_count += 1,
@@ -209,36 +191,25 @@ impl UninstallerManager {
         item: &LeftoverItem,
         subkey: &str,
     ) -> CoreResult<bool> {
-        let hive = if item.reg_is_hkcu {
-            HKEY_CURRENT_USER
-        } else {
-            HKEY_LOCAL_MACHINE
-        };
-        let view = if item.reg_is_hkcu {
-            0
-        } else if item.reg_wow64_32 {
-            KEY_WOW64_32KEY
-        } else {
-            KEY_WOW64_64KEY
-        };
-        let root = RegKey::predef(hive);
+        let loc = item.reg_location;
+        let root = loc.root();
         let (parent_path, leaf) = subkey
             .rsplit_once('\\')
             .ok_or_else(|| CoreError::Validation(format!("Clave sin padre: {}", subkey)))?;
         // RegDeleteTree necesita DELETE, KEY_ENUMERATE_SUB_KEYS y KEY_QUERY_VALUE sobre el padre (SYS-21).
-        let parent = match root.open_subkey_with_flags(parent_path, KEY_ALL_ACCESS | view) {
+        let parent = match root.open_subkey_with_flags(parent_path, loc.flags(KEY_ALL_ACCESS)) {
             Ok(k) => k,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(e.into()),
         };
         if parent
-            .open_subkey_with_flags(leaf, KEY_READ | view)
+            .open_subkey_with_flags(leaf, loc.flags(KEY_READ))
             .is_err()
         {
             return Ok(false);
         }
 
-        export_registry_key(item.reg_is_hkcu, item.reg_wow64_32, subkey)?;
+        export_registry_key(loc, subkey)?;
         parent.delete_subkey_all(leaf)?;
         Ok(true)
     }
