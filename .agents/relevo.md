@@ -4,30 +4,50 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 `docs/BUGS-detalle.md` (expediente por ID, con línea **Cierre** en cada uno). Agentes en `.claude/agents/`
 (`security-auditor`, `code-auditor`, `design-challenger`, `commit-writer`).
 
-## ★ Estado actual — 2026-11-24
+## ★ Estado actual — 2026-11-25
 
-**Estado:** `fix/auditoria` fusionado en `main` (`adf794d`; PR #1 cerrado como fusionado). 85 de 96 hallazgos resueltos. Abiertos:
-`TST-01` y `UI-11` parciales, y los cuatro defectos nuevos de la auditoría de buenas prácticas (`ERR-14`, `SEC-29`, `UI-17`,
-`UI-18`). Diferidos `SEC-17`, `SYS-24`, `ARQ-03`, `UX-02`; `UX-03` pendiente de decisión. El repo no tiene CI.
+**Rama:** `auditoria/buenas-practicas`, unos 100 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
+`origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
+viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro y se puede borrar. Árbol limpio.
 
-**Auditoría de buenas prácticas (24/11, rama `auditoria/buenas-practicas`, sin commitear):** cuatro pasadas en paralelo
-(arquitectura; código limpio; temas, tokens y CSS; i18n, linters y herramientas). 87 mejoras en `docs/PRACTICAS.md` (índice, orden
-de ataque) y `docs/PRACTICAS-detalle.md` (expedientes): 17 P1, 49 P2, 21 P3. Los defectos van en `docs/BUGS.md`. También se
-devolvieron a su expediente siete líneas **Cierre** de `BUGS-detalle.md` que habían quedado bajo el título de la sección siguiente.
+**Hecho en esta rama:**
+- Buenas prácticas: core por capas (`platform` → `security` → funciones), UI ordenada, catálogo de textos, edición 2024, CI y lints,
+  SAFETY en todo `unsafe` salvo `drivers.rs`, un solo cliente HTTPS y un solo camino de descarga e instalación.
+- Fusión de v4.2.0 portada a esa arquitectura (tienda de 50 apps con restaurador UWP, pestaña Drivers, 4 temas ajustados a AA,
+  puente de LibreHardwareMonitor, dependencias nuevas).
+- Auditoría del código de v4.2.0 en tres pasadas (seguridad, bugs, buenas prácticas): 28 defectos (`SEC-30`…`TST-02`) y 27 mejoras
+  (`OR-06`…`HE-14`). Cerrados 23 de los 28, entre ellos los tres de seguridad alta (`SEC-30` ZIP de Intel sin verificar, `SEC-31`
+  winget elevado desde LocalAppData; `SEC-32` parcial con la firma encadenada a raíces de la máquina).
+- Drivers: confirmación con lista y respaldo, respeto de la política y WSUS, Catálogo verificado (su búsqueda nunca había funcionado:
+  el parser buscaba comillas dobles; probado en vivo con `catalogo_en_vivo`), historial de paquetes instalados y «Quitar».
+- Tienda: winget solo como el usuario, códigos de salida con nombre, SHA-256 de VSCodium y BleachBit, fuera LibreWolf y Rufus, hosts
+  de GitHub compartidos, test de invariantes del catálogo, detección de apps de la Store por paquete, IDs de la Store corregidos.
+- **Último resultado:** `cargo test` 68 (más 2 ignorados de red y 7 de VM), `clippy --all-targets -- -D warnings` y `fmt --check` en
+  verde. Diálogos de drivers recorridos en la app sin elevar con datos ficticios.
 
-**Avance 25/11 (rama `auditoria/buenas-practicas`, commits locales sin push):** buenas prácticas 75 de 87 hechas, 8
-parciales y 4 pendientes (ver `docs/PRACTICAS.md`, sección «Siguiente»). Core por capas sin dependencias hacia arriba, UI
-ordenada, catálogo de textos, edición 2024, CI y lints, SAFETY en todo bloque `unsafe` (salvo `drivers.rs`, diferido). 57 tests
-y clippy en verde; recorrido visual de Inicio, Hardware, Herramientas, Desinstalador, temas y mini ventana. Sin probar como
-administrador desde que se partieron el motor y la búsqueda de restos (la salida de restos y de discos se comparó igual en esta PC).
-`windows` 0.61 (`AR-18`) está en la rama aparte `tmp/windows-061` (`db8c18c`), en verde y sin unir.
-**Fusión de v4.2.0 (25/11, `4767abf`):** el compañero publicó v4.2.0 en `main` (`0a0f5ec`: pestaña Drivers, 50 apps con
-restaurador UWP por winget, 4 temas, puente de LibreHardwareMonitor, dependencias nuevas). Se fusionó sobre esta rama portando sus
-cambios a la arquitectura por capas (tienda reconstruida desde su catálogo; `drivers.rs` tal cual, con rutas nuevas; temas completados
-y ajustados a AA). 57 tests y clippy en verde. Su código se auditó en tres pasadas: 28 defectos (`SEC-30`…`TST-02` en
-`docs/BUGS.md`, tres de seguridad alta: ZIP de Intel sin verificar, winget desde LocalAppData, proxy y raíces de HKCU) y 27 mejoras
-(`OR-06`…`HE-14` en `docs/PRACTICAS.md`). Nada de eso está arreglado todavía.
-**Siguiente:** arreglar `SEC-30`, `SEC-31`, `SEC-32` y la tienda que no instala (`ERR-15`…`ERR-17`) antes de publicar; luego el orden de «Siguiente» en `docs/BUGS.md`.
+**Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
+- Decisiones del autor: `SEC-32` (WinInet usa el proxy del usuario; quitarlo rompe redes con proxy obligatorio), `SEC-35` (fijar
+  SHA-256 en las apps con versión obliga a actualizarlos), `AR-17`/`AR-26` con `UI-11` (textos en core), `AR-19`, `IN-03`, `UX-02`,
+  `UX-03`, `SEC-17` (con `SYS-24`), y si instalar `dioxus-cli` para `HE-11`.
+- Sin decisión, en el código: `SYS-27` (JSON de Intel; falta ver el formato real), resto de `CON-03` (botón de cancelar la búsqueda),
+  `TST-02` (Intel), `CL-19` (65 `unsafe` sin SAFETY en `drivers.rs`, hoy tapados por un `#[allow]` con motivo obsoleto), `OR-06`
+  (partir `drivers.rs` en `core/drivers/`), `TE-25`/`TE-27`/`TE-28`/`IN-08` (regresiones de estilos, contraste e idioma que trajo la
+  fusión), `HE-14` (freno a esas regresiones), `TE-29` (paletas nuevas), y las mejoras mecánicas grandes (`IN-02`, `TE-02`, `OR-04`).
+- Con una VM o Windows Sandbox, como administrador: `tests/vm_sistema.rs`, instalar y quitar un driver de cada camino, quitar una app
+  Appx, `ERR-24` (Moonlight `/quiet`, versión de GOG), confirmar que los CAB del Catálogo traen firma Authenticode.
+- Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32` (v4.2.0 ya está etiquetada en
+  `main`), y de que LibreWolf y Rufus salieron del catálogo.
+
+## Prompt para seguir
+
+Pegar en una sesión nueva, en la carpeta del repo:
+
+> Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
+> (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
+> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente que no depende de mí (en este orden:
+> `CL-19`, `TE-27`/`TE-28`/`TE-25`/`IN-08`, `OR-06`, `CON-03`, `HE-14`), sin tocar lo diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`,
+> `UI-11`) ni las decisiones abiertas (`SEC-32`, `SEC-35`). Commitea en local por fase con el formato «Categoría: Verbo …», cerrando
+> cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida. Español neutro, respuestas breves.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
 núcleos y Windows 11 exige 2). La VM se borró; queda la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
@@ -39,7 +59,7 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 57
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 68
 tests y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
 Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila
