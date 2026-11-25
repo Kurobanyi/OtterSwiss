@@ -25,15 +25,15 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
-| Seguridad (`SEC-`) | 29 | 1 | 1 | 0 | 27 |
+| Seguridad (`SEC-`) | 29 | 0 | 1 | 0 | 28 |
 | Sistema y rollback (`SYS-`) | 24 | 0 | 1 | 0 | 23 |
-| Errores y procesos (`ERR-`) | 14 | 1 | 0 | 0 | 13 |
+| Errores y procesos (`ERR-`) | 14 | 0 | 0 | 0 | 14 |
 | Concurrencia (`CON-`) | 2 | 0 | 0 | 0 | 2 |
 | Arquitectura (`ARQ-`) | 4 | 0 | 1 | 0 | 3 |
-| Interfaz (`UI-`) | 18 | 3 | 0 | 0 | 15 |
+| Interfaz (`UI-`) | 18 | 1 | 0 | 0 | 17 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 1 | 1 | 0 | 0 | 0 |
-| **Total** | **96** | **6** | **4** | **1** | **85** |
+| **Total** | **96** | **2** | **4** | **1** | **89** |
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -43,11 +43,7 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | ID | Título | Afecta | Sev. | Estado |
 |---|---|---|---|---|
 | [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
-| [`ERR-14`](BUGS-detalle.md#err-14) | `build.rs` ignora el fallo al incrustar el manifiesto y el `.exe` puede salir sin `requireAdministrator` | Usuario, Desarrollador | Media | Pendiente |
-| [`UI-17`](BUGS-detalle.md#ui-17) | `LoadingState` no muestra el spinner y `ErrorState` se ve igual que «no hay datos» | Usuario | Media | Pendiente |
-| [`UI-18`](BUGS-detalle.md#ui-18) | Texto en colores de estado y acento por debajo de 4,5:1 | Usuario | Media | Pendiente |
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Parcial |
-| [`SEC-29`](BUGS-detalle.md#sec-29) | La lista blanca de relanzamiento elevado acepta `--apply-profile`, que ningún código maneja | Desarrollador, Sistema | Baja | Pendiente |
 
 ## Diferidos y pendientes de decisión
 
@@ -63,7 +59,7 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. `ERR-14`, `SEC-29`, `UI-17` y `UI-18`: arreglos chicos que salieron de la auditoría de buenas prácticas.
+1. Mejoras de `docs/PRACTICAS.md`, en el orden de ataque que propone.
 2. En un Windows completo: quitar una app Appx con el Debloater y ver la ventana en tamaño chico.
 3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`, que necesitan registro y archivos de respaldo.
 4. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (y con él `SYS-24`), `UI-11` en el núcleo.

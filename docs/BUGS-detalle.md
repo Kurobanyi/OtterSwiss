@@ -337,13 +337,14 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="sec-29"></a>
 ### SEC-29 · La lista blanca de relanzamiento elevado acepta `--apply-profile`, que ningún código maneja
-- **Afecta**: Desarrollador, Sistema · **Severidad**: Baja · **Origen**: auditoría de buenas prácticas 24/11 (arquitectura) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Desarrollador, Sistema · **Severidad**: Baja · **Origen**: auditoría de buenas prácticas 24/11 (arquitectura) · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: `ALLOWED_RELAUNCH_FLAGS` incluye `"--apply-profile"`, pero `main.rs` solo atiende `--extract`, `--compress-zip`,
   `--rollback`, `--install-context-menu` y `--uninstall-context-menu`. Hoy no tiene efecto, pero la lista blanca es la barrera de lo
   que se puede pedir con elevación: un flag permitido sin dueño es una puerta que alguien puede conectar sin revisar.
 - **Dónde**: `src/core/elevation.rs:15`; `src/main.rs:291,303,435,444,449`.
 - **Propuesta**: quitarlo de la lista. A futuro, un `enum CliCommand` único que usen `elevation`, `main.rs`, `context_menu` y la UI
   (`AR-12` en `docs/PRACTICAS.md`), para que un flag permitido y su manejador no puedan separarse.
+- **Cierre** (2026-11-24, rama `auditoria/buenas-practicas`): `--apply-profile` fuera de `ALLOWED_RELAUNCH_FLAGS`. El enum único de flags queda en `AR-12`. Verificado: `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 # Expedientes · Cambios al sistema y rollback (`SYS-`)
 
@@ -685,13 +686,14 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="err-14"></a>
 ### ERR-14 · `build.rs` ignora el fallo al incrustar el manifiesto y el `.exe` puede salir sin `requireAdministrator`
-- **Afecta**: Usuario, Desarrollador · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (herramientas) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario, Desarrollador · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (herramientas) · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: `let _ = res.compile_for("otter_swiss");` descarta el error. Si falta `rc.exe` o el SDK de Windows, el build termina
   bien pero el ejecutable sale sin manifiesto (`requireAdministrator`, `supportedOS`) ni icono, y el problema solo aparece al usarlo:
   las acciones de sistema fallan con acceso denegado.
 - **Dónde**: `build.rs:25`.
 - **Propuesta**: `res.compile_for("otter_swiss").expect("no se pudo incrustar el manifiesto y el icono")`; en un `build.rs` el
   `panic` aborta el build, que es lo correcto.
+- **Cierre** (2026-11-24, rama `auditoria/buenas-practicas`): `compile_for(...).expect(...)`: si no se puede incrustar el recurso, el build falla. Verificado: `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 # Expedientes · Concurrencia (`CON-`)
 
@@ -882,17 +884,18 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="ui-17"></a>
 ### UI-17 · `LoadingState` no muestra el spinner y `ErrorState` se ve igual que «no hay datos»
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: los componentes usan las clases `state-spinner` y `state-error`, que no están definidas en `assets/main.css`. El div
   del spinner queda vacío y sin tamaño (Dashboard, DNS, Hardware y Desinstalador solo muestran el texto), y un error usa el mismo
   borde punteado neutro que el estado vacío.
 - **Dónde**: `src/ui/components/mod.rs:25,44`; `assets/main.css` (sin esas reglas).
 - **Propuesta**: `.state-spinner` de 24px con `border-top-color: var(--accent)` y `@keyframes`, quieto bajo
   `prefers-reduced-motion`; `.state-error` con borde sólido `var(--danger)` y título en `var(--danger-text)`.
+- **Cierre** (2026-11-24, rama `auditoria/buenas-practicas`): `.state-spinner` (24px, gira; quieto con `prefers-reduced-motion`) y `.state-error` (borde sólido de peligro, título en `--danger-text`) en `main.css`. Verificado: `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde en Windows. No revisado en la app.
 
 <a id="ui-18"></a>
 ### UI-18 · Texto en colores de estado y acento por debajo de 4,5:1 (fuera del alcance de UI-08)
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: derivado (fórmula WCAG sobre los hex de `main.css`, recalculada por el agente principal) · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría de buenas prácticas 24/11 (estilos) · **Evidencia**: derivado (fórmula WCAG sobre los hex de `main.css`, recalculada por el agente principal) · **Estado**: Resuelto
 - **Qué pasa**: UI-08 creó `--*-text` para texto, pero quedan usos del color de relleno como texto y estados no calibrados:
   - `--danger` como texto sobre `--surface` en Nord: 2,46:1 (Sensores, Herramientas, Desinstalador); `--warning` en Claro: 3,19:1.
   - Pestaña activa del menú superior (`color: var(--accent)` sobre su fondo al 16 %, 11px): Oscuro 3,81 · Nord 3,76 · Claro 4,13 ·
@@ -903,6 +906,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Propuesta**: regla «`--success`, `--warning`, `--danger` y `--accent` solo para fondos y bordes; texto siempre con `--*-text`»,
   con clases `.text-success|warning|danger|accent`; `.top-nav-item.active { color: var(--accent-text) }`; recalcular
   `--accent-hover` por tema hasta ≥ 4,5:1 con `--on-accent`.
+- **Cierre** (2026-11-24, rama `auditoria/buenas-practicas`): todo texto inline con color de estado o acento pasa a `--*-text` (12 sitios), clases `.text-success|warning|danger|accent`, pestaña activa con `--accent-text` y `--accent-hover` aclarado en Oscuro (`#60a5fa`, 7,41:1) y Carmesí (`#f75d78`, 6,35:1). Verificado: `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde en Windows. No revisado en la app.
 
 # Expedientes · Diseño y producto (`UX-`)
 
