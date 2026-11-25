@@ -15,11 +15,12 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 de ataque) y `docs/PRACTICAS-detalle.md` (expedientes): 17 P1, 49 P2, 21 P3. Los defectos van en `docs/BUGS.md`. También se
 devolvieron a su expediente siete líneas **Cierre** de `BUGS-detalle.md` que habían quedado bajo el título de la sección siguiente.
 
-**Avance 25/11 (rama `auditoria/buenas-practicas`, commits locales sin push):** buenas prácticas 66 de 87 hechas, 15
-parciales y 6 pendientes (ver `docs/PRACTICAS.md`, sección «Siguiente»). Core por capas sin dependencias hacia arriba, UI
-ordenada, catálogo de textos, edición 2024, CI y lints. 54 tests y clippy en verde; recorrido visual de Inicio, Hardware,
-Herramientas, Desinstalador, temas y mini ventana. Sin probar como administrador desde que se partieron el motor y la búsqueda
-de restos (la salida de restos se comparó igual en esta PC).
+**Avance 25/11 (rama `auditoria/buenas-practicas`, commits locales sin push):** buenas prácticas 75 de 87 hechas, 8
+parciales y 4 pendientes (ver `docs/PRACTICAS.md`, sección «Siguiente»). Core por capas sin dependencias hacia arriba, UI
+ordenada, catálogo de textos, edición 2024, CI y lints, SAFETY en todo bloque `unsafe` (salvo `drivers.rs`, diferido). 57 tests
+y clippy en verde; recorrido visual de Inicio, Hardware, Herramientas, Desinstalador, temas y mini ventana. Sin probar como
+administrador desde que se partieron el motor y la búsqueda de restos (la salida de restos y de discos se comparó igual en esta PC).
+`windows` 0.61 (`AR-18`) está en la rama aparte `tmp/windows-061` (`db8c18c`), en verde y sin unir.
 **Siguiente:** el usuario decide si sube la rama y abre PR; luego lo de «Siguiente» en `docs/PRACTICAS.md`.
 
 **VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
@@ -32,7 +33,7 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 37
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 57
 tests y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
 Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila

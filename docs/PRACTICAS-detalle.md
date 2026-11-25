@@ -97,7 +97,7 @@ Leyenda:
 
 <a id="ar-03"></a>
 ### AR-03 · Todo es `pub`: hay atajos que saltan las validaciones y el compilador no ve el código muerto
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `lib.rs` exporta `core` y `ui` enteros y cada módulo es `pub mod`. `ArchiveManager::compress_to_zip`, `extract_zip`,
   `extract_7z`, `extract_tar*` y compañía son `pub` sin usos externos, y llamarlas directamente se salta `validate_cli_paths`, el «no
   sobrescribir» y el `.partial` con renombre (SYS-22). Como todo es alcanzable, `rustc` no avisa `dead_code` (ver `AR-05`).
@@ -105,10 +105,11 @@ Leyenda:
 - **Propuesta**: `pub(crate)` o privado por defecto; `pub` solo la fachada que usan `main.rs` y `tests/vm_sistema.rs`. Módulo por
   módulo.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Las funciones por formato del archivador son pub(super): ya no se puede saltar validate_cli_paths ni el .partial. El resto de la API sigue `pub`. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): 24 módulos de ui y core pasan a `pub(crate)`; quedan `pub` solo `cli`, `progress`, `rollback` y lo que usan los tests de integración. Clippy ya marca lo muerto. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ar-04"></a>
 ### AR-04 · La detección de hardware está escrita tres veces y el motor paga la completa para leer el tier
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `HardwareProfile::detect` (CPU, placa, GPU, discos por `\\.\PhysicalDrive{n}`), `specs.rs` (lo mismo con más
   detalle) y `sensors.rs` (discos otra vez) se solapan, con dos tablas de `BusType` de números mágicos y dos lectores de C-string. El
   motor llama a `detect()` completo solo para `tier` (núcleos y RAM). `sysinfo` entra solo para esto (ver `AR-18`).
@@ -117,6 +118,7 @@ Leyenda:
 - **Propuesta**: `HardwareTier::detect()` aparte; la descripción en `specs` (y el Dashboard muestra `SystemSpecs`);
   `core/hw/storage.rs` con la enumeración de discos que comparten `specs` y `sensors`, y `BusType` con las constantes del crate.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): HardwareTier::from_cores_and_ram aparte (con test) y fuera sysinfo. La enumeración de discos sigue en profile, specs y sensors. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): `hardware/drives.rs` abre y nombra los discos una sola vez; specs, perfil y sensores lo usan. Arregla además que el perfil sin elevación no listaba discos (abría con FILE_GENERIC_READ). Salida de specs comparada antes y después: idéntica. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ar-05"></a>
 ### AR-05 · Código muerto que el compilador no puede señalar
@@ -144,6 +146,7 @@ Leyenda:
   `NoActiveAdapters`…) con `#[source]` siempre que lo haya; helpers `CoreError::sys(ctx)` y `invalid_handle(ctx)`; un `source` de un
   solo tipo. Gradual, módulo por módulo.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): CoreError::sys/trust guardan el source (30 sitios), invalid_handle no lee GetLastError ajeno, NoActiveAdapters tipado. Quedan unos 125 `source: None` para migrar de a poco. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Más sitios con `source`; quedan 96 `source: None`, casi todos errores propios sin causa externa. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ar-07"></a>
 ### AR-07 · La carpeta de datos la resuelve la UI y sus nombres están repartidos
@@ -288,6 +291,7 @@ Leyenda:
 - **Dónde**: `Cargo.toml`; `Cargo.lock`; `src/core/win_common.rs:424-471`.
 - **Propuesta**: quitar `sysinfo` (con `AR-04`); subir `windows` a 0.61, `thiserror` a 2 y `dirs` a 6, revisando los cambios de API.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Fuera sysinfo (y windows 0.57); thiserror 2 y dirs 6. Queda alinear windows 0.58 con 0.61, que cambia la API. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): windows 0.58 → 0.61 hecho en la rama `tmp/windows-061` (commit `db8c18c`): un solo crate `windows` en el árbol, clippy, tests y build release en verde. Falta unirla a esta rama. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="ar-19"></a>
 ### AR-19 · Tres estilos de API en core
@@ -310,7 +314,7 @@ Leyenda:
 
 <a id="cl-01"></a>
 ### CL-01 · 213 bloques `unsafe` sin ningún comentario `SAFETY`
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: confirmado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: confirmado · **Estado**: Hecha
 - **Qué pasa**: 213 `unsafe {` (40 en `sensors.rs`, 31 en `trust.rs`, 29 en `win_common.rs`) y cero `SAFETY`; un solo `# Safety`.
   `resolve_proc<T>` hace `transmute_copy` a cualquier `T` sin comprobar tamaño ni documentar el contrato; dos `unsafe impl Send` sin
   justificar; `read_wmi_*` son `unsafe fn` que no exigen nada al llamador. `safe_fs::duplicate_file_handle` es una `fn` segura que
@@ -321,10 +325,11 @@ Leyenda:
   `missing_safety_doc` módulo por módulo, empezando por `trust`, `safe_fs`, `process` y `elevation`; `debug_assert` de tamaño en
   `resolve_proc`; `read_wmi_*` seguras; justificar los `Send`; borrar `duplicate_file_handle`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): forbid(unsafe_code) en la UI; SAFETY en los unsafe fn, resolve_proc con # Safety y debug_assert, Send justificados, fuera duplicate_file_handle; el código nuevo (http, wmi, profile) lleva SAFETY. Quedan bloques antiguos sin comentario. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): `undocumented_unsafe_blocks = "warn"` en todo el crate y SAFETY en todos los bloques. Solo `drivers.rs` queda con `allow` y motivo, porque ARQ-03 está diferido. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-02"></a>
 ### CL-02 · Wrappers RAII duplicados y liberaciones a mano
-- **Prioridad**: P1 · **Esfuerzo**: S/M · **Evidencia**: confirmado (`WinInetHandle`) · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: S/M · **Evidencia**: confirmado (`WinInetHandle`) · **Estado**: Hecha
 - **Qué pasa**: `WinInetHandle` definido igual en `trust.rs` y `updater.rs`; `OwnedHandle` en `specs.rs` duplica `SafeHandle`;
   `LocalFree` manual en seis sitios (un `?` insertado en medio fuga); `CoTaskMemFree` manual en `sensors.rs` aunque `dependencies.rs`
   ya usa `CoTaskMemPWSTR`; el descriptor desde SDDL está escrito dos veces.
@@ -333,6 +338,7 @@ Leyenda:
 - **Propuesta**: `WinInetHandle` en `win_common`; borrar `OwnedHandle`; `LocalMem<T>` con `Drop`;
   `SecurityDescriptor::from_sddl(&str)`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Un WinInetHandle, fuera OwnedHandle. Quedan los LocalFree manuales y el SDDL duplicado. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): `LocalMem` libera con LocalFree en Drop y `SecurityDescriptor::from_sddl` reemplaza el SDDL duplicado (con tests). Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-03"></a>
 ### CL-03 · Cliente HTTP de WinInet duplicado y user-agent desactualizado
@@ -383,12 +389,13 @@ Leyenda:
 
 <a id="cl-07"></a>
 ### CL-07 · El reporte de progreso por pasos está copiado en core
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: el mismo bloque `lock → current_step, total_steps, label, percent` cuatro veces, con tope `min(100)` o `min(99)`;
   `CleanProgress`, `DebloatProgress` y `EngineProgress` repiten los cuatro campos.
 - **Dónde**: `src/core/engine.rs:221,618`; `src/core/debloater.rs:770`; `src/core/cleaner.rs:290`.
 - **Propuesta**: `struct StepProgress` embebido y `fn report_step(progress, idx, total, label)`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): core::progress::step_percent común; los tres structs de progreso siguen separados. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Trait `StepProgress` con `report_step`, implementado por los tres progresos de limpieza, debloat y motor. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-08"></a>
 ### CL-08 · Apertura del SCM y del servicio duplicada
@@ -450,28 +457,31 @@ Leyenda:
 
 <a id="cl-14"></a>
 ### CL-14 · Dos `too_many_arguments` que tapan un diseño mejorable
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Dónde**: `src/ui/views/uninstaller.rs:141` (10 parámetros, 8 `Signal`); `src/core/archiver.rs:332` (8).
 - **Propuesta**: `#[derive(Clone, Copy)] struct UninstallerSignals`; `struct ExtractCtx`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Los dos allow llevan motivo; agrupar en structs queda pendiente.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): `UninstallerSignals` agrupa las señales; fuera los dos `too_many_arguments`. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-15"></a>
 ### CL-15 · Rutas tratadas como `String` con pérdida
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `wide_ptr_to_string_and_free` devuelve `String` lossy también para rutas; `to_string_lossy().to_ascii_lowercase()` se
   usa como clave de identidad de ruta (no pliega mayúsculas fuera de ASCII); el menú contextual escribe la ruta lossy en el registro.
 - **Dónde**: `src/core/win_common.rs:53`; `src/core/uninstaller.rs:358,397,809,1014`; `src/core/archiver.rs:402`;
   `src/core/context_menu.rs:87,117`.
 - **Propuesta**: `OsString::from_wide` para rutas, un `path_key(&Path)` único y `OsStr` hasta el borde.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): `wide_ptr_to_path_and_free` devuelve `OsString` y `path_key` normaliza las comparaciones; el menú contextual rechaza rutas no UTF-8 en vez de perderlas. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-16"></a>
 ### CL-16 · Detalles sueltos
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - `context_menu.rs:88-89`: `cmd.contains(&expected) || cmd.contains(&current_exe)`; la primera condición sobra.
 - `main.rs:320`: `native_message(…, ask_yes_no: bool, is_error: bool)`; mejor enums o dos funciones.
 - `format!("{}", e)` en vez de `e.to_string()` (4 casos); 7 `redundant_clone`.
 - Clones completos en cada render: `uninstaller.rs:~410` (`filtered`) y `debloater.rs:115`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): native_message con ask_yes_no/show_warning/show_error; clones redundantes fuera. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Fuera el `get_known_folder` propio del limpiador (usa `platform::folders`), `ProcessIdToSessionId` del crate en vez de un extern a mano y una rama imposible del desinstalador. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="cl-17"></a>
 ### CL-17 · Comentarios
@@ -908,7 +918,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 
 <a id="he-12"></a>
 ### HE-12 · Metadatos de `Cargo.toml` y features de `windows` que podrían sobrar
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: faltan `license = "MIT"` (existe `LICENSE`), `repository` y `publish = false`. No se ve uso directo de las features
   `NetworkManagement_Dns`, `System_Memory`, `System_Ole` ni `System_Registry`; `ProcessIdToSessionId` está declarada a mano en vez de
   activar `Win32_System_RemoteDesktop`.
@@ -916,6 +926,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 - **Propuesta**: completar los metadatos; quitar features una por una con `cargo check` (las de criptografía las exige
   `WINTRUST_DATA`, no tocarlas sin compilar).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Metadatos completos; no se quitaron features de windows. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Fuera las features `NetworkManagement_Dns`, `System_Memory` y `System_Ole`; entra `System_RemoteDesktop`. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 
 <a id="he-13"></a>
 ### HE-13 · `.editorconfig` y otras herramientas de texto

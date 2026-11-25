@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **66 hechas, 15 parciales y 6 pendientes** de 87. Las hechas salen de las
+Avance al 25/11/2026: **75 hechas, 8 parciales y 4 pendientes** de 87. Las hechas salen de las
 tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -38,12 +38,8 @@ dependencias directas se usan.
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
 | [`TE-02`](PRACTICAS-detalle.md#te-02) | 185 estilos inline: el CSS no tiene clases de layout ni de componente | M/L | Parcial |
-| [`CL-01`](PRACTICAS-detalle.md#cl-01) | 213 bloques `unsafe` sin ningún comentario `SAFETY` | M | Parcial |
-| [`CL-02`](PRACTICAS-detalle.md#cl-02) | Wrappers RAII duplicados y liberaciones a mano | S/M | Parcial |
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
-| [`AR-03`](PRACTICAS-detalle.md#ar-03) | Todo es `pub`: atajos que saltan validaciones y código muerto invisible | M | Parcial |
-| [`AR-04`](PRACTICAS-detalle.md#ar-04) | Detección de hardware escrita tres veces | M | Parcial |
 
 ## P2
 
@@ -53,9 +49,7 @@ dependencias directas se usan.
 | [`AR-06`](PRACTICAS-detalle.md#ar-06) | `CoreError` por módulo y no por causa; 161 `source: None` | L | Parcial |
 | [`AR-17`](PRACTICAS-detalle.md#ar-17) | Textos de presentación generados en core | M | Pendiente |
 | [`AR-18`](PRACTICAS-detalle.md#ar-18) | Tres versiones del crate `windows` y dependencias duplicadas | M | Parcial |
-| [`CL-07`](PRACTICAS-detalle.md#cl-07) | Reporte de progreso por pasos copiado en core | S | Parcial |
 | [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
-| [`CL-14`](PRACTICAS-detalle.md#cl-14) | Dos `too_many_arguments` que tapan un diseño mejorable | S | Pendiente |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
 | [`IN-03`](PRACTICAS-detalle.md#in-03) | El estado guarda mensajes ya traducidos | M | Pendiente |
 
@@ -64,18 +58,15 @@ dependencias directas se usan.
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
 | [`AR-19`](PRACTICAS-detalle.md#ar-19) | Tres estilos de API en core | M | Pendiente |
-| [`CL-15`](PRACTICAS-detalle.md#cl-15) | Rutas tratadas como `String` con pérdida | S | Pendiente |
-| [`CL-16`](PRACTICAS-detalle.md#cl-16) | Detalles sueltos | S | Parcial |
 | [`HE-11`](PRACTICAS-detalle.md#he-11) | rustfmt no formatea `rsx!` | S | Pendiente |
-| [`HE-12`](PRACTICAS-detalle.md#he-12) | Metadatos de `Cargo.toml` y features de `windows` que podrían sobrar | S | Parcial |
 
 ## Siguiente
 
-1. Sin cambiar comportamiento y de a un archivo: los `source: None` que quedan (`AR-06`), comentarios `SAFETY` en los bloques
-   antiguos (`CL-01`), `LocalMem` y `SecurityDescriptor::from_sddl` (`CL-02`) y los estilos inline que quedan (`TE-02`).
+1. Unir `tmp/windows-061` (`AR-18`) a esta rama cuando el autor lo apruebe.
 2. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
-3. `windows` 0.58 → 0.61 (`AR-18`), que cambia la API: en su propia rama.
-4. Decisiones del autor: `AR-17` (con `UI-11`), `AR-19` y si los avisos guardan eventos en vez de texto (`IN-03`).
+3. De a un archivo y sin cambiar comportamiento: los `source: None` que quedan (`AR-06`), los estilos inline (`TE-02`), el
+   catálogo de textos (`IN-02`) y el orden interno (`OR-04`).
+4. Decisiones del autor: `AR-17` (con `UI-11`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.
 
 ## Lo que hay que conservar
 
