@@ -28,6 +28,7 @@ cabeceras que repitan la ruta. Un comentario explica la regla y cita el ID entre
 
 - `cargo build` / `cargo build --release`. `cargo run` necesita una terminal elevada (sin elevar falla con el error 740).
 - `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test` (todo esto lo corre también el CI).
+- `tests/indicadores.rs` (HE-14) falla si suben `style:`, `if en` o `source: None`: si un cambio baja uno, baja su techo ahí.
 - Recorrido de sistema como administrador, solo en una VM desechable:
   `cargo test --release --test vm_sistema -- --ignored --nocapture --test-threads=1`.
 - Hook opcional de pre-commit: `git config core.hooksPath .githooks`.

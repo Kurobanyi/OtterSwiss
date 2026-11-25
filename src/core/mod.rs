@@ -2,6 +2,9 @@
 //! `error` → `platform` → `security` → funciones (`optimize`, `debloat`, `uninstall`, `archive`, `store`,
 //! `cleaner`, `dns`…). Una capa no importa de las que están encima.
 
+// HE-14: ninguna función de core pasa del techo de `clippy.toml` (hoy la mayor tiene 176 líneas; CL-05 las va partiendo).
+#![warn(clippy::too_many_lines)]
+
 pub mod error;
 pub mod platform;
 pub mod security;

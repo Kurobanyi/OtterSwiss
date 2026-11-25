@@ -1195,9 +1195,10 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="he-14"></a>
 ### HE-14 · Nada frena las regresiones de una fusión
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: el `#[allow]` de `CL-19` sigue; nada impidió que `style:` (50 → 95), `if en` (206 → 249) y `source: None` (96 → 142)
   subieran ni que se borraran comentarios con ID.
 - **Dónde**: `src/core/mod.rs:15-19`; CI (`.github/workflows/ci.yml`).
 - **Propuesta**: script en `.agents/scripts/` (o test) que cuente `style:`, `if en` y `source: None` y falle si suben del umbral;
   `clippy::too_many_lines` en `warn` para core.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `tests/indicadores.rs` (corre en `cargo test` y en el CI) cuenta en `src/` `style:` (techo 47), `if en` (217) y `source: None` (118) y falla si alguno sube; otro test falla si algún archivo vuelve a eximirse de `undocumented_unsafe_blocks` (`CL-19`). `clippy::too_many_lines` queda en `warn` solo para core, con techo 180 en `clippy.toml` (la mayor hoy tiene 176; `CL-05` las va partiendo). No se cubre el borrado de comentarios con ID: no hay forma mecánica fiable de distinguirlo de una limpieza. Verificado: con un `style:` de más, con la exención agregada y con el techo en 170, cada freno falla; sin eso, `cargo test` (70 + 2), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.

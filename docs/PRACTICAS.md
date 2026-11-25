@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **84 hechas, 11 parciales y 19 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **85 hechas, 11 parciales y 18 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -66,7 +66,6 @@ dependencias directas se usan.
 | [`TE-26`](PRACTICAS-detalle.md#te-26) | `px` y colores derivados escritos en Rust | S | Pendiente |
 | [`TE-29`](PRACTICAS-detalle.md#te-29) | Temas nuevos: texto secundario igual al principal, peligro igual al acento y elevación invertida | S | Pendiente |
 | [`IN-09`](PRACTICAS-detalle.md#in-09) | Textos en un solo idioma o mezclados | S | Pendiente |
-| [`HE-14`](PRACTICAS-detalle.md#he-14) | Nada frena las regresiones de una fusión | S | Pendiente |
 
 ## P3
 
@@ -81,10 +80,9 @@ dependencias directas se usan.
 ## Siguiente
 
 1. Código de v4.2.0: `CL-22` (tests de `strip_html_tags`, `url_encode` y el JSON de Intel) y el resto de `AR-24` (tabla PCI).
-2. El freno a las regresiones de una fusión: `HE-14`.
-3. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
-4. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-5. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.
+2. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
+3. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
+4. Decisiones del autor: `AR-17` (con `UI-11` y `AR-26`), `AR-19`, `IN-03` y si instalar `dioxus-cli` para `HE-11`.
 
 ## Lo que hay que conservar
 

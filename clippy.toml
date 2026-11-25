@@ -1,3 +1,5 @@
 # HE-04: unwrap y expect se permiten en tests (en producción, `deny` en Cargo.toml).
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+# HE-14: techo de `too_many_lines`, que solo está activo en `core` (src/core/mod.rs). Se baja cuando CL-05 parta las largas.
+too-many-lines-threshold = 180
