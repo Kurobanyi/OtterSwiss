@@ -972,7 +972,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-30"></a>
 ### SEC-30 · El ZIP de drivers Intel se ejecuta e instala sin firma ni hash
-- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (camino leído) · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (camino leído) · **Estado**: Resuelto
 - **Qué pasa**: la rama ZIP de `install_vendor_update` baja el archivo con el cliente propio (`wininet_get_bytes`), sin
   `secure_download_and_verify`, sin `allowed_hosts` (solo `contains("downloadmirror.intel.com")`, una subcadena) y sin hash ni firma.
   Lo extrae con `zip::ZipArchive::extract` (sin el saneo del archivador, ver SEC-26) y ejecuta `setup.exe`/`installer.exe`/`igxpin.exe`
@@ -981,10 +981,11 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers.rs:1589-1636`, `1841-1849`, `470-571`.
 - **Propuesta**: `StagedDownload` con `DownloadPolicy` de hosts exactos; extraer con `ArchiveManager`; ejecutar solo tras
   `verify_authenticode_on_handle` con CN de Intel y dentro de `run_in_job`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `install_vendor_update` toma hosts y firmante de `vendor_policy` (fijos por fabricante, no de la red), valida el host exacto de la URL y del destino final, baja el ZIP con `security::http`, lo extrae con `ArchiveManager` y solo ejecuta un instalador con firma de Intel, dentro de un Job y esperando a que termine. El `.exe` de NVIDIA va por `StagedDownload` + `reopen_verified_for_exec` + `run_in_job`. La URL de Intel del JSON ya no se acepta por subcadena. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="sec-31"></a>
 ### SEC-31 · `winget.exe` sale de una carpeta del usuario y, si falla el token del Explorador, corre elevado
-- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; derivado que el fallo del token se provoque · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado el camino; derivado que el fallo del token se provoque · **Estado**: Resuelto
 - **Qué pasa**: `resolve_winget_binary` prueba `%LocalAppData%\Microsoft\WindowsApps\winget.exe` (escribible por el usuario), luego
   System32 y al final `winget.exe` relativo. `duplicate_desktop_shell_primary_token().ok()` convierte el fallo en `None` y `run_in_job`
   lanza el binario con el token de administrador. Un malware del mismo usuario planta su `winget.exe`, mata `explorer.exe` y espera a
@@ -992,10 +993,11 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/store/app_store.rs:1444-1458`, `1597-1610`.
 - **Propuesta**: exigir el token (si falla, abortar); resolver winget solo desde el paquete firmado `Microsoft.DesktopAppInstaller`
   bajo `Program Files\WindowsApps` con Authenticode de Microsoft; quitar el último recurso relativo.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): winget solo corre con el token del usuario dueño del escritorio (si no se obtiene, se aborta) y se resuelve desde el perfil de ese token; sin System32 ni nombre relativo. Con su propio token, reemplazar el alias no da privilegios. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="sec-32"></a>
 ### SEC-32 · Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN
-- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (comportamiento documentado de Windows, no probado) · **Estado**: Pendiente
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (comportamiento documentado de Windows, no probado) · **Estado**: Parcial
 - **Qué pasa**: el proceso elevado comparte HKCU con el usuario. Un malware del usuario fija un proxy en `Internet Settings` y planta una
   raíz en `HKCU\Software\Microsoft\SystemCertificates\Root`. WinInet (`INTERNET_OPEN_TYPE_PRECONFIG`) y WinVerifyTrust confían en el
   almacén del usuario: el atacante sirve los JSON/HTML/ZIP de drivers (SEC-30, SEC-33) y firma un `.exe` con CN «NVIDIA Corporation» o
@@ -1004,6 +1006,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers.rs:475`, `578`; `src/core/security/http.rs:49`; `src/core/security/authenticode.rs:57-70`, `150`.
 - **Propuesta**: `INTERNET_OPEN_TYPE_DIRECT` o proxy leído de HKLM; fijar thumbprint o raíz además del CN, o validar la cadena con un
   motor que use solo las raíces de LocalMachine.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): la firma de todo ejecutable se vuelve a encadenar con el motor de la máquina (`HCCE_LOCAL_MACHINE`): una raíz agregada en HKCU ya no sirve para falsificar un CN (test con `msedge.exe`). Queda el transporte: WinInet sigue usando el proxy del usuario, así que los datos (JSON, HTML del Catálogo) se pueden manipular; solo deciden URLs que pasan por listas de hosts y firma, salvo el CAB del Catálogo (`SEC-33`). Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="sec-33"></a>
 ### SEC-33 · El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL
@@ -1018,7 +1021,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-34"></a>
 ### SEC-34 · `DriverCache` no se borra nunca y puede bloquear la carpeta de datos
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (crecimiento); probable (bloqueo) · **Estado**: Pendiente
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado (crecimiento); probable (bloqueo) · **Estado**: Parcial
 - **Qué pasa**: el `.cab` y `extracted/` del Catálogo, el `.exe` de NVIDIA (~700 MB por versión) y `ext_<nonce>` del ZIP de Intel quedan
   en `ProgramData\OtterSwiss\DriverCache` para siempre (solo se borra el `.zip` en una rama). Además `verify_tree_owned_by_admins`
   falla por profundidad mayor que 8: un paquete con muchos niveles hace fallar todo `ensure_admin_only_data_dir()` posterior, y con
@@ -1026,6 +1029,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Dónde**: `src/core/drivers.rs:1325-1350`, `1602-1651`, `1664-1678`; `src/core/security/data_dir.rs:48`; `src/core/security/acl.rs:147-155`.
 - **Propuesta**: extraer en un staging que se borre al soltarse (como `StagedDownload`) o excluir `DriverCache` del recorrido. Test: la
   carpeta queda vacía tras instalar.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los paquetes de fabricante se bajan y extraen en una carpeta que se borra al terminar (`VendorScratch`) y el `.exe` va por `StagedDownload`, que también se borra. Falta el CAB del Catálogo y el límite de profundidad de `verify_tree_owned_by_admins`. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="sec-35"></a>
 ### SEC-35 · Entradas versionadas de la tienda sin SHA-256 y firmantes sin confirmar
@@ -1082,26 +1086,29 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-15"></a>
 ### ERR-15 · Winget toma como éxito «no se encontró la app»
-- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (tabla de códigos de winget) · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (tabla de códigos de winget) · **Estado**: Resuelto
 - **Qué pasa**: se acepta `0x8A150014` (`APPINSTALLER_CLI_ERROR_NO_APPLICATIONS_FOUND`): un ID inexistente o la fuente msstore caída
   se informan como «Listo». Falta `0x8A150061` (ya instalada). El timeout de 420 s no es `INSTALLER_TIMEOUT`.
 - **Dónde**: `src/core/store/app_store.rs:1612`.
 - **Propuesta**: constantes con nombre, quitar `0x8A150014` y test de la función que clasifica el código.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `winget_exit_is_installed` con constantes con nombre: 0, «ya al día» y «ya instalada»; «no encontrada» es fallo (test `codigos_de_winget`). Timeout como `WINGET_TIMEOUT`. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="err-16"></a>
 ### ERR-16 · LibreWolf, BleachBit y VSCodium no se instalan nunca
-- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: confirmado · **Estado**: Resuelto
 - **Qué pasa**: no tienen SHA-256 ni firmante; `secure_download_and_verify` rechaza la política («Política de descarga inválida»).
 - **Dónde**: `src/core/store/app_store.rs` (`librewolf`, `bleachbit`, `vscodium`); `src/core/security/download.rs:55-60`.
 - **Propuesta**: fijar SHA-256 o CN; test que recorra `CURATED_CATALOG` y exija verificación en todo paquete directo.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): SHA-256 oficiales para VSCodium (`.sha256` del release) y BleachBit (`bleachbit-4.6.2-sha256sum.txt`). LibreWolf sale del catálogo: su URL apunta al registro de la AppImage de Linux y no hay hash publicado del instalador. Test `catalogo_verificable` exige SHA-256 o firmante en todo paquete directo. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="err-17"></a>
 ### ERR-17 · Cinco apps de GitHub fallan por la lista de hosts
-- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Resuelto
 - **Qué pasa**: Moonlight, ShareX, PowerToys, Rufus y VSCodium solo permiten `github.com` y `objects.githubusercontent.com`; GitHub
   redirige los assets a `release-assets.githubusercontent.com`, que las demás entradas y el actualizador sí tienen.
 - **Dónde**: `allowed_hosts` de esas entradas en `src/core/store/app_store.rs`.
 - **Propuesta**: constante compartida `GITHUB_DOWNLOAD_HOSTS` y test que la exija.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `GITHUB_DOWNLOAD_HOSTS` compartida por las 12 entradas de GitHub; el test exige esa lista para toda URL de GitHub y que el host de cada URL esté permitido. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="err-18"></a>
 ### ERR-18 · El informe de instalación de WUA inventa los contadores
@@ -1130,11 +1137,12 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-21"></a>
 ### ERR-21 · `pnputil` recibe un comodín que no admite
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Pendiente
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: probable · **Estado**: Resuelto
 - **Qué pasa**: `pnputil /add-driver "<dir>\**\*.inf" /subdirs`: `**` no es un comodín de pnputil, así que falla siempre después de
   bajar y extraer hasta 900 MB.
 - **Dónde**: `src/core/drivers.rs:1626-1636`.
 - **Propuesta**: `"<dir>\*.inf" /subdirs`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `pnputil /add-driver <dir>\*.inf /subdirs /install` con `run_captured` y timeout. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 
 <a id="err-22"></a>
 ### ERR-22 · CAB y ZIP de drivers enteros en RAM; se bajan `.msu` y `.exe` para rechazarlos después
@@ -1213,9 +1221,11 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="tst-02"></a>
 ### TST-02 · El código nuevo de drivers, tienda y sensores no tiene tests
-- **Afecta**: Desarrollador · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Pendiente
+- **Afecta**: Desarrollador · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `short_hw_id`, `extract_ven_dev`, `is_version_newer`, `friendly_gpu_version`, el parser HTML del Catálogo,
   `collect_intel_matches` e `is_cpu_sensor_name` no tienen ni un test, ni hay un test invariante del catálogo (verificación, hosts de
   GitHub, IDs únicos) que habría atrapado ERR-16 y ERR-17.
 - **Dónde**: `src/core/drivers.rs`; `src/core/store/app_store.rs:1711-1746`; `src/core/hardware/sensors/wmi.rs`.
 - **Propuesta**: ver `CL-22` de PRACTICAS.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de los códigos de winget, de las invariantes del catálogo y de la cadena Authenticode. Faltan los parsers de drivers y el sensor. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
+
