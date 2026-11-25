@@ -24,6 +24,16 @@ use crate::core::platform::safe_fs::{
 use crate::core::security::download::StagedDownload;
 use crate::core::security::download::{DownloadPolicy, reopen_verified_for_exec};
 
+/// Winget descarga de la Store antes de instalar: más margen que un instalador local.
+const WINGET_TIMEOUT: Duration = Duration::from_secs(420);
+
+/// ERR-17: hosts por los que pasa una descarga de GitHub Releases (los assets redirigen a `release-assets`).
+const GITHUB_DOWNLOAD_HOSTS: &[&str] = &[
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+];
+
 /// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se
 /// piden en inglés (Firefox `lang=en-US`, Battle.net `--lang=enUS`).
 fn localize_catalog_text(text: &str, spanish: bool) -> String {
@@ -297,11 +307,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Open-source game library manager",
         version: "10.65",
         url: "https://github.com/JosefNemec/Playnite/releases/download/10.65/Playnite1065.exe",
-        allowed_hosts: &[
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        ],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: Some("99959aabf2feae11c71b8a4dbd4286f01071ed2a865b02f3c069974acf8244f1"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
@@ -325,7 +331,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Open-source low-latency game streaming client",
         version: "6.1.0",
         url: "https://github.com/moonlight-stream/moonlight-qt/releases/download/v6.1.0/MoonlightSetup-6.1.0.exe",
-        allowed_hosts: &["github.com", "objects.githubusercontent.com"],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: None,
         signer_cn: Some("Cameron Gutman"),
         cert_thumbprint_sha1: None,
@@ -426,11 +432,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Open-source recording & streaming",
         version: "33.0.3",
         url: "https://github.com/obsproject/obs-studio/releases/download/33.0.3/OBS-Studio-33.0.3-Windows-x64-Installer.exe",
-        allowed_hosts: &[
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        ],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: Some("700be33c01468c2a1e43820bbcc49ba914f570f0f82250022bb680fba43b2a67"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
@@ -593,30 +595,6 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         max_bytes: 140 * 1024 * 1024,
         uninstall_display_prefix: "Brave",
     },
-    CuratedPackage {
-        id: "librewolf",
-        name: "LibreWolf",
-        category: AppCategory::Browsers,
-        icon: AppIcon::Browser,
-        copyright_holder: "LibreWolf Community",
-        license: "MPL-2.0",
-        official_site: "https://librewolf.net/",
-        description_es: "Versión independiente de Firefox endurecida contra telemetría",
-        description_en: "Custom independent version of Firefox focused on privacy",
-        version: "135.0",
-        url: "https://gitlab.com/api/v4/projects/24386000/packages/generic/librewolf/135.0-1/librewolf-135.0-1-windows-x86_64-setup.exe",
-        allowed_hosts: &["gitlab.com"],
-        expected_sha256: None,
-        signer_cn: None,
-        cert_thumbprint_sha1: None,
-        is_msi: false,
-        is_winget: false,
-        winget_id: None,
-        run_unelevated: false,
-        silent_args: "/S",
-        max_bytes: 110 * 1024 * 1024,
-        uninstall_display_prefix: "LibreWolf",
-    },
     // --- UTILITIES & SYSTEM TOOLS ---
     CuratedPackage {
         id: "7zip",
@@ -630,11 +608,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "High-ratio file archiver",
         version: "26.06",
         url: "https://github.com/ip7z/7zip/releases/download/26.06/7z2606-x64.exe",
-        allowed_hosts: &[
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        ],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: Some("9b697f65ecc2d9b0152f5ee96d72dde522a7827690349d9307935dacf40f42ec"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
@@ -706,7 +680,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Screen capture, file sharing and productivity tool",
         version: "17.0.0",
         url: "https://github.com/ShareX/ShareX/releases/download/v17.0.0/ShareX-17.0.0-setup.exe",
-        allowed_hosts: &["github.com", "objects.githubusercontent.com"],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: None,
         signer_cn: Some("ShareX Team|Jaex"),
         cert_thumbprint_sha1: None,
@@ -730,7 +704,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "System utilities for Windows power users",
         version: "0.89.0",
         url: "https://github.com/microsoft/PowerToys/releases/download/v0.89.0/PowerToysSetup-0.89.0-x64.exe",
-        allowed_hosts: &["github.com", "objects.githubusercontent.com"],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: None,
         signer_cn: Some("Microsoft Corporation"),
         cert_thumbprint_sha1: None,
@@ -754,7 +728,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Create bootable USB flash drives reliably",
         version: "4.6",
         url: "https://github.com/pbatard/rufus/releases/download/v4.6/rufus-4.6.exe",
-        allowed_hosts: &["github.com", "objects.githubusercontent.com"],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: None,
         signer_cn: Some("Akeo Consulting"),
         cert_thumbprint_sha1: None,
@@ -803,7 +777,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         version: "4.6.2",
         url: "https://download.bleachbit.org/BleachBit-4.6.2-setup.exe",
         allowed_hosts: &["download.bleachbit.org", "bleachbit.org"],
-        expected_sha256: None,
+        expected_sha256: Some("43bc44163015e62c32a344f354d5d16ce3e3d45d402e9d52b79079cc7d9b4d05"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
@@ -855,8 +829,8 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Community-driven, freely-licensed binary distribution of VS Code without telemetry",
         version: "1.97.2.25045",
         url: "https://github.com/VSCodium/vscodium/releases/download/1.97.2.25045/VSCodiumSetup-x64-1.97.2.25045.exe",
-        allowed_hosts: &["github.com", "objects.githubusercontent.com"],
-        expected_sha256: None,
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
+        expected_sha256: Some("4c4d0ab79111c2a2611e07d368b8b8236fa9ccd064abb3ccd2a90730b16242ed"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
         is_msi: false,
@@ -903,11 +877,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Distributed version control",
         version: "2.56.1",
         url: "https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/Git-2.56.1-64-bit.exe",
-        allowed_hosts: &[
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        ],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: Some("c330c72e10b408cc39994bfefdb63542b0d93d21699325c3e0bd874af8a5a559"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
@@ -931,11 +901,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Fast source & text editor",
         version: "8.9.9.1",
         url: "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.9.1/npp.8.9.9.1.Installer.x64.exe",
-        allowed_hosts: &[
-            "github.com",
-            "objects.githubusercontent.com",
-            "release-assets.githubusercontent.com",
-        ],
+        allowed_hosts: GITHUB_DOWNLOAD_HOSTS,
         expected_sha256: Some("ce3267f5c4e7e42f847e00f4b20234da6150647203033cdde34a69593efc3152"),
         signer_cn: None,
         cert_thumbprint_sha1: None,
@@ -1441,20 +1407,36 @@ fn check_spotify_presence_on_disk() -> bool {
         .is_ok()
 }
 
-fn resolve_winget_binary() -> CoreResult<PathBuf> {
-    if let Some(local) = crate::core::platform::folders::local_app_data_dir() {
-        let candidate = local.join(r"Microsoft\WindowsApps\winget.exe");
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
+/// `winget install` terminó sin cambios porque la app ya está al día (`APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE`).
+const WINGET_UPDATE_NOT_APPLICABLE: u32 = 0x8A15_002B;
+/// La app ya estaba instalada (`APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED`).
+const WINGET_PACKAGE_ALREADY_INSTALLED: u32 = 0x8A15_0061;
+
+/// ERR-15: códigos de `winget install` que dejan la app instalada. «No se encontró la app» (`0x8A150014`) es un fallo: un ID
+/// equivocado o la fuente msstore caída no pueden informarse como «Listo».
+fn winget_exit_is_installed(code: u32) -> bool {
+    matches!(
+        code,
+        0 | WINGET_UPDATE_NOT_APPLICABLE | WINGET_PACKAGE_ALREADY_INSTALLED
+    )
+}
+
+/// SEC-31: el alias `winget.exe` del perfil del usuario dueño del escritorio. Esa carpeta es del usuario, así que el binario
+/// solo se ejecuta con su propio token (nunca elevado): quien pueda reemplazarlo no gana nada que no tuviera.
+fn resolve_user_winget(user_token: &SafeHandle) -> CoreResult<PathBuf> {
+    let candidate =
+        user_profile_dir(user_token)?.join(r"AppData\Local\Microsoft\WindowsApps\winget.exe");
+    // El alias es un reparse point de tipo AppExecLink: no se sigue, basta con que exista.
+    if std::fs::symlink_metadata(&candidate).is_ok() {
+        Ok(candidate)
+    } else {
+        Err(CoreError::SystemTool {
+            message:
+                "winget no está instalado para este usuario (App Installer de Microsoft Store)"
+                    .into(),
+            source: None,
+        })
     }
-    if let Ok(p) = system32_dir() {
-        let candidate = p.join("winget.exe");
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-    Ok(PathBuf::from("winget.exe"))
 }
 
 fn display_name_matches(display_name: &str, prefix: &str) -> bool {
@@ -1589,27 +1571,27 @@ impl AppStoreManager {
             let wid = pkg.winget_id.ok_or_else(|| {
                 CoreError::Validation("Paquete UWP sin identificador Winget/Store".into())
             })?;
-            let winget_exe = resolve_winget_binary()?;
+            // SEC-31: sin el token del usuario no se sigue; winget nunca corre elevado.
+            let user_token = duplicate_desktop_shell_primary_token()?;
+            let winget_exe = resolve_user_winget(&user_token)?;
+            let working_dir = system32_dir()?;
             let cmd = format!(
                 "install --id {} --source msstore --accept-package-agreements --accept-source-agreements --disable-interactivity --silent",
                 wid
             );
-            let user_token = duplicate_desktop_shell_primary_token().ok();
 
             let exit = run_in_job(
                 &Launch {
                     application: &winget_exe,
                     command_line: format!("\"{}\" {}", winget_exe.display(), cmd),
-                    working_dir: winget_exe
-                        .parent()
-                        .unwrap_or(Path::new(r"C:\Windows\System32")),
-                    user_token: user_token.as_ref(),
+                    working_dir: &working_dir,
+                    user_token: Some(&user_token),
                 },
-                Duration::from_secs(420),
+                WINGET_TIMEOUT,
                 Some(cancel),
             )?;
 
-            if !exit.is_success() && exit.exit_code != 0x8A15002B && exit.exit_code != 0x8A150014 {
+            if !winget_exit_is_installed(exit.exit_code) {
                 return Err(CoreError::SystemTool {
                     message: format!(
                         "Winget falló reinstalando '{}' (código {})",
@@ -1711,6 +1693,62 @@ impl AppStoreManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codigos_de_winget() {
+        assert!(winget_exit_is_installed(0));
+        assert!(winget_exit_is_installed(WINGET_UPDATE_NOT_APPLICABLE));
+        assert!(winget_exit_is_installed(WINGET_PACKAGE_ALREADY_INSTALLED));
+        // «No se encontró la app» no es éxito (ERR-15).
+        assert!(!winget_exit_is_installed(0x8A15_0014));
+        assert!(!winget_exit_is_installed(1));
+    }
+
+    /// ERR-16, ERR-17, TST-02: invariantes del catálogo que el compilador no ve.
+    #[test]
+    fn catalogo_verificable() {
+        let mut ids = HashSet::new();
+        for p in CURATED_CATALOG {
+            assert!(ids.insert(p.id), "id repetido: {}", p.id);
+            if p.is_winget {
+                assert!(
+                    p.winget_id.is_some_and(|w| !w.is_empty()),
+                    "{} sin winget_id",
+                    p.id
+                );
+                continue;
+            }
+            assert!(p.url.starts_with("https://"), "{}: URL sin HTTPS", p.id);
+            assert!(
+                p.expected_sha256.is_some() || p.signer_cn.is_some(),
+                "{}: sin SHA-256 ni firmante nunca se instala",
+                p.id
+            );
+            if let Some(sha) = p.expected_sha256 {
+                assert!(
+                    sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+                    "{}: SHA-256 inválido",
+                    p.id
+                );
+            }
+            if p.url.starts_with("https://github.com/") {
+                assert_eq!(
+                    p.allowed_hosts, GITHUB_DOWNLOAD_HOSTS,
+                    "{}: hosts de GitHub incompletos",
+                    p.id
+                );
+            }
+            let host = p.url["https://".len()..]
+                .split(['/', '?'])
+                .next()
+                .unwrap_or_default();
+            assert!(
+                p.allowed_hosts.contains(&host),
+                "{}: el host de la URL no está permitido",
+                p.id
+            );
+        }
+    }
 
     #[test]
     fn nombre_del_registro_coincide_solo_con_el_paquete() {
