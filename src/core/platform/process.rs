@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 //
 // Lanzamiento de procesos externos (instaladores, desinstaladores, runtimes) desde el proceso elevado.
 //
@@ -40,6 +41,7 @@ use crate::core::platform::wide::to_wide_null;
 pub fn system32_dir() -> CoreResult<PathBuf> {
     let mut buf = [0u16; 260];
     let len =
+        // SAFETY: el búfer es nuestro y la API escribe como mucho su longitud.
         unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
             as usize;
     if len == 0 || len >= buf.len() {
@@ -54,6 +56,7 @@ pub fn system32_dir() -> CoreResult<PathBuf> {
 /// Token primario del Explorador de escritorio, para ejecutar algo sin elevación como el usuario que
 /// tiene la sesión abierta.
 pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
+    // SAFETY: función sin parámetros; devuelve un HWND o nulo.
     let shell_hwnd = unsafe { GetShellWindow() };
     if shell_hwnd.0.is_null() {
         return Err(CoreError::SystemTool {
@@ -63,6 +66,7 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
         });
     }
     let mut shell_pid = 0u32;
+    // SAFETY: `hwnd` viene de GetShellWindow y `pid` es una variable local válida.
     unsafe {
         GetWindowThreadProcessId(shell_hwnd, Some(&mut shell_pid));
     }
@@ -73,18 +77,21 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
         });
     }
 
+    // SAFETY: solo se pide acceso de consulta; el handle devuelto pasa a SafeHandle.
     let proc_raw = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, shell_pid) }
         .map_err(CoreError::sys("OpenProcess(explorer.exe) falló: "))?;
     let proc_h = SafeHandle::new(proc_raw)
         .ok_or_else(|| CoreError::invalid_handle("Handle de explorer.exe inválido"))?;
 
     let mut tok_raw = HANDLE::default();
+    // SAFETY: el handle de proceso es válido y el token devuelto pasa a SafeHandle.
     unsafe { OpenProcessToken(proc_h.raw(), TOKEN_DUPLICATE | TOKEN_QUERY, &mut tok_raw) }
         .map_err(CoreError::sys("OpenProcessToken(explorer.exe) falló: "))?;
     let tok_h = SafeHandle::new(tok_raw)
         .ok_or_else(|| CoreError::invalid_handle("Token de explorer.exe inválido"))?;
 
     let mut primary_raw = HANDLE::default();
+    // SAFETY: el token de origen es válido; el duplicado pasa a SafeHandle.
     unsafe {
         DuplicateTokenEx(
             tok_h.raw(),
@@ -104,6 +111,7 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
 /// Carpeta de perfil del usuario dueño de `token` (p. ej. `C:\Users\Ana`).
 pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
     let mut len = 0u32;
+    // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
     let _ = unsafe { GetUserProfileDirectoryW(token.raw(), PWSTR::null(), &mut len) };
     if len == 0 || len > 4096 {
         return Err(CoreError::SystemTool {
@@ -112,6 +120,7 @@ pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
         });
     }
     let mut buf = vec![0u16; len as usize];
+    // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
     unsafe { GetUserProfileDirectoryW(token.raw(), PWSTR(buf.as_mut_ptr()), &mut len) }.map_err(
         |e| CoreError::SystemTool {
             message: format!("GetUserProfileDirectoryW falló: {}", e),
@@ -126,6 +135,7 @@ struct EnvBlockGuard(*mut std::ffi::c_void);
 impl Drop for EnvBlockGuard {
     fn drop(&mut self) {
         if !self.0.is_null() {
+            // SAFETY: el bloque lo creó CreateEnvironmentBlock y solo se destruye aquí, una vez.
             unsafe {
                 let _ = DestroyEnvironmentBlock(self.0);
             }
@@ -182,6 +192,7 @@ impl ProcessExit {
 
 fn active_processes(job: &JobObject) -> CoreResult<u32> {
     let mut info = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+    // SAFETY: el Job es válido y la estructura de salida tiene el tamaño que se informa.
     unsafe {
         QueryInformationJobObject(
             job.raw(),
@@ -214,9 +225,11 @@ pub fn run_in_job(
 
     if let Some(token) = launch.user_token {
         let mut env_block: *mut std::ffi::c_void = std::ptr::null_mut();
+        // SAFETY: el token es válido; el bloque pasa al guardián que lo destruye.
         unsafe { CreateEnvironmentBlock(&mut env_block, token.raw(), false) }
             .map_err(CoreError::sys("CreateEnvironmentBlock falló: "))?;
         let _env = EnvBlockGuard(env_block);
+        // SAFETY: cadenas terminadas en NUL que viven durante la llamada; el proceso nace suspendido y los handles devueltos pasan a SafeHandle.
         unsafe {
             CreateProcessWithTokenW(
                 token.raw(),
@@ -239,6 +252,7 @@ pub fn run_in_job(
             source: Some(Box::new(e)),
         })?;
     } else {
+        // SAFETY: cadenas terminadas en NUL que viven durante la llamada; el proceso nace suspendido y los handles devueltos pasan a SafeHandle.
         unsafe {
             CreateProcessW(
                 PCWSTR(app_w.as_ptr()),
@@ -269,11 +283,13 @@ pub fn run_in_job(
         .ok_or_else(|| CoreError::invalid_handle("Handle de hilo inválido"))?;
 
     if let Err(e) = job.assign(process.raw()) {
+        // SAFETY: el handle del proceso es válido; se termina porque no se pudo meter en el Job.
         unsafe {
             let _ = TerminateProcess(process.raw(), 1);
         }
         return Err(e);
     }
+    // SAFETY: el hilo principal es válido y el proceso ya está dentro del Job.
     if unsafe { ResumeThread(thread.raw()) } == u32::MAX {
         job.terminate_all(1);
         return Err(CoreError::from_win32("ResumeThread falló"));
@@ -300,9 +316,11 @@ pub fn run_in_job(
         }
 
         if exit_code.is_none() {
+            // SAFETY: el handle es válido mientras vive su dueño.
             let w = unsafe { WaitForSingleObject(process.raw(), 250) };
             if w == WAIT_OBJECT_0 {
                 let mut code = 0u32;
+                // SAFETY: el proceso es válido y `code` es una variable local.
                 if let Err(e) = unsafe { GetExitCodeProcess(process.raw(), &mut code) } {
                     job.terminate_all(1);
                     return Err(CoreError::SystemTool {

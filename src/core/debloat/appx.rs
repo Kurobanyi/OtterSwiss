@@ -1,5 +1,7 @@
 //! Apps Appx instaladas y aprovisionadas, consultadas con PowerShell.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -30,6 +32,7 @@ struct PsAppxEntry {
 pub(super) fn get_powershell_path() -> CoreResult<PathBuf> {
     let mut buf = [0u16; 260];
     let len =
+        // SAFETY: el búfer es nuestro y la API escribe como mucho su longitud.
         unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
             as usize;
     if len == 0 || len >= buf.len() {

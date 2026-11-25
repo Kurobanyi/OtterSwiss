@@ -1,5 +1,7 @@
 //! Handles de Windows con cierre automático (RAII): archivos y procesos, DLL, servicios, Job Objects y COM.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::path::Path;
 use std::ptr;
 
@@ -39,6 +41,7 @@ impl SafeHandle {
 impl Drop for SafeHandle {
     fn drop(&mut self) {
         if !self.0.is_invalid() && !self.0.0.is_null() {
+            // SAFETY: el handle es propio y se cierra una sola vez (luego queda inválido).
             unsafe {
                 let _ = CloseHandle(self.0);
             }
@@ -53,6 +56,7 @@ impl SafeLibrary {
     pub fn load_system(dll_name: &str) -> CoreResult<Self> {
         let wide = to_wide_null(dll_name);
         let module =
+            // SAFETY: la ruta termina en NUL; la búsqueda de dependencias se limita a System32 o a la carpeta de la DLL.
             unsafe { LoadLibraryExW(PCWSTR(wide.as_ptr()), None, LOAD_LIBRARY_SEARCH_SYSTEM32) }
                 .map_err(|e| CoreError::SystemTool {
                     message: format!("No se pudo cargar DLL del sistema '{}': {}", dll_name, e),
@@ -64,6 +68,7 @@ impl SafeLibrary {
     pub fn load_from_verified_path(path: &Path) -> CoreResult<Self> {
         let wide = to_wide_null(path);
         // Las dependencias de la DLL se buscan solo junto a ella y en System32, nunca en el directorio actual.
+        // SAFETY: la ruta termina en NUL; la búsqueda de dependencias se limita a System32 o a la carpeta de la DLL.
         let module = unsafe {
             LoadLibraryExW(
                 PCWSTR(wide.as_ptr()),
@@ -91,6 +96,7 @@ impl SafeLibrary {
 impl Drop for SafeLibrary {
     fn drop(&mut self) {
         if !self.0.0.is_null() {
+            // SAFETY: el módulo lo cargó este SafeLibrary y se libera una sola vez.
             unsafe {
                 let _ = FreeLibrary(self.0);
             }
@@ -117,6 +123,7 @@ impl ScHandle {
 impl Drop for ScHandle {
     fn drop(&mut self) {
         if !self.0.0.is_null() {
+            // SAFETY: el handle del SCM o del servicio es propio y se cierra una sola vez.
             unsafe {
                 let _ = CloseServiceHandle(self.0);
             }
@@ -128,6 +135,7 @@ pub struct JobObject(SafeHandle);
 
 impl JobObject {
     pub fn new_kill_on_close() -> CoreResult<Self> {
+        // SAFETY: sin nombre ni atributos; el handle devuelto pasa a SafeHandle.
         let raw = unsafe { CreateJobObjectW(None, PCWSTR::null()) }
             .map_err(CoreError::sys("Error creando Job Object: "))?;
         let handle = SafeHandle::new(raw).ok_or_else(|| {
@@ -137,6 +145,7 @@ impl JobObject {
         let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
 
+        // SAFETY: el Job es válido y la estructura tiene el tamaño que se informa.
         unsafe {
             SetInformationJobObject(
                 handle.raw(),
@@ -153,6 +162,7 @@ impl JobObject {
     }
 
     pub fn assign(&self, process: HANDLE) -> CoreResult<()> {
+        // SAFETY: el Job y el proceso son handles válidos.
         unsafe { AssignProcessToJobObject(self.0.raw(), process) }
             .map_err(CoreError::sys("Error asignando proceso al Job Object: "))
     }
@@ -162,6 +172,7 @@ impl JobObject {
     }
 
     pub fn terminate_all(&self, exit_code: u32) {
+        // SAFETY: el Job es válido; termina todos sus procesos.
         unsafe {
             let _ = TerminateJobObject(self.0.raw(), exit_code);
         }
@@ -174,6 +185,7 @@ pub struct ComGuard {
 
 impl ComGuard {
     pub fn init_mt() -> Self {
+        // SAFETY: inicializa COM en este hilo; el resultado se respeta al cerrar.
         let hr = unsafe { CoInitializeEx(Some(ptr::null()), COINIT_MULTITHREADED) };
         Self {
             initialized: hr.is_ok(),
@@ -184,6 +196,7 @@ impl ComGuard {
 impl Drop for ComGuard {
     fn drop(&mut self) {
         if self.initialized {
+            // SAFETY: se llama solo si CoInitializeEx tuvo éxito en este hilo.
             unsafe {
                 CoUninitialize();
             }
@@ -206,6 +219,7 @@ impl WinInetHandle {
 impl Drop for WinInetHandle {
     fn drop(&mut self) {
         if !self.0.is_null() {
+            // SAFETY: el handle de WinInet es propio y se cierra una sola vez.
             unsafe {
                 let _ = InternetCloseHandle(self.0);
             }

@@ -1,5 +1,7 @@
 //! Permisos de carpetas: crear solo para administradores, comprobar dueños y devolver la herencia.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::path::Path;
 use std::ptr;
 
@@ -44,6 +46,7 @@ pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
 /// todo el árbol). Se usa al terminar una extracción hecha en un staging solo-admin.
 pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
     let mut empty_acl = ACL::default();
+    // SAFETY: el búfer de la ACL es nuestro y tiene el tamaño que se informa.
     unsafe {
         windows::Win32::Security::InitializeAcl(
             &mut empty_acl,
@@ -53,6 +56,7 @@ pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
     }
     .map_err(CoreError::trust("InitializeAcl falló: "))?;
     let wide = to_wide_null(path);
+    // SAFETY: la ruta termina en NUL; SID y ACL son válidos durante la llamada.
     let status = unsafe {
         SetNamedSecurityInfoW(
             PCWSTR(wide.as_ptr()),
@@ -82,6 +86,7 @@ pub(crate) fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
     let wide = to_wide_null(path);
     let mut owner = PSID::default();
     let mut psd = PSECURITY_DESCRIPTOR::default();
+    // SAFETY: la ruta termina en NUL; el descriptor devuelto pasa a LocalMem.
     let status = unsafe {
         GetNamedSecurityInfoW(
             PCWSTR(wide.as_ptr()),
@@ -161,6 +166,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     let mut admin_sid_buf = [0u8; SECURITY_MAX_SID_SIZE as usize];
     let mut admin_sid_len = admin_sid_buf.len() as u32;
     let admin_psid = PSID(admin_sid_buf.as_mut_ptr() as *mut _);
+    // SAFETY: el búfer tiene SECURITY_MAX_SID_SIZE bytes, el máximo que puede escribir.
     unsafe {
         CreateWellKnownSid(
             WinBuiltinAdministratorsSid,
@@ -176,6 +182,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     let mut system_sid_buf = [0u8; SECURITY_MAX_SID_SIZE as usize];
     let mut system_sid_len = system_sid_buf.len() as u32;
     let system_psid = PSID(system_sid_buf.as_mut_ptr() as *mut _);
+    // SAFETY: el búfer tiene SECURITY_MAX_SID_SIZE bytes, el máximo que puede escribir.
     unsafe { CreateWellKnownSid(WinLocalSystemSid, None, system_psid, &mut system_sid_len) }
         .map_err(CoreError::trust("CreateWellKnownSid(LocalSystem) falló: "))?;
 
@@ -205,6 +212,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     ];
 
     let mut new_dacl: *mut ACL = ptr::null_mut();
+    // SAFETY: las entradas viven durante la llamada; la ACL devuelta pasa a LocalMem.
     let acl_status = unsafe { SetEntriesInAclW(Some(&entries), None, &mut new_dacl) };
     if acl_status.0 != 0 || new_dacl.is_null() {
         return Err(CoreError::Trust {
@@ -215,6 +223,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
 
     let _dacl_guard = LocalMem::new(new_dacl as _);
     let wide_path = to_wide_null(path);
+    // SAFETY: la ruta termina en NUL; SID y ACL son válidos durante la llamada.
     let sec_status = unsafe {
         SetNamedSecurityInfoW(
             PCWSTR(wide_path.as_ptr()),

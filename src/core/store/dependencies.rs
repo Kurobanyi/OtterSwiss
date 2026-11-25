@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use std::thread;
 use std::time::Duration;
 
@@ -136,6 +137,7 @@ impl DependencyManager {
         // Sin carpeta propia del navegador (null): se usa el runtime instalado en el sistema.
         let no_browser_dir = CoTaskMemPWSTR::default();
         let mut version = Default::default();
+        // SAFETY: la cadena de salida la libera CoTaskMemPWSTR al soltarse.
         let ok = unsafe {
             GetAvailableCoreWebView2BrowserVersionString(
                 *no_browser_dir.as_ref().as_pcwstr(),

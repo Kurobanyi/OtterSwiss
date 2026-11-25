@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::os::windows::fs::OpenOptionsExt;
@@ -29,6 +30,7 @@ pub struct VerifiedHandleInfo {
 
 pub fn inspect_handle(handle: HANDLE) -> CoreResult<VerifiedHandleInfo> {
     let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    // SAFETY: el handle es del archivo abierto por nosotros y la estructura de salida es local.
     unsafe { GetFileInformationByHandle(handle, &mut info) }.map_err(|e| {
         CoreError::Io(io::Error::other(format!(
             "GetFileInformationByHandle falló: {}",
@@ -36,11 +38,13 @@ pub fn inspect_handle(handle: HANDLE) -> CoreResult<VerifiedHandleInfo> {
         )))
     })?;
 
+    // SAFETY: el handle es válido y el búfer tiene la longitud que se pasa.
     let needed = unsafe { GetFinalPathNameByHandleW(handle, &mut [], VOLUME_NAME_DOS) };
     if needed == 0 {
         return Err(CoreError::Io(io::Error::last_os_error()));
     }
     let mut buf = vec![0u16; needed as usize];
+    // SAFETY: el handle es válido y el búfer tiene la longitud que se pasa.
     let written = unsafe { GetFinalPathNameByHandleW(handle, &mut buf, VOLUME_NAME_DOS) };
     if written == 0 || written as usize >= buf.len() {
         return Err(CoreError::Io(io::Error::last_os_error()));
@@ -207,6 +211,7 @@ fn open_for_delete(path: &Path, directory: bool) -> CoreResult<SafeHandle> {
     if directory {
         flags |= FILE_FLAG_BACKUP_SEMANTICS;
     }
+    // SAFETY: la ruta termina en NUL y vive durante la llamada; el handle devuelto queda en un File o SafeHandle.
     let raw = unsafe {
         CreateFileW(
             PCWSTR(wide.as_ptr()),
@@ -227,6 +232,7 @@ fn mark_handle_for_delete(handle: &SafeHandle, path: &Path) -> CoreResult<()> {
     let disposition = FILE_DISPOSITION_INFO {
         DeleteFile: true.into(),
     };
+    // SAFETY: handle válido abierto con acceso DELETE; quien llama ya validó la ruta sobre este mismo handle (SEC-01).
     unsafe {
         SetFileInformationByHandle(
             handle.raw(),
@@ -383,6 +389,7 @@ pub fn delete_tree_verified(
 
 pub fn canonical_dos_path(path: &Path) -> CoreResult<PathBuf> {
     let wide = to_wide_null(path);
+    // SAFETY: la ruta termina en NUL y vive durante la llamada; el handle devuelto queda en un File o SafeHandle.
     let raw = unsafe {
         CreateFileW(
             PCWSTR(wide.as_ptr()),

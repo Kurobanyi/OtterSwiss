@@ -1,5 +1,7 @@
 //! Firma Authenticode de un ejecutable, verificada sobre un handle abierto.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::path::Path;
 use std::ptr;
 
@@ -35,6 +37,7 @@ pub fn verify_authenticode_on_handle(
     impl Drop for StateDataGuard {
         fn drop(&mut self) {
             self.trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+            // SAFETY: la estructura WINTRUST_DATA y el archivo apuntan a datos vivos durante la llamada.
             unsafe {
                 let _ = WinVerifyTrust(
                     None,
@@ -73,6 +76,7 @@ pub fn verify_authenticode_on_handle(
         trust_data,
     };
 
+    // SAFETY: la estructura WINTRUST_DATA y el archivo apuntan a datos vivos durante la llamada.
     let status = unsafe {
         WinVerifyTrust(
             None,
@@ -91,6 +95,7 @@ pub fn verify_authenticode_on_handle(
         });
     }
 
+    // SAFETY: el estado viene de un WinVerifyTrust exitoso y sigue abierto.
     let prov_data = unsafe { WTHelperProvDataFromStateData(guard.trust_data.hWVTStateData) };
     if prov_data.is_null() {
         return Err(CoreError::Trust {
@@ -99,6 +104,7 @@ pub fn verify_authenticode_on_handle(
         });
     }
 
+    // SAFETY: los datos del proveedor son válidos mientras el estado siga abierto.
     let signer = unsafe { WTHelperGetProvSignerFromChain(prov_data, 0, false, 0) };
     if signer.is_null() {
         return Err(CoreError::Trust {
@@ -107,6 +113,7 @@ pub fn verify_authenticode_on_handle(
         });
     }
 
+    // SAFETY: el firmante es válido mientras el estado siga abierto.
     let leaf_cert = unsafe { WTHelperGetProvCertFromChain(signer, 0) };
     if leaf_cert.is_null() {
         return Err(CoreError::Trust {
@@ -115,6 +122,7 @@ pub fn verify_authenticode_on_handle(
         });
     }
 
+    // SAFETY: el certificado hoja no es nulo (comprobado arriba) y vive mientras el estado siga abierto.
     let cert_ctx = unsafe { (*leaf_cert).pCert };
     if cert_ctx.is_null() {
         return Err(CoreError::Trust {
@@ -124,6 +132,7 @@ pub fn verify_authenticode_on_handle(
     }
 
     let mut cn_buf = [0u16; 256];
+    // SAFETY: el contexto del certificado es válido y el búfer tiene la longitud que se pasa.
     let cn_len = unsafe {
         CertGetNameStringW(
             cert_ctx,
@@ -158,6 +167,7 @@ pub fn verify_authenticode_on_handle(
     if let Some(expected_tp) = expected_thumbprint_sha1 {
         let mut hash = [0u8; 20];
         let mut hash_len = hash.len() as u32;
+        // SAFETY: el contexto del certificado es válido y el búfer tiene la longitud que se informa.
         let ok = unsafe {
             CertGetCertificateContextProperty(
                 cert_ctx,

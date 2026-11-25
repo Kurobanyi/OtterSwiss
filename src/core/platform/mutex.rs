@@ -1,5 +1,7 @@
 //! Mutex con nombre entre procesos, solo para Administradores y SYSTEM.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use windows::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
 use windows::core::PCWSTR;
@@ -33,6 +35,7 @@ impl NamedMutex {
 
     /// `WAIT_ABANDONED` significa que el dueño anterior murió sin soltarlo: el mutex ya es nuestro (CON-01).
     fn wait(handle: &SafeHandle, timeout_ms: u32) -> windows::Win32::Foundation::WAIT_EVENT {
+        // SAFETY: el handle es válido mientras vive su dueño.
         unsafe { WaitForSingleObject(handle.raw(), timeout_ms) }
     }
 
@@ -68,6 +71,7 @@ impl NamedMutex {
 impl Drop for NamedMutex {
     fn drop(&mut self) {
         if self.locked {
+            // SAFETY: el mutex es nuestro (lo tomamos en acquire) y se suelta una vez.
             unsafe {
                 let _ = ReleaseMutex(self.handle.raw());
             }

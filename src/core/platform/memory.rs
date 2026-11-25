@@ -1,5 +1,7 @@
 //! Buffers para estructuras que devuelven las APIs de Windows.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 /// Buffer de bytes alineado a 8. Las APIs de Windows devuelven estructuras dentro de un buffer de bytes;
 /// reinterpretar un `Vec<u8>` (alineado a 1) como esa estructura es comportamiento indefinido (SEC-28).
 pub struct AlignedBuf {
@@ -19,12 +21,14 @@ impl AlignedBuf {
 impl std::ops::Deref for AlignedBuf {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
+        // SAFETY: `words` tiene al menos `len` bytes y vive tanto como el slice prestado.
         unsafe { std::slice::from_raw_parts(self.words.as_ptr() as *const u8, self.len) }
     }
 }
 
 impl std::ops::DerefMut for AlignedBuf {
     fn deref_mut(&mut self) -> &mut [u8] {
+        // SAFETY: `words` tiene al menos `len` bytes y el préstamo mutable es exclusivo.
         unsafe { std::slice::from_raw_parts_mut(self.words.as_mut_ptr() as *mut u8, self.len) }
     }
 }

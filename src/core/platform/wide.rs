@@ -1,5 +1,7 @@
 //! Cadenas anchas (UTF-16) de las APIs de Windows.
 
+#![warn(clippy::undocumented_unsafe_blocks)]
+
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 
@@ -38,6 +40,7 @@ pub fn wide_ptr_to_string_and_free(ptr: PWSTR) -> String {
     if ptr.is_null() {
         return String::new();
     }
+    // SAFETY: `ptr` apunta a una cadena terminada en NUL que devolvió la API.
     let result = unsafe {
         let mut len = 0usize;
         while *ptr.0.add(len) != 0 {
@@ -46,6 +49,7 @@ pub fn wide_ptr_to_string_and_free(ptr: PWSTR) -> String {
         let slice = std::slice::from_raw_parts(ptr.0, len);
         String::from_utf16_lossy(slice)
     };
+    // SAFETY: la memoria la reservó la API con CoTaskMemAlloc y se libera una sola vez.
     unsafe {
         windows::Win32::System::Com::CoTaskMemFree(Some(ptr.0 as *const _));
     }

@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use std::path::PathBuf;
 use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE};
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};
@@ -17,6 +18,7 @@ pub struct ElevationManager;
 impl ElevationManager {
     pub fn is_elevated() -> CoreResult<bool> {
         let mut raw_token = HANDLE::default();
+        // SAFETY: el handle de proceso es válido y el token devuelto pasa a SafeHandle.
         unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) }.map_err(
             |e| CoreError::SystemTool {
                 message: format!("OpenProcessToken falló: {}", e),
@@ -29,6 +31,7 @@ impl ElevationManager {
 
         let mut elevation = TOKEN_ELEVATION::default();
         let mut returned_len = 0u32;
+        // SAFETY: el token es válido y la estructura de salida tiene el tamaño que se informa.
         unsafe {
             GetTokenInformation(
                 token.raw(),
@@ -79,6 +82,7 @@ impl ElevationManager {
             CoreError::Validation("No se pudo determinar el directorio del ejecutable".into())
         })?;
 
+        // SAFETY: inicializa COM en este hilo; el resultado se respeta al cerrar.
         let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
 
         let verb_w = to_wide_null("runas");
@@ -104,6 +108,7 @@ impl ElevationManager {
             ..Default::default()
         };
 
+        // SAFETY: la estructura y sus cadenas viven durante la llamada; el proceso devuelto pasa a SafeHandle.
         if let Err(err) = unsafe { ShellExecuteExW(&mut sei) } {
             if err.code() == ERROR_CANCELLED.to_hresult() {
                 return Err(CoreError::Cancelled);

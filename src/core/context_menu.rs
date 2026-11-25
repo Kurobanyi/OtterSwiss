@@ -1,3 +1,4 @@
+#![warn(clippy::undocumented_unsafe_blocks)]
 use std::io;
 use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
 use winreg::RegKey;
@@ -71,6 +72,7 @@ const MENU_ENTRIES: &[MenuEntrySpec] = &[
 ];
 
 fn notify_shell_assoc_changed() {
+    // SAFETY: notificación sin datos (SHCNE_ASSOCCHANGED con punteros nulos).
     unsafe {
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
