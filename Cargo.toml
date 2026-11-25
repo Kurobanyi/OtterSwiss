@@ -21,7 +21,7 @@ test = false
 
 [dependencies]
 base64 = "0.22"
-dirs = "5.0"
+dirs = "6"
 flate2 = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -29,7 +29,7 @@ serde_json = "1.0"
 sevenz-rust2 = { version = "0.25", default-features = false, features = ["compress", "util"] }
 sha2 = "0.10"
 tar = "0.4"
-thiserror = "1.0"
+thiserror = "2"
 tokio = { version = "1", features = ["time", "rt-multi-thread", "sync"] }
 winreg = "0.52"
 zip = { version = "2.2", default-features = false, features = ["deflate", "time"] }
