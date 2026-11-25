@@ -5,7 +5,11 @@ mod leftovers;
 mod purge;
 mod runner;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
+
+use crate::core::error::CoreResult;
+use crate::core::platform::process::INSTALLER_TIMEOUT;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledApp {
@@ -57,6 +61,48 @@ pub struct PurgeReport {
 }
 
 pub struct UninstallerManager;
+
+/// AR-01: resultado completo de «desinstalar y buscar restos», para que la vista solo lo traduzca a texto.
+#[derive(Debug, Clone)]
+pub enum UninstallOutcome {
+    /// SYS-02: el desinstalador devolvió un código de fallo; no se buscan restos.
+    Failed { code: String },
+    /// Terminó bien pero la app sigue registrada (puede pedir reinicio o intervención del usuario).
+    StillRegistered,
+    /// Desinstalada. `leftovers` es lo que encontró el escaneo, o su error.
+    Removed {
+        reboot_required: bool,
+        leftovers: Result<Vec<LeftoverItem>, String>,
+    },
+}
+
+impl UninstallerManager {
+    /// Ejecuta el desinstalador de `app` (con `INSTALLER_TIMEOUT`), comprueba que se haya ido y busca restos.
+    pub fn uninstall_and_scan(app: &InstalledApp) -> CoreResult<UninstallOutcome> {
+        let exit = Self::run_uninstaller(app, INSTALLER_TIMEOUT)?;
+        if !exit.is_success() {
+            return Ok(UninstallOutcome::Failed {
+                code: exit.code_display(),
+            });
+        }
+        if Self::is_still_registered(app) {
+            return Ok(UninstallOutcome::StillRegistered);
+        }
+        Ok(UninstallOutcome::Removed {
+            reboot_required: exit.exit_code != 0,
+            leftovers: Self::scan_leftovers(app).map_err(|e| e.to_string()),
+        })
+    }
+
+    /// Ids de los restos que vienen marcados por defecto (SYS-03: solo los seguros).
+    pub fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
+        items
+            .iter()
+            .filter(|i| i.recommended)
+            .map(|i| i.id.clone())
+            .collect()
+    }
+}
 
 #[cfg(test)]
 mod tests {

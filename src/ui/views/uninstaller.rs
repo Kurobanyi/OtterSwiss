@@ -2,10 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::core::platform::process::INSTALLER_TIMEOUT;
 use crate::core::store::app_store::AppStoreManager;
 use crate::core::uninstall::{
-    InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallerManager,
+    InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallOutcome, UninstallerManager,
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
@@ -23,20 +22,6 @@ enum SortMode {
 
 /// Mensaje de estado con su tono (UI-02).
 type Status = Option<(String, Tone)>;
-
-/// SYS-02: códigos de salida que significan «desinstalado» (3010 y 1641 piden reinicio).
-fn uninstall_exit_is_success(code: u32) -> bool {
-    matches!(code, 0 | 3010 | 1641)
-}
-
-/// Solo se preseleccionan los restos que el core marca como seguros (SYS-03).
-fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
-    items
-        .iter()
-        .filter(|i| i.recommended)
-        .map(|i| i.id.clone())
-        .collect()
-}
 
 fn format_size_mb(bytes: u64) -> String {
     if bytes == 0 {
@@ -112,7 +97,7 @@ fn start_scan(
                 Tone::Success,
             ))),
             Ok(found) => {
-                selected_leftovers.set(recommended_ids(&found));
+                selected_leftovers.set(UninstallerManager::recommended_ids(&found));
                 status_msg.set(Some((
                     if en {
                         format!(
@@ -165,12 +150,11 @@ fn start_uninstall_and_scan(
 
     spawn(async move {
         let app_run = app.clone();
-        let res = tokio::task::spawn_blocking(move || {
-            UninstallerManager::run_uninstaller(&app_run, INSTALLER_TIMEOUT)
-        })
-        .await
-        .map_err(|e| e.to_string())
-        .and_then(|r| r.map_err(|e| e.to_string()));
+        let res =
+            tokio::task::spawn_blocking(move || UninstallerManager::uninstall_and_scan(&app_run))
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()));
 
         let name = app.display_name.clone();
         let (text, tone) = match res {
@@ -182,8 +166,7 @@ fn start_uninstall_and_scan(
                 },
                 Tone::Danger,
             ),
-            // SYS-02: un código de fallo no cuenta como desinstalación y no se buscan restos.
-            Ok(code) if !uninstall_exit_is_success(code) => {
+            Ok(UninstallOutcome::Failed { code }) => {
                 (
                     if en {
                         format!("The uninstaller of '{}' ended with code {}; leftovers were not scanned.", name, code)
@@ -193,79 +176,66 @@ fn start_uninstall_and_scan(
                     Tone::Danger,
                 )
             }
-            Ok(code) => {
-                let app_check = app.clone();
-                let still = tokio::task::spawn_blocking(move || {
-                    UninstallerManager::is_still_registered(&app_check)
-                })
-                .await
-                .unwrap_or(true);
-                let reboot_note = match (code != 0, en) {
+            Ok(UninstallOutcome::StillRegistered) => (
+                if en {
+                    format!("'{}' is still installed; its uninstaller may need a restart or your input.", name)
+                } else {
+                    format!("'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.", name)
+                },
+                Tone::Warning,
+            ),
+            Ok(UninstallOutcome::Removed {
+                reboot_required,
+                leftovers,
+            }) => {
+                let reboot_note = match (reboot_required, en) {
                     (false, _) => "",
                     (true, true) => " Restart Windows to finish.",
                     (true, false) => " Reinicia Windows para terminar.",
                 };
-
-                if still {
-                    (
+                match leftovers {
+                    Err(err) => (
                         if en {
-                            format!("'{}' is still installed; its uninstaller may need a restart or your input.", name)
+                            format!(
+                                "'{}' uninstalled, but its leftovers could not be scanned: {}",
+                                name, err
+                            )
                         } else {
-                            format!("'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.", name)
+                            format!(
+                                "'{}' desinstalada, pero no se pudieron buscar sus restos: {}",
+                                name, err
+                            )
                         },
                         Tone::Warning,
-                    )
-                } else {
-                    let app_scan = app.clone();
-                    let scan = tokio::task::spawn_blocking(move || {
-                        UninstallerManager::scan_leftovers(&app_scan)
-                    })
-                    .await
-                    .map_err(|e| e.to_string())
-                    .and_then(|r| r.map_err(|e| e.to_string()));
-                    match scan {
-                        Err(err) => {
-                            (
-                                if en {
-                                    format!("'{}' uninstalled, but its leftovers could not be scanned: {}", name, err)
-                                } else {
-                                    format!("'{}' desinstalada, pero no se pudieron buscar sus restos: {}", name, err)
-                                },
-                                Tone::Warning,
+                    ),
+                    Ok(found) if found.is_empty() => (
+                        if en {
+                            format!("'{}' uninstalled; no leftovers found.{}", name, reboot_note)
+                        } else {
+                            format!(
+                                "'{}' desinstalada; no se encontraron restos.{}",
+                                name, reboot_note
                             )
-                        }
-                        Ok(found) if found.is_empty() => (
+                        },
+                        Tone::Success,
+                    ),
+                    Ok(found) => {
+                        selected_leftovers.set(UninstallerManager::recommended_ids(&found));
+                        leftovers_modal.set(Some((app, found)));
+                        (
                             if en {
                                 format!(
-                                    "'{}' uninstalled; no leftovers found.{}",
+                                    "'{}' uninstalled; review its leftovers.{}",
                                     name, reboot_note
                                 )
                             } else {
                                 format!(
-                                    "'{}' desinstalada; no se encontraron restos.{}",
+                                    "'{}' desinstalada; revisa sus restos.{}",
                                     name, reboot_note
                                 )
                             },
                             Tone::Success,
-                        ),
-                        Ok(found) => {
-                            selected_leftovers.set(recommended_ids(&found));
-                            leftovers_modal.set(Some((app, found)));
-                            (
-                                if en {
-                                    format!(
-                                        "'{}' uninstalled; review its leftovers.{}",
-                                        name, reboot_note
-                                    )
-                                } else {
-                                    format!(
-                                        "'{}' desinstalada; revisa sus restos.{}",
-                                        name, reboot_note
-                                    )
-                                },
-                                Tone::Success,
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -816,22 +786,6 @@ pub fn UninstallerView() -> Element {
                     }
                 }
             }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// SYS-02: solo 0, 3010 y 1641 cuentan como desinstalado.
-    #[test]
-    fn codigos_de_salida_de_exito() {
-        for ok in [0, 3010, 1641] {
-            assert!(uninstall_exit_is_success(ok));
-        }
-        for fail in [1, 1602, 1603, 5, u32::MAX] {
-            assert!(!uninstall_exit_is_success(fail));
         }
     }
 }

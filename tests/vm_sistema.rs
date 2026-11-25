@@ -394,7 +394,7 @@ fn desinstalador(c: &mut Checks) {
 
     let code = UninstallerManager::run_uninstaller(&app, std::time::Duration::from_secs(60));
     c.check(
-        code.as_ref().is_ok_and(|c| *c == 0),
+        code.as_ref().is_ok_and(|e| e.exit_code == 0),
         &format!("desinstalador: {code:?}"),
     );
     c.check(

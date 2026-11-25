@@ -10,6 +10,7 @@ use super::{InstalledApp, UninstallerManager};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::handles::SafeHandle;
+use crate::core::platform::process::ProcessExit;
 use crate::core::platform::process::{
     duplicate_desktop_shell_primary_token, run_in_job, system32_dir, Launch,
 };
@@ -61,7 +62,7 @@ impl UninstallerManager {
 
     /// Ejecuta el desinstalador de `app` y espera a que terminen él y todos sus hijos.
     /// Devuelve el código de salida; el llamador decide si es éxito (`is_uninstall_success`).
-    pub fn run_uninstaller(app: &InstalledApp, timeout: Duration) -> CoreResult<u32> {
+    pub fn run_uninstaller(app: &InstalledApp, timeout: Duration) -> CoreResult<ProcessExit> {
         let raw_cmd = app
             .quiet_uninstall_string
             .as_deref()
@@ -125,7 +126,7 @@ impl UninstallerManager {
                 .unwrap_or_else(|| sys32.clone())
         };
 
-        let exit = run_in_job(
+        run_in_job(
             &Launch {
                 application: &application,
                 command_line,
@@ -134,7 +135,6 @@ impl UninstallerManager {
             },
             timeout,
             None,
-        )?;
-        Ok(exit.exit_code)
+        )
     }
 }

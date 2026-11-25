@@ -345,7 +345,22 @@ pub fn run_in_job(
 
 #[cfg(test)]
 mod tests {
-    use super::{run_captured, system32_dir, ProcessExit};
+    use super::{run_captured, system32_dir, ProcessExit, ERROR_PRODUCT_VERSION};
+
+    /// SYS-02: solo 0, 3010 y 1641 cuentan como éxito de un (des)instalador.
+    #[test]
+    fn codigos_de_salida_de_exito() {
+        for ok in [0, 3010, 1641] {
+            assert!(ProcessExit { exit_code: ok }.is_success());
+        }
+        for fail in [1, 1602, 1603, 5, u32::MAX] {
+            assert!(!ProcessExit { exit_code: fail }.is_success());
+        }
+        assert!(ProcessExit {
+            exit_code: ERROR_PRODUCT_VERSION
+        }
+        .is_installed_ok());
+    }
 
     #[test]
     fn captura_la_salida_de_una_herramienta() {
