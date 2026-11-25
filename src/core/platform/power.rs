@@ -18,6 +18,7 @@ use crate::core::platform::handles::SafeHandle;
 
 pub fn detect_battery_presence() -> bool {
     let mut status = SYSTEM_POWER_STATUS::default();
+    // SAFETY: la estructura de salida es local.
     if unsafe { GetSystemPowerStatus(&mut status) }.is_ok() {
         status.BatteryFlag != 128 && status.BatteryFlag != 255
     } else {
@@ -28,6 +29,7 @@ pub fn detect_battery_presence() -> bool {
 /// Reinicia Windows de forma nativa habilitando `SE_SHUTDOWN_NAME` en el token actual.
 pub fn reboot_system_now() -> CoreResult<()> {
     let mut raw_token = HANDLE::default();
+    // SAFETY: el handle de proceso es válido y el token devuelto pasa a SafeHandle.
     unsafe {
         OpenProcessToken(
             GetCurrentProcess(),
@@ -41,6 +43,7 @@ pub fn reboot_system_now() -> CoreResult<()> {
         .ok_or_else(|| CoreError::invalid_handle("Token de proceso inválido"))?;
 
     let mut luid = LUID::default();
+    // SAFETY: nombre de privilegio constante; el LUID de salida es local.
     unsafe { LookupPrivilegeValueW(PCWSTR::null(), SE_SHUTDOWN_NAME, &mut luid) }.map_err(
         CoreError::sys("LookupPrivilegeValueW(SE_SHUTDOWN_NAME) falló: "),
     )?;
@@ -53,6 +56,7 @@ pub fn reboot_system_now() -> CoreResult<()> {
         }],
     };
 
+    // SAFETY: el token es propio y la estructura de privilegios vive durante la llamada.
     unsafe { AdjustTokenPrivileges(token.raw(), false, Some(&tp), 0, None, None) }.map_err(
         |e| CoreError::SystemTool {
             message: format!("AdjustTokenPrivileges(SE_SHUTDOWN_NAME) falló: {}", e),
@@ -60,6 +64,7 @@ pub fn reboot_system_now() -> CoreResult<()> {
         },
     )?;
 
+    // SAFETY: reinicio pedido por el usuario; el privilegio de apagado ya se habilitó.
     unsafe {
         ExitWindowsEx(
             EWX_REBOOT | EWX_FORCEIFHUNG,

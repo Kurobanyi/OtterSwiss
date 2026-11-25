@@ -1,7 +1,5 @@
 //! Cadenas anchas (UTF-16) de las APIs de Windows.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 

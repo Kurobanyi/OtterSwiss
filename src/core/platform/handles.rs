@@ -1,7 +1,5 @@
 //! Handles de Windows con cierre automático (RAII): archivos y procesos, DLL, servicios, Job Objects y COM.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::path::Path;
 use std::ptr;
 

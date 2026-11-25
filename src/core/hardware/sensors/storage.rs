@@ -32,6 +32,7 @@ impl SensorSession {
             let mut header = STORAGE_TEMPERATURE_DATA_DESCRIPTOR::default();
             let mut returned = 0u32;
 
+            // SAFETY: el handle del disco es válido y los búferes de entrada y salida tienen los tamaños que se pasan.
             let ok = unsafe {
                 DeviceIoControl(
                     handle.raw(),
@@ -53,6 +54,7 @@ impl SensorSession {
 
             let buf_size = (header.Size as usize).min(4096);
             let mut full_buf = AlignedBuf::zeroed(buf_size);
+            // SAFETY: el handle del disco es válido y los búferes de entrada y salida tienen los tamaños que se pasan.
             let full_ok = unsafe {
                 DeviceIoControl(
                     handle.raw(),
@@ -73,6 +75,7 @@ impl SensorSession {
             }
 
             let desc =
+                // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
                 unsafe { &*(full_buf.as_ptr() as *const STORAGE_TEMPERATURE_DATA_DESCRIPTOR) };
 
             let info_offset = size_of::<STORAGE_TEMPERATURE_DATA_DESCRIPTOR>()
@@ -85,6 +88,7 @@ impl SensorSession {
                 continue;
             }
 
+            // SAFETY: la API devolvió `len` elementos válidos en ese puntero, que siguen vivos.
             let infos = unsafe { std::slice::from_raw_parts(desc.TemperatureInfo.as_ptr(), count) };
 
             let crit = if desc.CriticalTemperature > 0 && desc.CriticalTemperature < 150 {

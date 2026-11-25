@@ -31,6 +31,7 @@ pub(crate) fn read_storage_devices() -> Vec<StorageSpecs> {
         let mut out_buf = AlignedBuf::zeroed(1024);
         let mut bytes_returned = 0u32;
 
+        // SAFETY: el handle del disco es válido y los búferes de entrada y salida tienen los tamaños que se pasan.
         let ok = unsafe {
             DeviceIoControl(
                 raw_handle,
@@ -49,6 +50,7 @@ pub(crate) fn read_storage_devices() -> Vec<StorageSpecs> {
             continue;
         }
 
+        // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
         let desc = unsafe { &*(out_buf.as_ptr().cast::<STORAGE_DEVICE_DESCRIPTOR>()) };
         let valid_slice = &out_buf[..bytes_returned as usize];
 

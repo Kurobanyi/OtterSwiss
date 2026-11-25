@@ -1,4 +1,3 @@
-#![warn(clippy::undocumented_unsafe_blocks)]
 use std::path::PathBuf;
 use windows::Win32::Foundation::{ERROR_CANCELLED, HANDLE};
 use windows::Win32::Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation};

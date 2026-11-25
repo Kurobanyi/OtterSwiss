@@ -1,7 +1,5 @@
 //! Permisos de carpetas: crear solo para administradores, comprobar dueños y devolver la herencia.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::path::Path;
 use std::ptr;
 

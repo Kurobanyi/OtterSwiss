@@ -4,19 +4,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use windows::Win32::UI::Shell::{
-    FOLDERID_InternetCache, FOLDERID_LocalAppData, FOLDERID_Windows, KF_FLAG_DEFAULT,
-    SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHEmptyRecycleBinW,
-    SHGetKnownFolderPath, SHQUERYRBINFO, SHQueryRecycleBinW,
+    FOLDERID_InternetCache, FOLDERID_LocalAppData, FOLDERID_Windows, SHERB_NOCONFIRMATION,
+    SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHEmptyRecycleBinW, SHQUERYRBINFO, SHQueryRecycleBinW,
 };
 use windows::core::PCWSTR;
 
-use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::folders::known_folder;
 use crate::core::platform::safe_fs::{
     canonical_dos_path, delete_verified_empty_dir_under, delete_verified_file_under,
     is_safe_non_root_dir,
 };
 use crate::core::platform::services::is_service_stopped;
-use crate::core::platform::wide::wide_ptr_to_string_and_free;
 use crate::core::progress::{StepProgress, report_step};
 
 #[derive(Debug, Clone, Default)]
@@ -51,22 +49,6 @@ impl StepProgress for CleanProgress {
 pub struct SystemCleaner;
 
 impl SystemCleaner {
-    pub fn get_known_folder(id: &windows::core::GUID) -> CoreResult<PathBuf> {
-        unsafe {
-            let ptr = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, None).map_err(CoreError::sys(
-                "Error obteniendo carpeta conocida de Windows: ",
-            ))?;
-            let s = wide_ptr_to_string_and_free(ptr);
-            if s.is_empty() {
-                return Err(CoreError::SystemTool {
-                    message: "Ruta conocida vacía".into(),
-                    source: None,
-                });
-            }
-            Ok(PathBuf::from(s))
-        }
-    }
-
     pub fn clean_temp_directory(
         category_name: &str,
         dir: &Path,
@@ -212,6 +194,7 @@ impl SystemCleaner {
         };
 
         let query = |info: &mut SHQUERYRBINFO| -> Option<(u64, usize)> {
+            // SAFETY: la estructura de salida es local y tiene `cbSize` puesto.
             unsafe { SHQueryRecycleBinW(PCWSTR::null(), info) }
                 .ok()
                 .map(|()| (info.i64Size.max(0) as u64, info.i64NumItems.max(0) as usize))
@@ -227,6 +210,7 @@ impl SystemCleaner {
         }
 
         let flags = SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND;
+        // SAFETY: sin ventana ni ruta: vacía la Papelera de todas las unidades, sin confirmación ni sonido.
         let hr = unsafe { SHEmptyRecycleBinW(None, PCWSTR::null(), flags) };
         if hr.is_err() {
             result.error = Some(format!("Error vaciando papelera: {:?}", hr));
@@ -260,10 +244,10 @@ impl SystemCleaner {
 
         // (nombre, ruta, profundidad mínima segura)
         let mut targets: Vec<(&'static str, PathBuf, usize)> = Vec::new();
-        if let Ok(local_app_data) = Self::get_known_folder(&FOLDERID_LocalAppData) {
+        if let Some(local_app_data) = known_folder(&FOLDERID_LocalAppData) {
             targets.push(("Temporales de Usuario", local_app_data.join("Temp"), 3));
         }
-        if let Ok(win_dir) = Self::get_known_folder(&FOLDERID_Windows) {
+        if let Some(win_dir) = known_folder(&FOLDERID_Windows) {
             targets.push(("Temporales de Windows", win_dir.join("Temp"), 2));
             // Prefetch no se toca: Windows lo mantiene solo y vaciarlo hace más lentos los próximos arranques.
             // La caché de Windows Update solo se limpia con el servicio y BITS detenidos, para no romper una
@@ -289,7 +273,7 @@ impl SystemCleaner {
                 });
             }
         }
-        if let Ok(inet_cache) = Self::get_known_folder(&FOLDERID_InternetCache) {
+        if let Some(inet_cache) = known_folder(&FOLDERID_InternetCache) {
             targets.push(("Caché de Internet", inet_cache, 3));
         }
 

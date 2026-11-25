@@ -1,7 +1,5 @@
 //! Buffers para estructuras que devuelven las APIs de Windows.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 /// Buffer de bytes alineado a 8. Las APIs de Windows devuelven estructuras dentro de un buffer de bytes;
 /// reinterpretar un `Vec<u8>` (alineado a 1) como esa estructura es comportamiento indefinido (SEC-28).
 pub struct AlignedBuf {

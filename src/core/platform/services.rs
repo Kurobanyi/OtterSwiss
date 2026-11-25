@@ -24,6 +24,7 @@ use crate::core::platform::wide::to_wide_null;
 /// CL-08: abre un servicio por nombre sin pasar por la tabla. `Ok(None)` si no existe. Solo para lecturas o para
 /// `open_allowed_service`, que valida antes.
 pub(crate) fn open_service(service_name: &str, access: u32) -> CoreResult<Option<ScHandle>> {
+    // SAFETY: sin nombre de equipo ni base: el SCM local; el handle pasa a ScHandle.
     let scm_raw = unsafe { OpenSCManagerW(PCWSTR::null(), PCWSTR::null(), SC_MANAGER_CONNECT) }
         .map_err(|e| CoreError::Service {
             service: service_name.to_string(),
@@ -37,6 +38,7 @@ pub(crate) fn open_service(service_name: &str, access: u32) -> CoreResult<Option
     })?;
 
     let svc_w = to_wide_null(service_name);
+    // SAFETY: el SCM es válido y el nombre termina en NUL; el handle pasa a ScHandle.
     match unsafe { OpenServiceW(scm.raw(), PCWSTR(svc_w.as_ptr()), access) } {
         Ok(raw) => Ok(ScHandle::new(raw)),
         Err(e) if e.code() == ERROR_SERVICE_DOES_NOT_EXIST.to_hresult() => Ok(None),
@@ -53,6 +55,7 @@ pub(crate) fn query_service_start_config(
     svc: &ScHandle,
 ) -> CoreResult<(u32, bool)> {
     let mut needed = 0u32;
+    // SAFETY: el handle del servicio es válido y el búfer tiene la longitud que se informa.
     let _ = unsafe { QueryServiceConfigW(svc.raw(), None, 0, &mut needed) };
     if needed == 0 {
         return Err(CoreError::Service {
@@ -63,6 +66,7 @@ pub(crate) fn query_service_start_config(
     }
 
     let mut buf = AlignedBuf::zeroed(needed as usize);
+    // SAFETY: el handle del servicio es válido y el búfer tiene la longitud que se informa.
     unsafe {
         QueryServiceConfigW(
             svc.raw(),
@@ -77,6 +81,7 @@ pub(crate) fn query_service_start_config(
         source: None,
     })?;
 
+    // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
     let cfg = unsafe { &*(buf.as_ptr() as *const QUERY_SERVICE_CONFIGW) };
     let start_type = cfg.dwStartType.0;
 
@@ -84,6 +89,7 @@ pub(crate) fn query_service_start_config(
     if start_type == SERVICE_AUTO_START.0 {
         let mut delayed_info = SERVICE_DELAYED_AUTO_START_INFO::default();
         let mut bytes_out = 0u32;
+        // SAFETY: el handle del servicio es válido y el búfer tiene la longitud que se informa.
         let ok = unsafe {
             QueryServiceConfig2W(
                 svc.raw(),
@@ -123,6 +129,7 @@ pub fn is_service_stopped(service_name: &str) -> CoreResult<bool> {
 pub(crate) fn query_service_current_state(service_name: &str, svc: &ScHandle) -> CoreResult<u32> {
     let mut ssp = SERVICE_STATUS_PROCESS::default();
     let mut bytes_needed = 0u32;
+    // SAFETY: el handle del servicio es válido y el búfer tiene el tamaño de SERVICE_STATUS_PROCESS.
     unsafe {
         QueryServiceStatusEx(
             svc.raw(),
@@ -161,6 +168,7 @@ pub(crate) fn set_service_start_type(
         )));
     }
 
+    // SAFETY: el handle del servicio es válido; solo se cambia el tipo de inicio (el resto, SERVICE_NO_CHANGE).
     unsafe {
         ChangeServiceConfigW(
             svc.raw(),
@@ -186,6 +194,7 @@ pub(crate) fn set_service_start_type(
         let delayed_info = SERVICE_DELAYED_AUTO_START_INFO {
             fDelayedAutostart: delayed_auto.into(),
         };
+        // SAFETY: el handle del servicio es válido y la estructura vive durante la llamada.
         unsafe {
             ChangeServiceConfig2W(
                 svc.raw(),
@@ -215,6 +224,7 @@ pub(crate) fn stop_service_and_wait(
 
     if current != SERVICE_STOP_PENDING.0 {
         let mut status = SERVICE_STATUS::default();
+        // SAFETY: el handle del servicio es válido y el estado de salida es una variable local.
         if let Err(e) = unsafe { ControlService(svc.raw(), SERVICE_CONTROL_STOP, &mut status) } {
             if e.code() == ERROR_SERVICE_NOT_ACTIVE.to_hresult() {
                 return Ok(());
@@ -261,6 +271,7 @@ pub(crate) fn start_service_and_wait(
     }
 
     if current != SERVICE_START_PENDING.0
+        // SAFETY: el handle del servicio es válido; sin argumentos.
         && let Err(e) = unsafe { StartServiceW(svc.raw(), None) }
     {
         if e.code() == ERROR_SERVICE_ALREADY_RUNNING.to_hresult() {

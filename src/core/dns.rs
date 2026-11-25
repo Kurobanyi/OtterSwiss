@@ -89,6 +89,7 @@ struct IcmpHandle(HANDLE);
 impl Drop for IcmpHandle {
     fn drop(&mut self) {
         if !self.0.is_invalid() && !self.0.0.is_null() {
+            // SAFETY: el handle ICMP es propio y se cierra una sola vez.
             unsafe {
                 let _ = IcmpCloseHandle(self.0);
             }
@@ -97,6 +98,7 @@ impl Drop for IcmpHandle {
 }
 
 fn ping_ipv4_once(ip: Ipv4Addr, timeout_ms: u32) -> Option<(u32, &'static str)> {
+    // SAFETY: sin parámetros; el handle pasa al guardián que lo cierra.
     if let Ok(handle) = unsafe { IcmpCreateFile() } {
         let guard = IcmpHandle(handle);
         let dest_addr = u32::from_ne_bytes(ip.octets());
@@ -104,6 +106,7 @@ fn ping_ipv4_once(ip: Ipv4Addr, timeout_ms: u32) -> Option<(u32, &'static str)> 
         let reply_size = std::mem::size_of::<EchoReplyStruct>() + payload.len() + 16;
         let mut reply_buf = AlignedBuf::zeroed(reply_size);
 
+        // SAFETY: el handle ICMP es válido y los búferes de envío y respuesta tienen los tamaños que se pasan.
         let count = unsafe {
             IcmpSendEcho(
                 guard.0,
@@ -118,6 +121,7 @@ fn ping_ipv4_once(ip: Ipv4Addr, timeout_ms: u32) -> Option<(u32, &'static str)> 
         };
 
         if count > 0 {
+            // SAFETY: datos de una lista enlazada que devolvió GetAdaptersAddresses en un AlignedBuf que sigue vivo.
             let reply = unsafe { &*(reply_buf.as_ptr() as *const EchoReplyStruct) };
             if reply.Status == 0 {
                 return Some((reply.RoundTripTime, "ICMP"));
@@ -209,6 +213,7 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
     let mut buf = AlignedBuf::zeroed(size as usize);
 
     loop {
+        // SAFETY: el búfer es un AlignedBuf con la longitud que se informa.
         let ret = unsafe {
             GetAdaptersAddresses(
                 AF_UNSPEC.0 as u32,
@@ -235,6 +240,7 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
     let mut current = buf.as_ptr() as *const IP_ADAPTER_ADDRESSES_LH;
 
     while !current.is_null() {
+        // SAFETY: datos de una lista enlazada que devolvió GetAdaptersAddresses en un AlignedBuf que sigue vivo.
         let item = unsafe { &*current };
         current = item.Next;
 
@@ -242,13 +248,16 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
             continue;
         }
 
+        // SAFETY: datos de una lista enlazada que devolvió GetAdaptersAddresses en un AlignedBuf que sigue vivo.
         let guid_raw = unsafe { item.AdapterName.to_string() }.unwrap_or_default();
         let guid_clean = guid_raw.trim_matches(|c| c == '{' || c == '}').to_string();
         if parse_guid_strict(&guid_clean).is_err() {
             continue;
         }
 
+        // SAFETY: datos de una lista enlazada que devolvió GetAdaptersAddresses en un AlignedBuf que sigue vivo.
         let friendly = unsafe { item.FriendlyName.to_string() }.unwrap_or_default();
+        // SAFETY: datos de una lista enlazada que devolvió GetAdaptersAddresses en un AlignedBuf que sigue vivo.
         let desc = unsafe { item.Description.to_string() }.unwrap_or_default();
         let desc_lower = desc.to_ascii_lowercase();
         let friendly_lower = friendly.to_ascii_lowercase();
@@ -646,6 +655,7 @@ fn set_family_dns(interface_guid: GUID, csv: &str, ipv6: bool) -> Result<(), u32
         NameServer: windows::core::PWSTR(w.as_ptr() as *mut _),
         ..Default::default()
     };
+    // SAFETY: el GUID es de un adaptador existente y las cadenas de servidores terminan en NUL y viven durante la llamada.
     let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings) };
     if err.0 != 0 { Err(err.0) } else { Ok(()) }
 }
@@ -664,6 +674,7 @@ fn apply_interface_dns_typed(
             NameServer: windows::core::PWSTR(v4_w.as_ptr() as *mut _),
             ..Default::default()
         };
+        // SAFETY: el GUID es de un adaptador existente y las cadenas de servidores terminan en NUL y viven durante la llamada.
         let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings_v4) };
         if err.0 != 0 {
             return Err(CoreError::Dns {
@@ -683,6 +694,7 @@ fn apply_interface_dns_typed(
             NameServer: windows::core::PWSTR(v6_w.as_ptr() as *mut _),
             ..Default::default()
         };
+        // SAFETY: el GUID es de un adaptador existente y las cadenas de servidores terminan en NUL y viven durante la llamada.
         let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings_v6) };
         if err.0 != 0 {
             // Si IPv6 está deshabilitado en el adaptador (87 o 1168) y IPv4 ya se aplicó, no abortar
@@ -700,6 +712,7 @@ fn apply_interface_dns_typed(
 
 fn flush_dns_cache() {
     if let Ok(lib) = SafeLibrary::load_system("dnsapi.dll") {
+        // SAFETY: DnsFlushResolverCache no recibe parámetros; el puntero se resolvió de dnsapi.dll, que sigue cargada.
         unsafe {
             if let Some(proc) = lib.get_proc(b"DnsFlushResolverCache\0") {
                 let func: unsafe extern "system" fn() -> i32 = std::mem::transmute(proc);

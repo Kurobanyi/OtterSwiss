@@ -1,7 +1,5 @@
 //! Ejecución del desinstalador propio de cada app (UninstallString) dentro de un Job.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 

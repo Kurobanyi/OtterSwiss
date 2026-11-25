@@ -31,12 +31,12 @@ pub(super) struct NvmlSession {
     get_threshold: Option<NvmlDeviceGetTempThresholdFn>,
 }
 
-// SAFETY: la sesión se crea y se usa solo desde el hilo de sondeo que la posee; NVML admite llamadas desde cualquier hilo
-// y los punteros a funciones no se comparten. Ningún `&NvmlSession` cruza hilos (no es `Sync`).
 #[allow(
     clippy::non_send_fields_in_send_ty,
     reason = "punteros de la DLL; ver SAFETY"
 )]
+// SAFETY: la sesión se crea y se usa solo desde el hilo de sondeo que la posee; NVML admite llamadas desde cualquier hilo
+// y los punteros a funciones no se comparten. Ningún `&NvmlSession` cruza hilos (no es `Sync`).
 unsafe impl Send for NvmlSession {}
 
 impl NvmlSession {
@@ -61,6 +61,7 @@ impl NvmlSession {
             }
         };
 
+        // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
         unsafe {
             let init: NvmlInitFn = resolve_proc(&lib, b"nvmlInit_v2\0")
                 .or_else(|| resolve_proc(&lib, b"nvmlInit\0"))?;
@@ -96,17 +97,20 @@ impl NvmlSession {
     pub(super) fn poll(&self) -> Vec<SensorReading> {
         let mut out = Vec::new();
         let mut count: c_uint = 0;
+        // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
         if unsafe { (self.get_count)(&mut count) } != NVML_SUCCESS {
             return out;
         }
 
         for idx in 0..count.min(8) {
             let mut dev: *mut c_void = ptr::null_mut();
+            // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
             if unsafe { (self.get_handle)(idx, &mut dev) } != NVML_SUCCESS || dev.is_null() {
                 continue;
             }
 
             let mut temp: c_uint = 0;
+            // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
             if unsafe { (self.get_temp)(dev, NVML_TEMPERATURE_GPU, &mut temp) } != NVML_SUCCESS {
                 continue;
             }
@@ -118,7 +122,9 @@ impl NvmlSession {
                 .get_name
                 .and_then(|f| {
                     let mut buf = [0 as c_char; 96];
+                    // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
                     if unsafe { f(dev, buf.as_mut_ptr(), buf.len() as c_uint) } == NVML_SUCCESS {
+                        // SAFETY: la cadena viene de la estructura de la DLL y termina en NUL dentro de su tamaño fijo.
                         let s = unsafe { CStr::from_ptr(buf.as_ptr()) }
                             .to_string_lossy()
                             .trim()
@@ -133,6 +139,7 @@ impl NvmlSession {
 
             let max_temp = self.get_threshold.and_then(|f| {
                 let mut th: c_uint = 0;
+                // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
                 if unsafe { f(dev, NVML_TEMPERATURE_THRESHOLD_SLOWDOWN, &mut th) } == NVML_SUCCESS
                     && th > 0
                     && th < 150
@@ -158,6 +165,7 @@ impl NvmlSession {
 impl Drop for NvmlSession {
     fn drop(&mut self) {
         if self.initialized {
+            // SAFETY: puntero de nvml.dll (firmada por NVIDIA y verificada al cargarla) con la firma de su encabezado; la DLL sigue cargada mientras viva la sesión.
             unsafe {
                 let _ = (self.shutdown)();
             }

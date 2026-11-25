@@ -8,6 +8,7 @@ use crate::core::error::{CoreError, CoreResult};
 const RSMB_PROVIDER: FIRMWARE_TABLE_PROVIDER = FIRMWARE_TABLE_PROVIDER(0x5253_4D42);
 
 pub(super) fn read_smbios_board_and_memory() -> CoreResult<(MotherboardSpecs, MemorySpecs)> {
+    // SAFETY: el búfer tiene la longitud que se pasa; con longitud 0 solo informa el tamaño.
     let required = unsafe { GetSystemFirmwareTable(RSMB_PROVIDER, 0, None) };
     if required <= 8 {
         return Err(CoreError::SystemTool {
@@ -17,6 +18,7 @@ pub(super) fn read_smbios_board_and_memory() -> CoreResult<(MotherboardSpecs, Me
     }
 
     let mut raw = vec![0u8; required as usize];
+    // SAFETY: el búfer tiene la longitud que se pasa; con longitud 0 solo informa el tamaño.
     let written = unsafe { GetSystemFirmwareTable(RSMB_PROVIDER, 0, Some(&mut raw)) };
     if written <= 8 {
         return Err(CoreError::SystemTool {

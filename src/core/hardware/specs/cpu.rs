@@ -131,6 +131,7 @@ pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
 
 fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usize)> {
     let mut len = 0u32;
+    // SAFETY: el búfer tiene la longitud que se informa en `len`; la API escribe como mucho eso.
     let _ = unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, None, &mut len) };
     if len == 0 {
         return Err(CoreError::SystemTool {
@@ -140,6 +141,7 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
     }
 
     let mut buf = AlignedBuf::zeroed(len as usize);
+    // SAFETY: el búfer tiene la longitud que se informa en `len`; la API escribe como mucho eso.
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationProcessorCore,
@@ -160,6 +162,7 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
     let mut offset = 0usize;
 
     while offset + std::mem::size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= len as usize {
+        // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
         let info = unsafe {
             &*(buf
                 .as_ptr()
@@ -170,6 +173,7 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
             break;
         }
         if info.Relationship == RelationProcessorCore {
+            // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
             let proc_rel = unsafe { &info.Anonymous.Processor };
             cores_classes.push(proc_rel.EfficiencyClass);
             for idx in 0..(proc_rel.GroupCount as usize) {
@@ -196,12 +200,14 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
 
 fn read_cache_sizes() -> CoreResult<(u32, u32, u32)> {
     let mut len = 0u32;
+    // SAFETY: el búfer tiene la longitud que se informa en `len`; la API escribe como mucho eso.
     let _ = unsafe { GetLogicalProcessorInformationEx(RelationCache, None, &mut len) };
     if len == 0 {
         return Ok((0, 0, 0));
     }
 
     let mut buf = AlignedBuf::zeroed(len as usize);
+    // SAFETY: el búfer tiene la longitud que se informa en `len`; la API escribe como mucho eso.
     unsafe {
         GetLogicalProcessorInformationEx(
             RelationCache,
@@ -221,6 +227,7 @@ fn read_cache_sizes() -> CoreResult<(u32, u32, u32)> {
     let mut offset = 0usize;
 
     while offset + std::mem::size_of::<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>() <= len as usize {
+        // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
         let info = unsafe {
             &*(buf
                 .as_ptr()
@@ -231,6 +238,7 @@ fn read_cache_sizes() -> CoreResult<(u32, u32, u32)> {
             break;
         }
         if info.Relationship == RelationCache {
+            // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
             let cache = unsafe { info.Anonymous.Cache };
             match cache.Level {
                 1 => l1 = l1.saturating_add(cache.CacheSize),

@@ -103,12 +103,12 @@ pub(super) struct AdlSession {
     od5_temp: Option<Adl2Od5TempFn>,
 }
 
-// SAFETY: el contexto ADL2 se crea, se usa y se destruye en el hilo de sondeo que posee la sesión; ADL2 admite un
-// contexto por hilo y la sesión no es `Sync`, así que nunca se usa desde dos hilos a la vez.
 #[allow(
     clippy::non_send_fields_in_send_ty,
     reason = "contexto y punteros de la DLL; ver SAFETY"
 )]
+// SAFETY: el contexto ADL2 se crea, se usa y se destruye en el hilo de sondeo que posee la sesión; ADL2 admite un
+// contexto por hilo y la sesión no es `Sync`, así que nunca se usa desde dos hilos a la vez.
 unsafe impl Send for AdlSession {}
 
 impl AdlSession {
@@ -117,6 +117,7 @@ impl AdlSession {
             .or_else(|_| SafeLibrary::load_system("atiadlxy.dll"))
             .ok()?;
 
+        // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
         unsafe {
             let create: Adl2CreateFn = resolve_proc(&lib, b"ADL2_Main_Control_Create\0")?;
             let destroy: Adl2DestroyFn = resolve_proc(&lib, b"ADL2_Main_Control_Destroy\0")?;
@@ -153,6 +154,7 @@ impl AdlSession {
     pub(super) fn poll(&self) -> (Vec<SensorReading>, Option<String>) {
         let mut out = Vec::new();
         let mut count: c_int = 0;
+        // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
         let num_rc = unsafe { (self.num_adapters)(self.ctx, &mut count) };
         if num_rc != ADL_OK || count <= 0 {
             return (
@@ -166,6 +168,7 @@ impl AdlSession {
 
         let capped = (count as usize).min(64);
         let mut infos: Vec<AdlAdapterInfo> = (0..capped)
+            // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
             .map(|_| unsafe {
                 let mut info: AdlAdapterInfo = zeroed();
                 info.i_size = size_of::<AdlAdapterInfo>() as c_int;
@@ -174,6 +177,7 @@ impl AdlSession {
             .collect();
 
         let bytes = (capped * size_of::<AdlAdapterInfo>()) as c_int;
+        // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
         let info_rc = unsafe { (self.adapter_info)(self.ctx, infos.as_mut_ptr(), bytes) };
         if info_rc != ADL_OK {
             return (
@@ -204,6 +208,7 @@ impl AdlSession {
                 continue;
             }
 
+            // SAFETY: la cadena viene de la estructura de la DLL y termina en NUL dentro de su tamaño fijo.
             let raw_name = unsafe { CStr::from_ptr(info.str_adapter_name.as_ptr()) }
                 .to_string_lossy()
                 .trim()
@@ -219,6 +224,7 @@ impl AdlSession {
             // 1) Ruta moderna RDNA (RX 5000 / 6000 / 7000): ADL2_New_QueryPMLogData_Get (valores en °C enteros)
             if let Some(pmlog) = self.pmlog_get {
                 let mut pm = AdlPmLogDataOutput::default();
+                // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
                 let rc = unsafe { pmlog(self.ctx, info.i_adapter_index, &mut pm) };
                 if rc == ADL_OK {
                     let edge = pm.sensors[ADL_PMLOG_TEMPERATURE_EDGE];
@@ -261,6 +267,7 @@ impl AdlSession {
             // 2) Fallback OverdriveN (milli-°C)
             if !found_for_this_gpu && let Some(odn) = self.odn_temp {
                 let mut milli_c: c_int = 0;
+                // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
                 let rc_edge = unsafe {
                     odn(
                         self.ctx,
@@ -285,6 +292,7 @@ impl AdlSession {
                 }
 
                 let mut hotspot_mc: c_int = 0;
+                // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
                 if unsafe {
                     odn(
                         self.ctx,
@@ -313,6 +321,7 @@ impl AdlSession {
                     i_size: size_of::<AdlTemperature>() as c_int,
                     i_temperature: 0,
                 };
+                // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
                 let rc5 = unsafe { od5(self.ctx, info.i_adapter_index, 0, &mut adl_t) };
                 if rc5 == ADL_OK {
                     let c = adl_t.i_temperature as f32 / 1000.0;
@@ -350,6 +359,7 @@ impl AdlSession {
 impl Drop for AdlSession {
     fn drop(&mut self) {
         if !self.ctx.is_null() {
+            // SAFETY: puntero de atiadlxx.dll con la firma de su encabezado; el contexto ADL2 y la DLL siguen vivos mientras viva la sesión.
             unsafe {
                 let _ = (self.destroy)(self.ctx);
             }

@@ -1,4 +1,3 @@
-#![warn(clippy::undocumented_unsafe_blocks)]
 //
 // Lanzamiento de procesos externos (instaladores, desinstaladores, runtimes) desde el proceso elevado.
 //

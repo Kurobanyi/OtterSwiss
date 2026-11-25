@@ -41,6 +41,7 @@ pub struct PowerApplyReport {
 
 pub fn get_active_scheme_guid() -> CoreResult<GUID> {
     let mut guid_ptr: *mut GUID = ptr::null_mut();
+    // SAFETY: el GUID devuelto pasa a LocalMem.
     let err: WIN32_ERROR = unsafe { PowerGetActiveScheme(None, &mut guid_ptr) };
     if err.0 != 0 || guid_ptr.is_null() {
         return Err(CoreError::Power {
@@ -55,6 +56,7 @@ pub fn get_active_scheme_guid() -> CoreResult<GUID> {
 
 fn scheme_exists(guid: &GUID) -> bool {
     let mut buf_size = 0u32;
+    // SAFETY: el GUID es válido y el búfer tiene la longitud que se informa.
     let err = unsafe { PowerReadFriendlyName(None, Some(guid), None, None, None, &mut buf_size) };
     err.0 == 0 && buf_size > 0
 }
@@ -109,6 +111,7 @@ pub fn capture_and_prepare_power_scheme(
     }
 
     let mut dup_ptr: *mut GUID = ptr::null_mut();
+    // SAFETY: el GUID de origen es de un plan existente; el GUID nuevo pasa a LocalMem.
     let dup_err = unsafe { PowerDuplicateScheme(None, &base_guid, &mut dup_ptr) };
     if dup_err.0 != 0 || dup_ptr.is_null() {
         return Err(CoreError::Power {
@@ -137,11 +140,13 @@ pub fn capture_and_prepare_power_scheme(
 /// Si `PowerSetActiveScheme` falla, limpia inmediatamente el esquema duplicado para no dejar huérfanos.
 pub fn activate_prepared_power_scheme(snap: &PowerSnapshot) -> CoreResult<String> {
     let target = parse_guid_strict(&snap.active_after_apply_guid)?;
+    // SAFETY: el GUID es de un plan existente (validado antes).
     let set_err = unsafe { PowerSetActiveScheme(None, Some(&target)) };
     if set_err.0 != 0 {
         if let Some(ref created) = snap.created_scheme_guid
             && let Ok(cg) = parse_guid_strict(created)
         {
+            // SAFETY: el GUID es de un plan que creó OtterSwiss y no está activo.
             unsafe {
                 let _ = PowerDeleteScheme(None, &cg);
             }
@@ -196,6 +201,7 @@ pub fn restore_power_snapshot(snap: &PowerSnapshot, force: bool) -> CoreResult<b
         BALANCED_GUID_STRUCT
     };
 
+    // SAFETY: el GUID es de un plan existente (validado antes).
     let set_err = unsafe { PowerSetActiveScheme(None, Some(&restore_target)) };
     if set_err.0 != 0 {
         return Err(CoreError::Power {
@@ -220,6 +226,7 @@ pub fn discard_unused_scheme(guid_str: &str) {
         return;
     }
     if let Ok(g) = parse_guid_strict(guid_str) {
+        // SAFETY: el GUID es de un plan que creó OtterSwiss y no está activo.
         unsafe {
             let _ = PowerDeleteScheme(None, &g);
         }
@@ -240,6 +247,7 @@ fn delete_created_scheme(snap: &PowerSnapshot) -> CoreResult<()> {
 
         let created_guid = parse_guid_strict(created_str)?;
         if scheme_exists(&created_guid) {
+            // SAFETY: el GUID es de un plan que creó OtterSwiss y no está activo.
             let del_err = unsafe { PowerDeleteScheme(None, &created_guid) };
             if del_err.0 != 0 {
                 return Err(CoreError::Power {

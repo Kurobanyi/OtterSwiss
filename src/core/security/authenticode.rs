@@ -1,7 +1,5 @@
 //! Firma Authenticode de un ejecutable, verificada sobre un handle abierto.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::path::Path;
 use std::ptr;
 

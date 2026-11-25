@@ -1,7 +1,5 @@
 //! Apps Appx instaladas y aprovisionadas, consultadas con PowerShell.
 
-#![warn(clippy::undocumented_unsafe_blocks)]
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;

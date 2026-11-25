@@ -1,4 +1,3 @@
-#![warn(clippy::undocumented_unsafe_blocks)]
 use std::thread;
 use std::time::Duration;
 

@@ -45,6 +45,7 @@ impl SysTools {
             let mut pids = vec![0u32; capacity];
             let mut bytes_returned = 0u32;
 
+            // SAFETY: el búfer de PIDs tiene la capacidad en bytes que se pasa.
             let ok = unsafe {
                 EnumProcesses(
                     pids.as_mut_ptr(),
@@ -74,8 +75,10 @@ impl SysTools {
     pub fn trim_working_sets() -> CoreResult<TrimWorkingSetsReport> {
         ElevationManager::require_elevated("Optimizar conjuntos de trabajo de memoria (RAM)")?;
 
+        // SAFETY: función sin parámetros.
         let own_pid = unsafe { GetCurrentProcessId() };
         let mut current_session = 0u32;
+        // SAFETY: el PID es un número y la sesión de salida es una variable local.
         let _ = unsafe { ProcessIdToSessionId(own_pid, &mut current_session) };
 
         let pids = Self::get_process_ids()?;
@@ -94,6 +97,7 @@ impl SysTools {
             }
 
             let mut proc_session = 0u32;
+            // SAFETY: el PID es un número y la sesión de salida es una variable local.
             if unsafe { ProcessIdToSessionId(pid, &mut proc_session) }.is_err()
                 || proc_session != current_session
             {
@@ -102,6 +106,7 @@ impl SysTools {
             }
 
             let raw_handle =
+                // SAFETY: solo se pide acceso de consulta y de cuota; el handle devuelto pasa a SafeHandle.
                 unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA, false, pid) };
 
             let handle = match raw_handle {
@@ -118,12 +123,14 @@ impl SysTools {
                 }
             };
 
+            // SAFETY: el handle del proceso es válido y tiene PROCESS_SET_QUOTA.
             let ok = unsafe { K32EmptyWorkingSet(handle.raw()) };
             if ok.as_bool() {
                 report.processes_trimmed += 1;
 
                 let mut buf = [0u16; 1024];
                 let mut size = buf.len() as u32;
+                // SAFETY: el handle del proceso es válido y el búfer tiene la longitud que se informa.
                 let name = if unsafe {
                     QueryFullProcessImageNameW(
                         handle.raw(),

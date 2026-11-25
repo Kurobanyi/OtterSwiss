@@ -23,6 +23,7 @@ pub(super) fn keep_gpu_adapter(seen: &mut std::collections::HashSet<GpuKey>, key
 
 pub(super) fn read_dxgi_gpus() -> CoreResult<Vec<GpuSpecs>> {
     let factory: IDXGIFactory1 =
+        // SAFETY: crea la fábrica DXGI; el objeto COM se libera al soltarse.
         unsafe { CreateDXGIFactory1() }.map_err(|e| CoreError::SystemTool {
             message: format!("Error inicializando DXGI: {e}"),
             source: Some(Box::new(e)),
@@ -32,8 +33,10 @@ pub(super) fn read_dxgi_gpus() -> CoreResult<Vec<GpuSpecs>> {
     let mut seen = std::collections::HashSet::new();
     let mut index = 0u32;
 
+    // SAFETY: llamadas COM sobre interfaces DXGI válidas; las estructuras de salida son locales.
     while let Ok(adapter) = unsafe { factory.EnumAdapters1(index) } {
         index += 1;
+        // SAFETY: llamadas COM sobre interfaces DXGI válidas; las estructuras de salida son locales.
         let Ok(desc) = (unsafe { adapter.GetDesc1() }) else {
             continue;
         };

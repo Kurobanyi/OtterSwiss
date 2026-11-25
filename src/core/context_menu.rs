@@ -1,4 +1,3 @@
-#![warn(clippy::undocumented_unsafe_blocks)]
 use std::io;
 use windows::Win32::UI::Shell::{SHCNE_ASSOCCHANGED, SHCNF_IDLIST, SHChangeNotify};
 use winreg::RegKey;

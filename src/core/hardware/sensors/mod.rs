@@ -51,7 +51,9 @@ pub struct SystemSensorsSnapshot {
 /// `T` tiene que ser un `unsafe extern` fn con la firma real que exporta la DLL; `symbol` termina en NUL.
 unsafe fn resolve_proc<T>(lib: &SafeLibrary, symbol: &[u8]) -> Option<T> {
     debug_assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<usize>());
+    // SAFETY: la DLL sigue cargada y el puntero se resolvió con la firma de su encabezado.
     let f = unsafe { lib.get_proc(symbol)? };
+    // SAFETY: contrato de resolve_proc: `T` es un puntero a función del mismo tamaño que el devuelto.
     Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
