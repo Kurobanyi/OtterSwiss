@@ -1,48 +1,26 @@
 //! Temperatura de discos por `IOCTL_STORAGE_QUERY_PROPERTY` (StorageDeviceTemperatureProperty).
 
 use std::mem::size_of;
-use std::ptr;
 
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-};
+use windows::Win32::Storage::FileSystem::FILE_GENERIC_READ;
 use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_PROPERTY_QUERY,
     STORAGE_TEMPERATURE_DATA_DESCRIPTOR, STORAGE_TEMPERATURE_INFO,
     StorageDeviceTemperatureProperty,
 };
-use windows::core::PCWSTR;
 
 use super::{SensorReading, SensorSession};
-use crate::core::platform::handles::SafeHandle;
+use crate::core::hardware::drives::{MAX_PHYSICAL_DRIVES, open_physical_drive};
 use crate::core::platform::memory::AlignedBuf;
-use crate::core::platform::wide::to_wide_null;
 
 impl SensorSession {
     pub fn poll_storage(&self) -> Vec<SensorReading> {
         let mut readings = Vec::new();
 
-        for drive_num in 0..8 {
-            let path_str = format!(r"\\.\PhysicalDrive{}", drive_num);
-            let wide = to_wide_null(&path_str);
-
-            let raw = unsafe {
-                CreateFileW(
-                    PCWSTR(wide.as_ptr()),
-                    FILE_GENERIC_READ.0,
-                    FILE_SHARE_READ | FILE_SHARE_WRITE,
-                    None,
-                    OPEN_EXISTING,
-                    Default::default(),
-                    None,
-                )
-            };
-
-            let handle = match SafeHandle::new(raw.unwrap_or(HANDLE(ptr::null_mut()))) {
-                Some(h) => h,
-                None => continue,
+        for drive_num in 0..MAX_PHYSICAL_DRIVES {
+            let Some(handle) = open_physical_drive(drive_num, FILE_GENERIC_READ.0) else {
+                continue;
             };
 
             let query = STORAGE_PROPERTY_QUERY {

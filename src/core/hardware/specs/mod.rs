@@ -3,7 +3,7 @@
 mod cpu;
 mod gpu;
 mod smbios;
-mod storage;
+pub(crate) mod storage;
 
 use cpu::read_cpu_specs;
 use gpu::read_dxgi_gpus;

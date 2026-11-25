@@ -1,29 +1,15 @@
 //! Perfil de hardware para decidir el nivel del perfil de optimización (`HardwareTier`).
 
 use std::collections::HashSet;
-use std::ptr;
 
 use serde::{Deserialize, Serialize};
-use windows::Win32::Foundation::HANDLE;
-use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-};
-use windows::Win32::System::IO::DeviceIoControl;
-use windows::Win32::System::Ioctl::{
-    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR,
-    STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
-};
 use windows::Win32::System::SystemInformation::{
     GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
 };
-use windows::core::PCWSTR;
 use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
-use crate::core::platform::handles::SafeHandle;
-use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::power::detect_battery_presence;
-use crate::core::platform::wide::{read_cstr_at, to_wide_null};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HardwareTier {
@@ -179,81 +165,12 @@ fn detect_gpu_names() -> Vec<String> {
     gpus
 }
 
+/// AR-04: los mismos discos que muestra la pestaña Hardware, con «[bus] modelo».
 fn detect_storage_drives() -> Vec<String> {
-    let mut drives = Vec::new();
-    for drive_num in 0..8 {
-        let path_str = format!(r"\\.\PhysicalDrive{}", drive_num);
-        let wide = to_wide_null(&path_str);
-        let raw = unsafe {
-            CreateFileW(
-                PCWSTR(wide.as_ptr()),
-                FILE_GENERIC_READ.0,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                None,
-                OPEN_EXISTING,
-                Default::default(),
-                None,
-            )
-        };
-        let Some(handle) = SafeHandle::new(raw.unwrap_or(HANDLE(ptr::null_mut()))) else {
-            continue;
-        };
-
-        let query = STORAGE_PROPERTY_QUERY {
-            PropertyId: StorageDeviceProperty,
-            QueryType: PropertyStandardQuery,
-            AdditionalParameters: [0; 1],
-        };
-
-        let mut buf = AlignedBuf::zeroed(1024);
-        let mut returned = 0u32;
-        let ok = unsafe {
-            DeviceIoControl(
-                handle.raw(),
-                IOCTL_STORAGE_QUERY_PROPERTY,
-                Some(&query as *const _ as *const _),
-                std::mem::size_of::<STORAGE_PROPERTY_QUERY>() as u32,
-                Some(buf.as_mut_ptr() as *mut _),
-                buf.len() as u32,
-                Some(&mut returned),
-                None,
-            )
-        };
-
-        if ok.is_err() || (returned as usize) < std::mem::size_of::<STORAGE_DEVICE_DESCRIPTOR>() {
-            continue;
-        }
-
-        let valid = &buf[..(returned as usize).min(buf.len())];
-        let desc = unsafe { &*(valid.as_ptr() as *const STORAGE_DEVICE_DESCRIPTOR) };
-        let vendor = read_cstr_at(valid, desc.VendorIdOffset);
-        let product = read_cstr_at(valid, desc.ProductIdOffset);
-
-        let bus_label = match desc.BusType.0 {
-            17 => "NVMe",
-            11 => "SATA",
-            7 => "USB",
-            8 => "RAID",
-            1 | 3 | 10 => "SCSI/ATA",
-            _ => "Disco",
-        };
-
-        let model = match (vendor.is_empty(), product.is_empty()) {
-            (false, false)
-                if !product
-                    .to_ascii_lowercase()
-                    .starts_with(&vendor.to_ascii_lowercase()) =>
-            {
-                format!("{} {}", vendor, product)
-            }
-            (_, false) => product,
-            (false, true) => vendor,
-            (true, true) => format!("Unidad Física {}", drive_num),
-        };
-
-        drives.push(format!("[{}] {}", bus_label, model));
-    }
-    drives
+    crate::core::hardware::specs::storage::read_storage_devices()
+        .into_iter()
+        .map(|d| format!("[{}] {}", d.bus_type, d.model))
+        .collect()
 }
 
 #[cfg(test)]
