@@ -6,6 +6,7 @@ use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::SafeHandle;
+use crate::core::platform::memory::SecurityDescriptor;
 use crate::core::platform::wide::to_wide_null;
 
 pub struct NamedMutex {
@@ -17,35 +18,11 @@ impl NamedMutex {
     /// Crea (o abre) el mutex con una DACL solo para Administradores y SYSTEM: así un usuario sin privilegios
     /// no puede crearlo antes y retenerlo para bloquear respaldos y rollbacks (SEC-23).
     fn open(name: &str) -> CoreResult<SafeHandle> {
-        use windows::Win32::Security::Authorization::{
-            ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
-        };
-        use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
-
-        let sddl = to_wide_null("D:P(A;;GA;;;BA)(A;;GA;;;SY)");
-        let mut psd = PSECURITY_DESCRIPTOR::default();
-        unsafe {
-            ConvertStringSecurityDescriptorToSecurityDescriptorW(
-                PCWSTR(sddl.as_ptr()),
-                SDDL_REVISION_1,
-                &mut psd,
-                None,
-            )
-        }
-        .map_err(CoreError::sys(
-            "No se pudo construir el descriptor del mutex: ",
-        ))?;
-        let sa = SECURITY_ATTRIBUTES {
-            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-            lpSecurityDescriptor: psd.0,
-            bInheritHandle: false.into(),
-        };
+        let sd = SecurityDescriptor::from_sddl("D:P(A;;GA;;;BA)(A;;GA;;;SY)")?;
+        let sa = sd.attributes();
         let wide = to_wide_null(name);
+        // SAFETY: `sa` apunta a `sd`, que vive hasta el final de la función; `wide` termina en NUL.
         let res = unsafe { CreateMutexW(Some(&sa), false, PCWSTR(wide.as_ptr())) };
-        unsafe {
-            let _ =
-                windows::Win32::Foundation::LocalFree(windows::Win32::Foundation::HLOCAL(psd.0));
-        }
         let raw = res.map_err(|e| CoreError::SystemTool {
             message: format!("Error creando mutex '{}': {}", name, e),
             source: None,

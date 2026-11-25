@@ -1,5 +1,5 @@
 use std::ptr;
-use windows::Win32::Foundation::{HLOCAL, LocalFree, WIN32_ERROR};
+use windows::Win32::Foundation::WIN32_ERROR;
 use windows::Win32::System::Power::{
     PowerDeleteScheme, PowerDuplicateScheme, PowerGetActiveScheme, PowerReadFriendlyName,
     PowerSetActiveScheme,
@@ -9,6 +9,7 @@ use windows::core::GUID;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::backup::PowerSnapshot;
 use crate::core::platform::guid::{format_guid, parse_guid_strict};
+use crate::core::platform::memory::LocalMem;
 
 /// GUIDs integrados estándar de Windows.
 pub const GUID_BALANCED: &str = "381b4222-f694-41f0-9685-ff5bb260df2e";
@@ -47,11 +48,9 @@ pub fn get_active_scheme_guid() -> CoreResult<GUID> {
             source: None,
         });
     }
-    let guid = unsafe { *guid_ptr };
-    unsafe {
-        let _ = LocalFree(HLOCAL(guid_ptr as _));
-    }
-    Ok(guid)
+    let _guard = LocalMem::new(guid_ptr as _);
+    // SAFETY: la API devolvió un GUID válido (comprobado arriba que no es nulo).
+    Ok(unsafe { *guid_ptr })
 }
 
 fn scheme_exists(guid: &GUID) -> bool {
@@ -117,10 +116,9 @@ pub fn capture_and_prepare_power_scheme(
             source: None,
         });
     }
+    let _dup_guard = LocalMem::new(dup_ptr as _);
+    // SAFETY: la API devolvió un GUID válido (comprobado arriba que no es nulo).
     let new_guid = unsafe { *dup_ptr };
-    unsafe {
-        let _ = LocalFree(HLOCAL(dup_ptr as _));
-    }
     let new_guid_str = format_guid(&new_guid);
 
     Ok(PowerApplyReport {

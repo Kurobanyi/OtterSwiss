@@ -4,50 +4,30 @@ use std::path::Path;
 use std::ptr;
 
 use windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
-use windows::Win32::Foundation::HLOCAL;
 use windows::Win32::Security::Authorization::{
-    ConvertStringSecurityDescriptorToSecurityDescriptorW, EXPLICIT_ACCESS_W, GRANT_ACCESS,
-    GetNamedSecurityInfoW, SDDL_REVISION_1, SE_FILE_OBJECT, SetEntriesInAclW,
+    EXPLICIT_ACCESS_W, GRANT_ACCESS, GetNamedSecurityInfoW, SE_FILE_OBJECT, SetEntriesInAclW,
     SetNamedSecurityInfoW, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
 };
 use windows::Win32::Security::{
     ACL, CreateWellKnownSid, DACL_SECURITY_INFORMATION, IsWellKnownSid, OWNER_SECURITY_INFORMATION,
-    PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES,
-    SECURITY_MAX_SID_SIZE, SUB_CONTAINERS_AND_OBJECTS_INHERIT,
-    UNPROTECTED_DACL_SECURITY_INFORMATION, WinBuiltinAdministratorsSid, WinLocalSystemSid,
+    PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_MAX_SID_SIZE,
+    SUB_CONTAINERS_AND_OBJECTS_INHERIT, UNPROTECTED_DACL_SECURITY_INFORMATION,
+    WinBuiltinAdministratorsSid, WinLocalSystemSid,
 };
 use windows::Win32::Storage::FileSystem::{CreateDirectoryW, FILE_ALL_ACCESS};
 use windows::core::{PCWSTR, PWSTR};
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::memory::{LocalMem, SecurityDescriptor};
 use crate::core::platform::wide::to_wide_null;
 
 /// Crea `path` con un descriptor de seguridad solo-admin desde el primer instante.
 pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
-    let sddl = to_wide_null("O:BAG:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)");
-    let mut psd = PSECURITY_DESCRIPTOR::default();
-    unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            PCWSTR(sddl.as_ptr()),
-            SDDL_REVISION_1,
-            &mut psd,
-            None,
-        )
-    }
-    .map_err(CoreError::trust(
-        "No se pudo construir el descriptor de seguridad: ",
-    ))?;
-
-    let attrs = SECURITY_ATTRIBUTES {
-        nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
-        lpSecurityDescriptor: psd.0,
-        bInheritHandle: false.into(),
-    };
+    let sd = SecurityDescriptor::from_sddl("O:BAG:SYD:PAI(A;OICI;FA;;;BA)(A;OICI;FA;;;SY)")?;
+    let attrs = sd.attributes();
     let wide = to_wide_null(path);
+    // SAFETY: `attrs` apunta a `sd`, que vive hasta el final; `wide` termina en NUL.
     let res = unsafe { CreateDirectoryW(PCWSTR(wide.as_ptr()), Some(&attrs)) };
-    unsafe {
-        let _ = windows::Win32::Foundation::LocalFree(HLOCAL(psd.0));
-    }
 
     match res {
         Ok(()) => Ok(()),
@@ -114,6 +94,8 @@ pub(crate) fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
             &mut psd,
         )
     };
+    // El descriptor (y `owner`, que apunta dentro de él) se libera al salir, también en el error.
+    let _psd_guard = LocalMem::new(psd.0);
     if status.0 != 0 {
         return Err(CoreError::Trust {
             message: format!(
@@ -124,13 +106,11 @@ pub(crate) fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
             source: None,
         });
     }
+    // SAFETY: `owner` apunta dentro del descriptor, que sigue vivo en `_psd_guard`.
     let ok = unsafe {
         IsWellKnownSid(owner, WinBuiltinAdministratorsSid).as_bool()
             || IsWellKnownSid(owner, WinLocalSystemSid).as_bool()
     };
-    unsafe {
-        let _ = windows::Win32::Foundation::LocalFree(HLOCAL(psd.0));
-    }
     Ok(ok)
 }
 
@@ -233,6 +213,7 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
         });
     }
 
+    let _dacl_guard = LocalMem::new(new_dacl as _);
     let wide_path = to_wide_null(path);
     let sec_status = unsafe {
         SetNamedSecurityInfoW(
@@ -247,10 +228,6 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
             None,
         )
     };
-
-    unsafe {
-        let _ = windows::Win32::Foundation::LocalFree(HLOCAL(new_dacl as _));
-    }
 
     if sec_status.0 != 0 {
         return Err(CoreError::Trust {
