@@ -1038,6 +1038,26 @@ impl UninstallerManager {
             }
         }
 
+        // SYS-04: con la app aún registrada, su carpeta de instalación (y lo que cuelga de ella) tampoco
+        // puede entrar por el barrido de Program Files por nombre: borrarla rompería una app instalada.
+        if still_registered {
+            if let Some(loc) = app.install_location.as_ref() {
+                let loc_low = loc
+                    .to_string_lossy()
+                    .trim_end_matches('\\')
+                    .to_ascii_lowercase();
+                items.retain(|i| {
+                    i.path.as_ref().is_none_or(|p| {
+                        let p_low = p
+                            .to_string_lossy()
+                            .trim_end_matches('\\')
+                            .to_ascii_lowercase();
+                        p_low != loc_low && !p_low.starts_with(&format!("{loc_low}\\"))
+                    })
+                });
+            }
+        }
+
         let app_tokens_low: Vec<String> = tokens.iter().map(|t| t.to_ascii_lowercase()).collect();
         let publisher_low = publisher_tok.as_ref().map(|p| p.to_ascii_lowercase());
         for item in &mut items {
