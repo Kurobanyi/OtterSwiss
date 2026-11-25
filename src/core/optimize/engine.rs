@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::ops::ControlFlow;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -206,281 +207,184 @@ impl OptimizationEngine {
         progress: Option<&Arc<Mutex<EngineProgress>>>,
     ) -> CoreResult<EngineExecutionReport> {
         let hw = HardwareProfile::detect();
-        let effective_tier = match requested {
+        let tier = match requested {
             OptimizationProfile::AutoDetected => hw.tier,
             OptimizationProfile::LowEnd => HardwareTier::LowEnd,
             OptimizationProfile::MidRange => HardwareTier::MidRange,
             OptimizationProfile::HighEnd => HardwareTier::HighEnd,
         };
+        let profile_name = format!("{:?}", tier);
+        let mut rec = StepRecorder::new(
+            progress,
+            (REGISTRY_TWEAKS.len() + SERVICE_TWEAKS.len() + 1).max(1),
+        );
 
-        let profile_name = format!("{:?}", effective_tier);
-        let mut applied_count = 0usize;
-        let mut skipped_count = 0usize;
-        let mut failed_items = Vec::new();
-        let mut warnings = Vec::new();
-        let mut requires_relogon = false;
-        let mut step_results = Vec::new();
-        // Si un respaldo no se puede guardar, no se aplica nada más: un cambio sin respaldo no se
-        // podría revertir. El informe parcial se devuelve igual.
-        let mut backup_failed = false;
+        // Si un respaldo no se puede guardar, no se aplica nada más: un cambio sin respaldo no se podría
+        // revertir. El informe parcial se devuelve igual.
+        let backup_ok = self
+            .apply_registry_tweaks(&mut rec, tier, &profile_name)
+            .is_continue()
+            && self
+                .apply_service_tweaks(&mut rec, tier, &profile_name)
+                .is_continue();
+        self.apply_power_plan(&mut rec, tier, &hw, &profile_name, backup_ok);
 
-        let total_steps = (REGISTRY_TWEAKS.len() + SERVICE_TWEAKS.len() + 1).max(1);
-        let mut step_idx = 0usize;
+        Ok(rec.into_report(profile_name, hw))
+    }
 
-        let push_progress = |idx: usize, label: &str, pushed: Option<OptimizationStepResult>| {
-            if let Some(p_arc) = progress {
-                if let Ok(mut p) = p_arc.lock() {
-                    p.current_step = idx;
-                    p.total_steps = total_steps;
-                    p.current_label = label.to_string();
-                    p.percent = step_percent(idx, total_steps);
-                    if let Some(item) = pushed {
-                        p.completed_steps.push(item);
-                    }
-                }
-            }
-        };
-
+    /// Ajustes de registro del perfil. `Break` si un respaldo falló.
+    fn apply_registry_tweaks(
+        &self,
+        rec: &mut StepRecorder<'_>,
+        tier: HardwareTier,
+        profile_name: &str,
+    ) -> ControlFlow<()> {
         for spec in REGISTRY_TWEAKS {
-            if backup_failed {
-                break;
-            }
-            step_idx += 1;
-            push_progress(step_idx.saturating_sub(1), spec.label, None);
+            rec.begin(spec.label);
+            let category = format!("Registro ({})", spec.hive.as_str());
 
-            let eligible =
-                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
-
-            if !eligible {
-                skipped_count += 1;
-                let res = OptimizationStepResult {
-                    category: format!("Registro ({})", spec.hive.as_str()),
-                    label: spec.label.to_string(),
-                    detail: "Omitido por perfil de hardware".into(),
-                    status: OptimizationStepStatus::Skipped,
-                };
-                step_results.push(res.clone());
-                push_progress(step_idx, spec.label, Some(res));
+            if !tweak_is_eligible(tier, spec.min_tier, spec.applies_to_low_end) {
+                rec.skip(
+                    &category,
+                    spec.label,
+                    "Omitido por perfil de hardware".into(),
+                );
                 continue;
             }
 
             let snap = match capture_registry_tweak(spec) {
                 Ok(s) => s,
                 Err(e) => {
-                    let err_txt = format!("{}", e);
-                    failed_items.push(format!("[Registro: {}] {}", spec.id, err_txt));
-                    let res = OptimizationStepResult {
-                        category: format!("Registro ({})", spec.hive.as_str()),
-                        label: spec.label.to_string(),
-                        detail: err_txt,
-                        status: OptimizationStepStatus::Failed,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
+                    rec.fail(&category, spec.label, format!("[Registro: {}]", spec.id), e);
                     continue;
                 }
             };
-
             if let Err(e) = self
                 .backup_mgr
-                .record_registry_before_apply(&profile_name, snap)
+                .record_registry_before_apply(profile_name, snap)
             {
-                failed_items.push(format!(
-                    "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
-                    e
-                ));
-                backup_failed = true;
-                continue;
+                rec.backup_failed(e);
+                return ControlFlow::Break(());
             }
 
             match apply_registry_tweak(spec) {
                 Ok(()) => {
-                    applied_count += 1;
-                    if spec.requires_relogon {
-                        requires_relogon = true;
-                    }
-                    let res = OptimizationStepResult {
-                        category: format!("Registro ({})", spec.hive.as_str()),
-                        label: spec.label.to_string(),
-                        detail: spec.description.to_string(),
-                        status: OptimizationStepStatus::Applied,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
+                    rec.requires_relogon |= spec.requires_relogon;
+                    rec.applied(&category, spec.label, spec.description.to_string());
                 }
-                Err(e) => {
-                    let err_txt = format!("{}", e);
-                    failed_items.push(format!("[Registro: {}] {}", spec.id, err_txt));
-                    let res = OptimizationStepResult {
-                        category: format!("Registro ({})", spec.hive.as_str()),
-                        label: spec.label.to_string(),
-                        detail: err_txt,
-                        status: OptimizationStepStatus::Failed,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
-                }
+                Err(e) => rec.fail(&category, spec.label, format!("[Registro: {}]", spec.id), e),
             }
         }
+        ControlFlow::Continue(())
+    }
 
+    /// Servicios del perfil. `Break` si un respaldo falló.
+    fn apply_service_tweaks(
+        &self,
+        rec: &mut StepRecorder<'_>,
+        tier: HardwareTier,
+        profile_name: &str,
+    ) -> ControlFlow<()> {
+        const CATEGORY: &str = "Servicio Windows";
         for spec in SERVICE_TWEAKS {
-            if backup_failed {
-                break;
-            }
-            step_idx += 1;
-            push_progress(step_idx.saturating_sub(1), spec.label, None);
+            rec.begin(spec.label);
+            let name = spec.service_name;
+            let failed_tag = format!("[Servicio: {}]", name);
 
-            let eligible =
-                tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
-
-            if !eligible {
-                skipped_count += 1;
-                let res = OptimizationStepResult {
-                    category: "Servicio Windows".into(),
-                    label: spec.label.to_string(),
-                    detail: format!("Servicio '{}' omitido por perfil", spec.service_name),
-                    status: OptimizationStepStatus::Skipped,
-                };
-                step_results.push(res.clone());
-                push_progress(step_idx, spec.label, Some(res));
+            if !tweak_is_eligible(tier, spec.min_tier, spec.applies_to_low_end) {
+                rec.skip(
+                    CATEGORY,
+                    spec.label,
+                    format!("Servicio '{}' omitido por perfil", name),
+                );
                 continue;
             }
 
-            let snap_opt = match capture_service_tweak(spec) {
-                Ok(s) => s,
+            let snap = match capture_service_tweak(spec) {
+                Ok(Some(s)) => s,
+                Ok(None) => {
+                    rec.skip(
+                        CATEGORY,
+                        spec.label,
+                        format!("Servicio '{}' no instalado en este sistema", name),
+                    );
+                    continue;
+                }
                 Err(e) => {
-                    let err_txt = format!("{}", e);
-                    failed_items.push(format!("[Servicio: {}] {}", spec.service_name, err_txt));
-                    let res = OptimizationStepResult {
-                        category: "Servicio Windows".into(),
-                        label: spec.label.to_string(),
-                        detail: err_txt,
-                        status: OptimizationStepStatus::Failed,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
+                    rec.fail(CATEGORY, spec.label, failed_tag, e);
                     continue;
                 }
             };
-
-            let Some(snap) = snap_opt else {
-                skipped_count += 1;
-                let res = OptimizationStepResult {
-                    category: "Servicio Windows".into(),
-                    label: spec.label.to_string(),
-                    detail: format!(
-                        "Servicio '{}' no instalado en este sistema",
-                        spec.service_name
-                    ),
-                    status: OptimizationStepStatus::Skipped,
-                };
-                step_results.push(res.clone());
-                push_progress(step_idx, spec.label, Some(res));
-                continue;
-            };
-
             if let Err(e) = self
                 .backup_mgr
-                .record_service_before_apply(&profile_name, snap)
+                .record_service_before_apply(profile_name, snap)
             {
-                failed_items.push(format!(
-                    "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
-                    e
-                ));
-                backup_failed = true;
-                continue;
+                rec.backup_failed(e);
+                return ControlFlow::Break(());
             }
 
             match apply_service_tweak(spec) {
-                Ok(ServiceOpOutcome::Applied) => {
-                    applied_count += 1;
-                    let res = OptimizationStepResult {
-                        category: "Servicio Windows".into(),
-                        label: spec.label.to_string(),
-                        detail: format!(
-                            "Servicio '{}' detenido y deshabilitado",
-                            spec.service_name
-                        ),
-                        status: OptimizationStepStatus::Applied,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
-                }
+                Ok(ServiceOpOutcome::Applied) => rec.applied(
+                    CATEGORY,
+                    spec.label,
+                    format!("Servicio '{}' detenido y deshabilitado", name),
+                ),
                 Ok(ServiceOpOutcome::AppliedPendingStop(why)) => {
-                    applied_count += 1;
-                    warnings.push(format!(
+                    rec.warnings.push(format!(
                         "El servicio '{}' quedó deshabilitado pero no se pudo detener ahora ({}); se detendrá al reiniciar.",
-                        spec.service_name, why
+                        name, why
                     ));
-                    let res = OptimizationStepResult {
-                        category: "Servicio Windows".into(),
-                        label: spec.label.to_string(),
-                        detail: format!(
+                    rec.applied(
+                        CATEGORY,
+                        spec.label,
+                        format!(
                             "Servicio '{}' deshabilitado; se detendrá al reiniciar",
-                            spec.service_name
+                            name
                         ),
-                        status: OptimizationStepStatus::Applied,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
+                    );
                 }
-                Ok(_) => {
-                    skipped_count += 1;
-                    let res = OptimizationStepResult {
-                        category: "Servicio Windows".into(),
-                        label: spec.label.to_string(),
-                        detail: format!("Servicio '{}' omitido", spec.service_name),
-                        status: OptimizationStepStatus::Skipped,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
-                }
-                Err(e) => {
-                    let err_txt = format!("{}", e);
-                    failed_items.push(format!("[Servicio: {}] {}", spec.service_name, err_txt));
-                    let res = OptimizationStepResult {
-                        category: "Servicio Windows".into(),
-                        label: spec.label.to_string(),
-                        detail: err_txt,
-                        status: OptimizationStepStatus::Failed,
-                    };
-                    step_results.push(res.clone());
-                    push_progress(step_idx, spec.label, Some(res));
-                }
+                Ok(_) => rec.skip(CATEGORY, spec.label, format!("Servicio '{}' omitido", name)),
+                Err(e) => rec.fail(CATEGORY, spec.label, failed_tag, e),
             }
         }
+        ControlFlow::Continue(())
+    }
 
-        step_idx += 1;
-        push_progress(
-            step_idx.saturating_sub(1),
-            "Configurando Plan de Energía",
-            None,
-        );
+    /// Plan de energía según el nivel. Un fallo del plan no es fatal (queda como aviso); sin respaldo no se activa.
+    fn apply_power_plan(
+        &self,
+        rec: &mut StepRecorder<'_>,
+        tier: HardwareTier,
+        hw: &HardwareProfile,
+        profile_name: &str,
+        backup_ok: bool,
+    ) {
+        const CATEGORY: &str = "Plan de Energía";
+        const LABEL: &str = "Esquema energético de Windows";
+        const DONE: &str = "Optimización completada";
+        rec.begin("Configurando Plan de Energía");
 
-        let (target_guid, fallback_guid) = match effective_tier {
+        let (target_guid, fallback_guid) = match tier {
             HardwareTier::LowEnd => (GUID_BALANCED, None),
             HardwareTier::MidRange if hw.is_laptop_or_battery => {
-                warnings.push(
+                rec.warnings.push(
                     "Equipo portátil/con batería detectado: se mantiene el plan Equilibrado para proteger autonomía y térmicas."
                         .into(),
                 );
                 (GUID_BALANCED, None)
             }
             HardwareTier::MidRange => (GUID_HIGH_PERFORMANCE, Some(GUID_BALANCED)),
-            HardwareTier::HighEnd => {
-                if hw.is_laptop_or_battery {
-                    warnings.push(
-                        "Equipo portátil/con batería detectado: usando Alto Rendimiento en lugar de Máximo Rendimiento para proteger autonomía y térmicas."
-                            .into(),
-                    );
-                    (GUID_HIGH_PERFORMANCE, Some(GUID_BALANCED))
-                } else {
-                    (GUID_ULTIMATE_PERFORMANCE, Some(GUID_HIGH_PERFORMANCE))
-                }
+            HardwareTier::HighEnd if hw.is_laptop_or_battery => {
+                rec.warnings.push(
+                    "Equipo portátil/con batería detectado: usando Alto Rendimiento en lugar de Máximo Rendimiento para proteger autonomía y térmicas."
+                        .into(),
+                );
+                (GUID_HIGH_PERFORMANCE, Some(GUID_BALANCED))
             }
+            HardwareTier::HighEnd => (GUID_ULTIMATE_PERFORMANCE, Some(GUID_HIGH_PERFORMANCE)),
         };
 
-        let existing_created: CoreResult<Vec<String>> = if backup_failed {
+        let existing_created: CoreResult<Vec<String>> = if !backup_ok {
             Err(CoreError::Backup {
                 message: "respaldo no disponible".into(),
                 source: None,
@@ -497,95 +401,61 @@ impl OptimizationEngine {
             })
         };
 
-        match existing_created.and_then(|created| {
+        let prep = match existing_created.and_then(|created| {
             capture_and_prepare_power_scheme(target_guid, fallback_guid, &created)
         }) {
-            Ok(prep) if prep.already_managed => {
-                skipped_count += 1;
-                let res = OptimizationStepResult {
-                    category: "Plan de Energía".into(),
-                    label: "Esquema energético de Windows".into(),
-                    detail: "Ya hay un plan creado por OtterSwiss activo; revierte primero para cambiar de perfil".into(),
-                    status: OptimizationStepStatus::Skipped,
-                };
-                step_results.push(res.clone());
-                push_progress(step_idx, "Optimización completada", Some(res));
-            }
-            Ok(prep) => {
-                if prep.used_fallback_scheme {
-                    warnings.push(
-                        "El plan de energía primario no estaba disponible; se aplicó el plan alternativo."
-                            .into(),
-                    );
-                }
-                let recorded = self
-                    .backup_mgr
-                    .record_power_before_apply(&profile_name, prep.snapshot.clone())
-                    .map_err(|e| CoreError::Backup {
-                        message: e.to_string(),
-                        source: None,
-                    });
-
-                match recorded.and_then(|()| activate_prepared_power_scheme(&prep.snapshot)) {
-                    Err(e @ CoreError::Backup { .. }) => {
-                        // Sin respaldo no se activa: se borra el esquema duplicado que no se usará.
-                        if let Some(ref created) = prep.snapshot.created_scheme_guid {
-                            discard_unused_scheme(created);
-                        }
-                        failed_items.push(format!(
-                            "[Respaldo] {} — no se cambió el plan de energía",
-                            e
-                        ));
-                    }
-                    Ok(_) => {
-                        applied_count += 1;
-                        let res = OptimizationStepResult {
-                            category: "Plan de Energía".into(),
-                            label: "Esquema energético de Windows".into(),
-                            detail: format!("Activado para perfil {}", profile_name),
-                            status: OptimizationStepStatus::Applied,
-                        };
-                        step_results.push(res.clone());
-                        push_progress(step_idx, "Optimización completada", Some(res));
-                    }
-                    Err(e) => {
-                        let msg = format!("Plan de energía no aplicado (no fatal): {}", e);
-                        warnings.push(msg.clone());
-                        let res = OptimizationStepResult {
-                            category: "Plan de Energía".into(),
-                            label: "Esquema energético de Windows".into(),
-                            detail: msg,
-                            status: OptimizationStepStatus::Skipped,
-                        };
-                        step_results.push(res.clone());
-                        push_progress(step_idx, "Optimización completada", Some(res));
-                    }
-                }
-            }
+            Ok(prep) => prep,
             Err(e) => {
                 let msg = format!("No se pudo preparar el plan de energía (no fatal): {}", e);
-                warnings.push(msg.clone());
-                let res = OptimizationStepResult {
-                    category: "Plan de Energía".into(),
-                    label: "Esquema energético de Windows".into(),
-                    detail: msg,
-                    status: OptimizationStepStatus::Skipped,
-                };
-                step_results.push(res.clone());
-                push_progress(step_idx, "Optimización completada", Some(res));
+                rec.power_warning(CATEGORY, LABEL, DONE, msg);
+                return;
             }
+        };
+        if prep.already_managed {
+            rec.skip_as(
+                CATEGORY,
+                LABEL,
+                DONE,
+                "Ya hay un plan creado por OtterSwiss activo; revierte primero para cambiar de perfil".into(),
+            );
+            return;
+        }
+        if prep.used_fallback_scheme {
+            rec.warnings.push(
+                "El plan de energía primario no estaba disponible; se aplicó el plan alternativo."
+                    .into(),
+            );
         }
 
-        Ok(EngineExecutionReport {
-            profile_name,
-            hardware: hw,
-            applied_count,
-            skipped_count,
-            failed_items,
-            warnings,
-            requires_relogon,
-            step_results,
-        })
+        let recorded = self
+            .backup_mgr
+            .record_power_before_apply(profile_name, prep.snapshot.clone())
+            .map_err(|e| CoreError::Backup {
+                message: e.to_string(),
+                source: None,
+            });
+        match recorded.and_then(|()| activate_prepared_power_scheme(&prep.snapshot)) {
+            Err(e @ CoreError::Backup { .. }) => {
+                // Sin respaldo no se activa: se borra el esquema duplicado que no se usará.
+                if let Some(ref created) = prep.snapshot.created_scheme_guid {
+                    discard_unused_scheme(created);
+                }
+                rec.failed_items.push(format!(
+                    "[Respaldo] {} — no se cambió el plan de energía",
+                    e
+                ));
+            }
+            Ok(_) => rec.applied_as(
+                CATEGORY,
+                LABEL,
+                DONE,
+                format!("Activado para perfil {}", profile_name),
+            ),
+            Err(e) => {
+                let msg = format!("Plan de energía no aplicado (no fatal): {}", e);
+                rec.power_warning(CATEGORY, LABEL, DONE, msg);
+            }
+        }
     }
 
     /// `true` si hay un respaldo de optimización pendiente de revertir.
@@ -694,6 +564,153 @@ impl OptimizationEngine {
             failed_items,
             backup_deleted,
         })
+    }
+}
+
+/// CL-05: lleva la cuenta de un perfil en curso (aplicados, omitidos, fallos y avisos), los resultados por paso y
+/// el progreso que ve la UI. Cada paso empieza con `begin` y termina con un solo resultado.
+struct StepRecorder<'a> {
+    progress: Option<&'a Arc<Mutex<EngineProgress>>>,
+    total_steps: usize,
+    step: usize,
+    label: String,
+    applied_count: usize,
+    skipped_count: usize,
+    failed_items: Vec<String>,
+    warnings: Vec<String>,
+    requires_relogon: bool,
+    step_results: Vec<OptimizationStepResult>,
+}
+
+impl<'a> StepRecorder<'a> {
+    fn new(progress: Option<&'a Arc<Mutex<EngineProgress>>>, total_steps: usize) -> Self {
+        Self {
+            progress,
+            total_steps,
+            step: 0,
+            label: String::new(),
+            applied_count: 0,
+            skipped_count: 0,
+            failed_items: Vec::new(),
+            warnings: Vec::new(),
+            requires_relogon: false,
+            step_results: Vec::new(),
+        }
+    }
+
+    fn publish(&self, step: usize, label: &str, done: Option<&OptimizationStepResult>) {
+        if let Some(Ok(mut p)) = self.progress.map(|p| p.lock()) {
+            p.current_step = step;
+            p.total_steps = self.total_steps;
+            p.current_label = label.to_string();
+            p.percent = step_percent(step, self.total_steps);
+            if let Some(item) = done {
+                p.completed_steps.push(item.clone());
+            }
+        }
+    }
+
+    /// Empieza el paso siguiente y lo anuncia.
+    fn begin(&mut self, label: &str) {
+        self.step += 1;
+        self.label = label.to_string();
+        self.publish(self.step - 1, label, None);
+    }
+
+    fn finish(
+        &mut self,
+        progress_label: &str,
+        category: &str,
+        label: &str,
+        detail: String,
+        status: OptimizationStepStatus,
+    ) {
+        let res = OptimizationStepResult {
+            category: category.to_string(),
+            label: label.to_string(),
+            detail,
+            status,
+        };
+        self.publish(self.step, progress_label, Some(&res));
+        self.step_results.push(res);
+    }
+
+    fn applied(&mut self, category: &str, label: &str, detail: String) {
+        let progress_label = self.label.clone();
+        self.applied_as(category, label, &progress_label, detail);
+    }
+
+    fn applied_as(&mut self, category: &str, label: &str, progress_label: &str, detail: String) {
+        self.applied_count += 1;
+        self.finish(
+            progress_label,
+            category,
+            label,
+            detail,
+            OptimizationStepStatus::Applied,
+        );
+    }
+
+    fn skip(&mut self, category: &str, label: &str, detail: String) {
+        let progress_label = self.label.clone();
+        self.skip_as(category, label, &progress_label, detail);
+    }
+
+    fn skip_as(&mut self, category: &str, label: &str, progress_label: &str, detail: String) {
+        self.skipped_count += 1;
+        self.finish(
+            progress_label,
+            category,
+            label,
+            detail,
+            OptimizationStepStatus::Skipped,
+        );
+    }
+
+    /// Un paso falló: va a `failed_items` con su etiqueta (`[Registro: id]`) y al informe como fallido.
+    fn fail(&mut self, category: &str, label: &str, tag: String, err: CoreError) {
+        let detail = err.to_string();
+        self.failed_items.push(format!("{tag} {detail}"));
+        let progress_label = self.label.clone();
+        self.finish(
+            &progress_label,
+            category,
+            label,
+            detail,
+            OptimizationStepStatus::Failed,
+        );
+    }
+
+    /// El plan de energía no se aplicó: es un aviso (no cuenta como omitido ni como fallo).
+    fn power_warning(&mut self, category: &str, label: &str, progress_label: &str, msg: String) {
+        self.warnings.push(msg.clone());
+        self.finish(
+            progress_label,
+            category,
+            label,
+            msg,
+            OptimizationStepStatus::Skipped,
+        );
+    }
+
+    fn backup_failed(&mut self, err: CoreError) {
+        self.failed_items.push(format!(
+            "[Respaldo] {} — se detuvo la optimización para no aplicar cambios sin respaldo",
+            err
+        ));
+    }
+
+    fn into_report(self, profile_name: String, hardware: HardwareProfile) -> EngineExecutionReport {
+        EngineExecutionReport {
+            profile_name,
+            hardware,
+            applied_count: self.applied_count,
+            skipped_count: self.skipped_count,
+            failed_items: self.failed_items,
+            warnings: self.warnings,
+            requires_relogon: self.requires_relogon,
+            step_results: self.step_results,
+        }
     }
 }
 
