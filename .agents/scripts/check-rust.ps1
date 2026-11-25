@@ -28,6 +28,16 @@ if ($executionNum -gt 3 -or -not (Test-Path "Cargo.toml")) {
     exit 0
 }
 
+$fmtRaw = & cargo fmt --all --check 2>&1
+if ($LASTEXITCODE -ne 0) {
+    $response = @{
+        decision = "continue"
+        reason   = "cargo fmt --check falló: corre cargo fmt."
+    } | ConvertTo-Json -Compress
+    [Console]::Out.Write($response)
+    exit 0
+}
+
 $clippyRaw = & cargo clippy --all-targets -- -D warnings 2>&1
 $clippyCode = $LASTEXITCODE
 

@@ -1,0 +1,6 @@
+#!/bin/sh
+# HE-10: antes de cada commit, formato y clippy como en el CI. Se activa una vez por clon:
+#   git config core.hooksPath .githooks
+set -e
+cargo fmt --all --check
+cargo clippy --all-targets -q -- -D warnings
