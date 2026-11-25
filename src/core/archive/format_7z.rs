@@ -7,12 +7,12 @@ use std::sync::{Arc, Mutex};
 
 use sevenz_rust2::{ArchiveReader, Password};
 
+use super::ArchiveManager;
 use super::paths::sanitize_archive_rel_path;
-use super::progress::{copy_with_quota, ArchiveProgress, TelemetryCtx};
+use super::progress::{ArchiveProgress, TelemetryCtx, copy_with_quota};
 use super::staging::{
     create_staging_dir, discard_staging, finalize_staging_dir, read_zone_identifier,
 };
-use super::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
 
 impl ArchiveManager {

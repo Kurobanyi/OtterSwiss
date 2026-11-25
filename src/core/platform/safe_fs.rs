@@ -4,15 +4,15 @@ use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::AsRawHandle;
 use std::path::{Component, Path, PathBuf};
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
-    CreateFileW, FileDispositionInfo, GetFileInformationByHandle, GetFinalPathNameByHandleW,
-    SetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_DIRECTORY,
+    BY_HANDLE_FILE_INFORMATION, CreateFileW, DELETE, FILE_ATTRIBUTE_DIRECTORY,
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_DISPOSITION_INFO, FILE_FLAG_BACKUP_SEMANTICS,
     FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES, FILE_SHARE_NONE, FILE_SHARE_READ,
-    OPEN_EXISTING, VOLUME_NAME_DOS,
+    FileDispositionInfo, GetFileInformationByHandle, GetFinalPathNameByHandleW, OPEN_EXISTING,
+    SetFileInformationByHandle, VOLUME_NAME_DOS,
 };
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::SafeHandle;
@@ -93,15 +93,15 @@ pub fn open_verified_file_read(
             path.display()
         )));
     }
-    if let Some(limit) = max_size {
-        if info.file_size > limit {
-            return Err(CoreError::Validation(format!(
-                "Archivo '{}' excede el límite de {} bytes ({} bytes)",
-                path.display(),
-                limit,
-                info.file_size
-            )));
-        }
+    if let Some(limit) = max_size
+        && info.file_size > limit
+    {
+        return Err(CoreError::Validation(format!(
+            "Archivo '{}' excede el límite de {} bytes ({} bytes)",
+            path.display(),
+            limit,
+            info.file_size
+        )));
     }
 
     Ok((file, info))

@@ -1,16 +1,16 @@
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 
 use crate::core::archive::{
-    resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress,
-    DEFAULT_EXTRACT_QUOTA,
+    ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
+    resolve_extract_destination,
 };
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::{bytes_mb, eta, mb_1};
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::run_with_progress;
 
 #[component]

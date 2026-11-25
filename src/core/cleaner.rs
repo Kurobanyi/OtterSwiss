@@ -3,12 +3,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-use windows::core::PCWSTR;
 use windows::Win32::UI::Shell::{
-    FOLDERID_InternetCache, FOLDERID_LocalAppData, FOLDERID_Windows, SHEmptyRecycleBinW,
-    SHGetKnownFolderPath, SHQueryRecycleBinW, KF_FLAG_DEFAULT, SHERB_NOCONFIRMATION,
-    SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHQUERYRBINFO,
+    FOLDERID_InternetCache, FOLDERID_LocalAppData, FOLDERID_Windows, KF_FLAG_DEFAULT,
+    SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND, SHEmptyRecycleBinW,
+    SHGetKnownFolderPath, SHQUERYRBINFO, SHQueryRecycleBinW,
 };
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::{
@@ -162,11 +162,11 @@ impl SystemCleaner {
                         Ok(()) => {
                             result.bytes_freed += file_len;
                             result.files_removed += 1;
-                            if let Some(p_arc) = progress {
-                                if let Ok(mut p) = p_arc.lock() {
-                                    p.bytes_freed_so_far += file_len;
-                                    p.files_removed_so_far += 1;
-                                }
+                            if let Some(p_arc) = progress
+                                && let Ok(mut p) = p_arc.lock()
+                            {
+                                p.bytes_freed_so_far += file_len;
+                                p.files_removed_so_far += 1;
                             }
                         }
                         Err(_) => {
@@ -285,14 +285,14 @@ impl SystemCleaner {
 
         let total_steps = targets.len() + usize::from(clean_recycle);
         let update_step = |step: usize, label: &str| {
-            if let Some(p_arc) = progress {
-                if let Ok(mut p) = p_arc.lock() {
-                    p.current_step = step;
-                    p.total_steps = total_steps.max(1);
-                    p.current_category = label.to_string();
-                    // El 100 % se marca al terminar, después del último paso.
-                    p.percent = step_percent(step, total_steps).min(99);
-                }
+            if let Some(p_arc) = progress
+                && let Ok(mut p) = p_arc.lock()
+            {
+                p.current_step = step;
+                p.total_steps = total_steps.max(1);
+                p.current_category = label.to_string();
+                // El 100 % se marca al terminar, después del último paso.
+                p.percent = step_percent(step, total_steps).min(99);
             }
         };
 
@@ -309,24 +309,24 @@ impl SystemCleaner {
         if clean_recycle && !cancel.load(Ordering::Relaxed) {
             update_step(total_steps.saturating_sub(1), "Papelera de reciclaje");
             let rb_res = Self::clean_recycle_bin();
-            if let Some(p_arc) = progress {
-                if let Ok(mut p) = p_arc.lock() {
-                    p.bytes_freed_so_far += rb_res.bytes_freed;
-                    p.files_removed_so_far += rb_res.files_removed;
-                }
+            if let Some(p_arc) = progress
+                && let Ok(mut p) = p_arc.lock()
+            {
+                p.bytes_freed_so_far += rb_res.bytes_freed;
+                p.files_removed_so_far += rb_res.files_removed;
             }
             results.push(rb_res);
         }
 
         results.extend(skipped_notes);
 
-        if let Some(p_arc) = progress {
-            if let Ok(mut p) = p_arc.lock() {
-                p.current_step = total_steps;
-                p.total_steps = total_steps.max(1);
-                p.current_category = "Limpieza completada".into();
-                p.percent = 100;
-            }
+        if let Some(p_arc) = progress
+            && let Ok(mut p) = p_arc.lock()
+        {
+            p.current_step = total_steps;
+            p.total_steps = total_steps.max(1);
+            p.current_category = "Limpieza completada".into();
+            p.percent = 100;
         }
 
         results

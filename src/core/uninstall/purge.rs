@@ -158,8 +158,7 @@ impl UninstallerManager {
                     }
                 }
                 LeftoverKind::RegistryValue => {
-                    let (Some(ref subkey), Some(ref val_name)) =
-                        (&item.reg_subkey, &item.reg_value_name)
+                    let (Some(subkey), Some(val_name)) = (&item.reg_subkey, &item.reg_value_name)
                     else {
                         continue;
                     };

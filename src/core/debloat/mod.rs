@@ -5,8 +5,8 @@ mod catalog;
 mod registry_backup;
 
 pub use catalog::{
-    DebloatAppSpec, DebloatCategory, DebloatRegEntry, DebloatRegTweakSpec, DEBLOAT_APP_CATALOG,
-    DEBLOAT_REG_TWEAKS,
+    DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS, DebloatAppSpec, DebloatCategory, DebloatRegEntry,
+    DebloatRegTweakSpec,
 };
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -106,13 +106,13 @@ impl DebloaterManager {
         let mut step_idx = 0usize;
 
         let push_prog = |idx: usize, label: &str| {
-            if let Some(p_arc) = progress {
-                if let Ok(mut p) = p_arc.lock() {
-                    p.current_step = idx;
-                    p.total_steps = total_steps;
-                    p.current_label = label.to_string();
-                    p.percent = step_percent(idx, total_steps);
-                }
+            if let Some(p_arc) = progress
+                && let Ok(mut p) = p_arc.lock()
+            {
+                p.current_step = idx;
+                p.total_steps = total_steps;
+                p.current_label = label.to_string();
+                p.percent = step_percent(idx, total_steps);
             }
         };
 

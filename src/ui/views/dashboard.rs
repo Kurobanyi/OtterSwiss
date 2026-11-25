@@ -10,7 +10,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::run_with_progress;
 
 #[component]

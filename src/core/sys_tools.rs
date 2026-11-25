@@ -1,14 +1,14 @@
 use std::path::Path;
 
-use windows::core::PWSTR;
 use windows::Win32::System::ProcessStatus::{EnumProcesses, K32EmptyWorkingSet};
 use windows::Win32::System::Threading::{
-    GetCurrentProcessId, OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-    PROCESS_QUERY_INFORMATION, PROCESS_SET_QUOTA,
+    GetCurrentProcessId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+    PROCESS_SET_QUOTA, QueryFullProcessImageNameW,
 };
+use windows::core::PWSTR;
 
 #[link(name = "kernel32")]
-extern "system" {
+unsafe extern "system" {
     fn ProcessIdToSessionId(
         dwprocessid: u32,
         psessionid: *mut u32,

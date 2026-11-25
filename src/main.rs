@@ -3,15 +3,15 @@
 
 mod startup;
 
-use dioxus::desktop::{icon_from_memory, Config, LogicalSize, WindowBuilder};
+use dioxus::desktop::{Config, LogicalSize, WindowBuilder, icon_from_memory};
 use otter_swiss::core::cli::CliCommand;
 use otter_swiss::core::context_menu::ContextMenuManager;
 use otter_swiss::core::rollback::revert_all_changes;
+use otter_swiss::ui::App;
 use otter_swiss::ui::document::document_head;
 use otter_swiss::ui::i18n::Lang;
 use otter_swiss::ui::theme::Theme;
 use otter_swiss::ui::views::mini_archive::{MiniArchiveJob, MiniArchiveView};
-use otter_swiss::ui::App;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

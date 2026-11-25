@@ -1,20 +1,20 @@
 //! Operaciones sobre servicios de Windows por el SCM: abrir, consultar, cambiar el inicio, detener y arrancar.
 
 use std::time::{Duration, Instant};
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::{
     ERROR_DEPENDENT_SERVICES_RUNNING, ERROR_SERVICE_ALREADY_RUNNING, ERROR_SERVICE_DOES_NOT_EXIST,
     ERROR_SERVICE_NOT_ACTIVE,
 };
 use windows::Win32::System::Services::{
-    ChangeServiceConfig2W, ChangeServiceConfigW, ControlService, OpenSCManagerW, OpenServiceW,
-    QueryServiceConfig2W, QueryServiceConfigW, QueryServiceStatusEx, StartServiceW,
-    ENUM_SERVICE_TYPE, QUERY_SERVICE_CONFIGW, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO,
-    SERVICE_AUTO_START, SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONTROL_STOP,
-    SERVICE_DELAYED_AUTO_START_INFO, SERVICE_ERROR, SERVICE_NO_CHANGE, SERVICE_QUERY_STATUS,
-    SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_START_TYPE, SERVICE_STATUS,
-    SERVICE_STATUS_PROCESS, SERVICE_STOPPED, SERVICE_STOP_PENDING,
+    ChangeServiceConfig2W, ChangeServiceConfigW, ControlService, ENUM_SERVICE_TYPE, OpenSCManagerW,
+    OpenServiceW, QUERY_SERVICE_CONFIGW, QueryServiceConfig2W, QueryServiceConfigW,
+    QueryServiceStatusEx, SC_MANAGER_CONNECT, SC_STATUS_PROCESS_INFO, SERVICE_AUTO_START,
+    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_CONTROL_STOP, SERVICE_DELAYED_AUTO_START_INFO,
+    SERVICE_ERROR, SERVICE_NO_CHANGE, SERVICE_QUERY_STATUS, SERVICE_RUNNING, SERVICE_START_PENDING,
+    SERVICE_START_TYPE, SERVICE_STATUS, SERVICE_STATUS_PROCESS, SERVICE_STOP_PENDING,
+    SERVICE_STOPPED, StartServiceW,
 };
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::ScHandle;
@@ -260,17 +260,17 @@ pub(crate) fn start_service_and_wait(
         return Ok(());
     }
 
-    if current != SERVICE_START_PENDING.0 {
-        if let Err(e) = unsafe { StartServiceW(svc.raw(), None) } {
-            if e.code() == ERROR_SERVICE_ALREADY_RUNNING.to_hresult() {
-                return Ok(());
-            }
-            return Err(CoreError::Service {
-                service: service_name.to_string(),
-                message: format!("StartServiceW falló: {}", e),
-                source: None,
-            });
+    if current != SERVICE_START_PENDING.0
+        && let Err(e) = unsafe { StartServiceW(svc.raw(), None) }
+    {
+        if e.code() == ERROR_SERVICE_ALREADY_RUNNING.to_hresult() {
+            return Ok(());
         }
+        return Err(CoreError::Service {
+            service: service_name.to_string(),
+            message: format!("StartServiceW falló: {}", e),
+            source: None,
+        });
     }
 
     let deadline = Instant::now() + timeout;

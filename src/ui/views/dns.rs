@@ -3,14 +3,14 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 
 use crate::core::dns::{
-    benchmark_dns_presets, list_active_adapters, DnsBenchmarkResult, DnsManager,
-    NetworkAdapterInfo, DNS_PRESETS,
+    DNS_PRESETS, DnsBenchmarkResult, DnsManager, NetworkAdapterInfo, benchmark_dns_presets,
+    list_active_adapters,
 };
 use crate::core::error::CoreError;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
-use crate::ui::i18n::{plural, strings, Lang};
+use crate::ui::i18n::{Lang, plural, strings};
 
 /// Estado de la lista de adaptadores: `None` mientras se lee (UI-07).
 type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, String>>;
@@ -233,11 +233,7 @@ pub fn DnsView() -> Element {
     .to_string();
 
     let ping_btn_text = if *is_benchmarking.read() {
-        if en {
-            "Pinging…"
-        } else {
-            "Midiendo…"
-        }
+        if en { "Pinging…" } else { "Midiendo…" }
     } else if en {
         "Test Ping"
     } else {

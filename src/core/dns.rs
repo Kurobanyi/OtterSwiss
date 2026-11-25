@@ -3,22 +3,22 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
-use windows::core::GUID;
 use windows::Win32::Foundation::{ERROR_BUFFER_OVERFLOW, HANDLE, NO_ERROR};
 #[cfg(target_pointer_width = "32")]
 use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY as EchoReplyStruct;
 #[cfg(target_pointer_width = "64")]
 use windows::Win32::NetworkManagement::IpHelper::ICMP_ECHO_REPLY32 as EchoReplyStruct;
 use windows::Win32::NetworkManagement::IpHelper::{
-    GetAdaptersAddresses, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho, SetInterfaceDnsSettings,
     DNS_INTERFACE_SETTINGS, DNS_INTERFACE_SETTINGS_VERSION1, DNS_SETTING_IPV6,
-    DNS_SETTING_NAMESERVER, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST,
-    IP_ADAPTER_ADDRESSES_LH,
+    DNS_SETTING_NAMESERVER, GAA_FLAG_SKIP_ANYCAST, GAA_FLAG_SKIP_MULTICAST, GetAdaptersAddresses,
+    IP_ADAPTER_ADDRESSES_LH, IcmpCloseHandle, IcmpCreateFile, IcmpSendEcho,
+    SetInterfaceDnsSettings,
 };
 use windows::Win32::NetworkManagement::Ndis::IfOperStatusUp;
 use windows::Win32::Networking::WinSock::AF_UNSPEC;
-use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
+use windows::core::GUID;
 use winreg::RegKey;
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
@@ -63,8 +63,7 @@ pub const DNS_PRESETS: &[DnsPreset] = &[
         ipv4_secondary: "149.112.112.112",
         ipv6_primary: "2620:fe::fe",
         ipv6_secondary: "2620:fe::9",
-        privacy_notice:
-            "Las consultas DNS se envían a Quad9 (filtrado de dominios maliciosos en resolver).",
+        privacy_notice: "Las consultas DNS se envían a Quad9 (filtrado de dominios maliciosos en resolver).",
         privacy_notice_en: "DNS queries are sent to Quad9 (the resolver blocks malicious domains).",
     },
     DnsPreset {
@@ -89,7 +88,7 @@ pub struct DnsBenchmarkResult {
 struct IcmpHandle(HANDLE);
 impl Drop for IcmpHandle {
     fn drop(&mut self) {
-        if !self.0.is_invalid() && !self.0 .0.is_null() {
+        if !self.0.is_invalid() && !self.0.0.is_null() {
             unsafe {
                 let _ = IcmpCloseHandle(self.0);
             }
@@ -311,7 +310,7 @@ fn read_nameserver_value(path: &str) -> CoreResult<String> {
                     path, e
                 ),
                 source: None,
-            })
+            });
         }
     };
     match key.get_value::<String, _>("NameServer") {
@@ -648,11 +647,7 @@ fn set_family_dns(interface_guid: GUID, csv: &str, ipv6: bool) -> Result<(), u32
         ..Default::default()
     };
     let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings) };
-    if err.0 != 0 {
-        Err(err.0)
-    } else {
-        Ok(())
-    }
+    if err.0 != 0 { Err(err.0) } else { Ok(()) }
 }
 
 fn apply_interface_dns_typed(

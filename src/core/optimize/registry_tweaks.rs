@@ -1,13 +1,13 @@
 //! Ajustes de registro del perfil de optimización: capturar, aplicar y restaurar solo entradas de la tabla.
 
 use std::io;
-use winreg::enums::{KEY_READ, KEY_WRITE};
 use winreg::RegValue;
+use winreg::enums::{KEY_READ, KEY_WRITE};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::backup::RegistrySnapshot;
-use crate::core::optimize::tweaks_catalog::{is_allowed_registry_entry, RegistryTweakSpec};
-use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type, RegLocation};
+use crate::core::optimize::tweaks_catalog::{RegistryTweakSpec, is_allowed_registry_entry};
+use crate::core::platform::registry::{RegLocation, reg_type_to_u32, u32_to_reg_type};
 
 /// Captura el estado previo exacto `(vtype, raw_bytes)` distinguiendo `NotFound`
 /// de errores reales de permisos o corrupción.
@@ -132,12 +132,11 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
         }
     };
 
-    if !force {
-        if let Ok(current) = key.get_raw_value(&snap.value_name) {
-            if current.bytes != snap.applied_bytes {
-                return Ok(false);
-            }
-        }
+    if !force
+        && let Ok(current) = key.get_raw_value(&snap.value_name)
+        && current.bytes != snap.applied_bytes
+    {
+        return Ok(false);
     }
 
     if snap.existed {

@@ -3,10 +3,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use winreg::RegKey;
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
 };
-use winreg::RegKey;
 
 use super::leftovers::is_protected_name;
 use super::runner::parse_cmd_exe_and_args;

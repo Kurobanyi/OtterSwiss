@@ -1,7 +1,7 @@
 //! Preferencias del usuario en Windows que la app respeta (idioma y modo claro u oscuro).
 
-use winreg::enums::KEY_READ;
 use winreg::RegKey;
+use winreg::enums::KEY_READ;
 
 /// Si el idioma de la interfaz de Windows del usuario es español (cualquier variante).
 pub fn user_ui_language_is_spanish() -> bool {

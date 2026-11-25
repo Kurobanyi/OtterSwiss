@@ -2,7 +2,7 @@ pub mod strings;
 
 use serde::{Deserialize, Serialize};
 
-pub use strings::{plural, Strings};
+pub use strings::{Strings, plural};
 
 use crate::ui::prefs;
 
@@ -72,9 +72,5 @@ impl Lang {
 
 /// Catálogo para las vistas que ya tienen `en: bool` a mano.
 pub fn strings(en: bool) -> &'static Strings {
-    if en {
-        &strings::EN
-    } else {
-        &strings::ES
-    }
+    if en { &strings::EN } else { &strings::ES }
 }

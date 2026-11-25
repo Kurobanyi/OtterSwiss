@@ -3,18 +3,18 @@
 use std::path::Path;
 use std::ptr;
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Security::Cryptography::{
-    CertGetCertificateContextProperty, CertGetNameStringW, CERT_NAME_ATTR_TYPE,
-    CERT_SHA1_HASH_PROP_ID,
+    CERT_NAME_ATTR_TYPE, CERT_SHA1_HASH_PROP_ID, CertGetCertificateContextProperty,
+    CertGetNameStringW,
 };
 use windows::Win32::Security::WinTrust::{
-    WTHelperGetProvCertFromChain, WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData,
-    WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
-    WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT,
-    WTD_REVOKE_WHOLECHAIN, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE,
+    WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0, WINTRUST_FILE_INFO,
+    WTD_CHOICE_FILE, WTD_REVOCATION_CHECK_CHAIN_EXCLUDE_ROOT, WTD_REVOKE_WHOLECHAIN,
+    WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE, WTHelperGetProvCertFromChain,
+    WTHelperGetProvSignerFromChain, WTHelperProvDataFromStateData, WinVerifyTrust,
 };
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::wide::to_wide_null;

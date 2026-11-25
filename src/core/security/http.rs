@@ -2,14 +2,14 @@
 //! (CL-03). No valida contenido: eso lo hace quien lee (`download.rs` con SHA-256 y Authenticode, el actualizador
 //! con su tope de tamaño).
 
-use windows::core::PCWSTR;
 use windows::Win32::Networking::WinInet::{
-    HttpQueryInfoW, InternetOpenUrlW, InternetOpenW, InternetQueryOptionW, InternetReadFile,
-    InternetSetOptionW, HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE,
+    HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpQueryInfoW,
     INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD, INTERNET_FLAG_SECURE,
     INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT,
-    INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
+    INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL, InternetOpenUrlW, InternetOpenW,
+    InternetQueryOptionW, InternetReadFile, InternetSetOptionW,
 };
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::WinInetHandle;

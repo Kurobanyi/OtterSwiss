@@ -1,8 +1,8 @@
 //! Registro de Windows: colmena, vista de 32 o 64 bits y tipos de valor. Sin reglas de la app.
 
 use serde::{Deserialize, Serialize};
-use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
 use winreg::RegKey;
+use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
 
 /// Colmena del registro que la app puede tocar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

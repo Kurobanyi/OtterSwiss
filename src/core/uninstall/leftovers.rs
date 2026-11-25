@@ -109,12 +109,11 @@ pub(super) fn build_app_tokens(app: &InstalledApp) -> (Vec<String>, Option<Strin
         }
     }
 
-    if let Some(ref loc) = app.install_location {
-        if let Some(folder) = loc.file_name().and_then(|n| n.to_str()) {
-            if !GENERIC_FOLDER_TOKENS.contains(&folder.trim().to_ascii_lowercase().as_str()) {
-                push_token(folder);
-            }
-        }
+    if let Some(ref loc) = app.install_location
+        && let Some(folder) = loc.file_name().and_then(|n| n.to_str())
+        && !GENERIC_FOLDER_TOKENS.contains(&folder.trim().to_ascii_lowercase().as_str())
+    {
+        push_token(folder);
     }
 
     let pub_clean = sanitize_token(&app.publisher);
@@ -171,10 +170,11 @@ pub(super) fn is_recommended_leftover(
                 .and_then(|k| k.rsplit('\\').next())
                 .map(|n| n.to_ascii_lowercase())
         });
-    if let (Some(leaf), Some(publisher)) = (leaf, publisher) {
-        if leaf == publisher && !app_tokens.contains(&leaf) {
-            return false;
-        }
+    if let (Some(leaf), Some(publisher)) = (leaf, publisher)
+        && leaf == publisher
+        && !app_tokens.contains(&leaf)
+    {
+        return false;
     }
     true
 }
@@ -309,10 +309,11 @@ impl<'a> LeftoverScan<'a> {
         if self.still_registered {
             return;
         }
-        if let Some(loc) = self.app.install_location.clone() {
-            if loc.is_dir() && is_safe_non_root_dir(&loc, 2) {
-                self.push_dir("Carpeta de instalación", loc);
-            }
+        if let Some(loc) = self.app.install_location.clone()
+            && loc.is_dir()
+            && is_safe_non_root_dir(&loc, 2)
+        {
+            self.push_dir("Carpeta de instalación", loc);
         }
     }
 
@@ -550,22 +551,22 @@ impl<'a> LeftoverScan<'a> {
     fn finish(mut self) -> Vec<LeftoverItem> {
         // SYS-04: con la app aún registrada, su carpeta de instalación (y lo que cuelga de ella) tampoco
         // puede entrar por el barrido de Program Files por nombre: borrarla rompería una app instalada.
-        if self.still_registered {
-            if let Some(loc) = self.app.install_location.as_ref() {
-                let loc_low = loc
-                    .to_string_lossy()
-                    .trim_end_matches('\\')
-                    .to_ascii_lowercase();
-                self.items.retain(|i| {
-                    i.path.as_ref().is_none_or(|p| {
-                        let p_low = p
-                            .to_string_lossy()
-                            .trim_end_matches('\\')
-                            .to_ascii_lowercase();
-                        p_low != loc_low && !p_low.starts_with(&format!("{loc_low}\\"))
-                    })
-                });
-            }
+        if self.still_registered
+            && let Some(loc) = self.app.install_location.as_ref()
+        {
+            let loc_low = loc
+                .to_string_lossy()
+                .trim_end_matches('\\')
+                .to_ascii_lowercase();
+            self.items.retain(|i| {
+                i.path.as_ref().is_none_or(|p| {
+                    let p_low = p
+                        .to_string_lossy()
+                        .trim_end_matches('\\')
+                        .to_ascii_lowercase();
+                    p_low != loc_low && !p_low.starts_with(&format!("{loc_low}\\"))
+                })
+            });
         }
 
         let app_tokens_low: Vec<String> =

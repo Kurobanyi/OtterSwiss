@@ -1,10 +1,10 @@
 use std::ptr;
-use windows::core::GUID;
-use windows::Win32::Foundation::{LocalFree, HLOCAL, WIN32_ERROR};
+use windows::Win32::Foundation::{HLOCAL, LocalFree, WIN32_ERROR};
 use windows::Win32::System::Power::{
     PowerDeleteScheme, PowerDuplicateScheme, PowerGetActiveScheme, PowerReadFriendlyName,
     PowerSetActiveScheme,
 };
+use windows::core::GUID;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::backup::PowerSnapshot;
@@ -141,11 +141,11 @@ pub fn activate_prepared_power_scheme(snap: &PowerSnapshot) -> CoreResult<String
     let target = parse_guid_strict(&snap.active_after_apply_guid)?;
     let set_err = unsafe { PowerSetActiveScheme(None, Some(&target)) };
     if set_err.0 != 0 {
-        if let Some(ref created) = snap.created_scheme_guid {
-            if let Ok(cg) = parse_guid_strict(created) {
-                unsafe {
-                    let _ = PowerDeleteScheme(None, &cg);
-                }
+        if let Some(ref created) = snap.created_scheme_guid
+            && let Ok(cg) = parse_guid_strict(created)
+        {
+            unsafe {
+                let _ = PowerDeleteScheme(None, &cg);
             }
         }
         return Err(CoreError::Power {

@@ -55,15 +55,15 @@ impl<'a> TelemetryCtx<'a> {
     }
 
     pub(super) fn init(&self, total_files: usize, total_bytes: u64) {
-        if let Some(p_arc) = self.progress {
-            if let Ok(mut p) = p_arc.lock() {
-                p.total_files = total_files;
-                p.total_bytes = total_bytes;
-                p.files_done = 0;
-                p.bytes_processed = 0;
-                p.percent = 1;
-                p.finished = false;
-            }
+        if let Some(p_arc) = self.progress
+            && let Ok(mut p) = p_arc.lock()
+        {
+            p.total_files = total_files;
+            p.total_bytes = total_bytes;
+            p.files_done = 0;
+            p.bytes_processed = 0;
+            p.percent = 1;
+            p.finished = false;
         }
     }
 
@@ -92,14 +92,14 @@ impl<'a> TelemetryCtx<'a> {
     }
 
     pub(super) fn finish(&self, total_bytes: u64, files_done: usize) {
-        if let Some(p_arc) = self.progress {
-            if let Ok(mut p) = p_arc.lock() {
-                p.bytes_processed = total_bytes;
-                p.files_done = files_done;
-                p.percent = 100;
-                p.eta_seconds = Some(0);
-                p.finished = true;
-            }
+        if let Some(p_arc) = self.progress
+            && let Ok(mut p) = p_arc.lock()
+        {
+            p.bytes_processed = total_bytes;
+            p.files_done = files_done;
+            p.percent = 100;
+            p.eta_seconds = Some(0);
+            p.finished = true;
         }
     }
 }

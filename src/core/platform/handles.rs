@@ -3,19 +3,19 @@
 use std::path::Path;
 use std::ptr;
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::{CloseHandle, FreeLibrary, HANDLE, HMODULE, INVALID_HANDLE_VALUE};
 use windows::Win32::Networking::WinInet::InternetCloseHandle;
-use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
 use windows::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, TerminateJobObject,
 };
 use windows::Win32::System::LibraryLoader::{
-    GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    GetProcAddress, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32, LoadLibraryExW,
 };
 use windows::Win32::System::Services::{CloseServiceHandle, SC_HANDLE};
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::wide::to_wide_null;
@@ -38,7 +38,7 @@ impl SafeHandle {
 
 impl Drop for SafeHandle {
     fn drop(&mut self) {
-        if !self.0.is_invalid() && !self.0 .0.is_null() {
+        if !self.0.is_invalid() && !self.0.0.is_null() {
             unsafe {
                 let _ = CloseHandle(self.0);
             }
@@ -90,7 +90,7 @@ impl SafeLibrary {
 
 impl Drop for SafeLibrary {
     fn drop(&mut self) {
-        if !self.0 .0.is_null() {
+        if !self.0.0.is_null() {
             unsafe {
                 let _ = FreeLibrary(self.0);
             }
@@ -116,7 +116,7 @@ impl ScHandle {
 
 impl Drop for ScHandle {
     fn drop(&mut self) {
-        if !self.0 .0.is_null() {
+        if !self.0.0.is_null() {
             unsafe {
                 let _ = CloseServiceHandle(self.0);
             }
@@ -196,11 +196,7 @@ pub struct WinInetHandle(*mut std::ffi::c_void);
 
 impl WinInetHandle {
     pub fn new(ptr: *mut std::ffi::c_void) -> Option<Self> {
-        if ptr.is_null() {
-            None
-        } else {
-            Some(Self(ptr))
-        }
+        if ptr.is_null() { None } else { Some(Self(ptr)) }
     }
     pub fn raw(&self) -> *mut std::ffi::c_void {
         self.0

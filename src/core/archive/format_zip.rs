@@ -6,15 +6,15 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
+use zip::write::SimpleFileOptions;
 
+use super::ArchiveManager;
 use super::paths::sanitize_archive_rel_path;
-use super::progress::{copy_with_quota, ArchiveProgress, TelemetryCtx};
+use super::progress::{ArchiveProgress, TelemetryCtx, copy_with_quota};
 use super::staging::{
     create_staging_dir, discard_staging, finalize_staging_dir, read_zone_identifier,
 };
-use super::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::{create_verified_new_file, open_verified_file_read};
 

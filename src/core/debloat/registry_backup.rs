@@ -3,16 +3,16 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use winreg::enums::{KEY_READ, KEY_WRITE};
 use winreg::RegValue;
+use winreg::enums::{KEY_READ, KEY_WRITE};
 
-use super::{DebloatRegEntry, DebloaterManager, DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS};
+use super::{DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS, DebloatRegEntry, DebloaterManager};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::platform::registry::{RegHive, RegLocation};
+use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
 use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
@@ -126,7 +126,7 @@ impl DebloaterManager {
                             path: format!("{}\\{}", entry.subkey, entry.value_name),
                             message: format!("No se pudo leer el valor original: {}", e),
                             source: Some(e),
-                        })
+                        });
                     }
                 },
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -135,7 +135,7 @@ impl DebloaterManager {
                         path: entry.subkey.to_string(),
                         message: format!("No se pudo abrir la clave original: {}", e),
                         source: Some(e),
-                    })
+                    });
                 }
             };
 
@@ -235,7 +235,7 @@ impl DebloaterManager {
                 _ => {
                     return Err(CoreError::Validation(
                         "Snapshot inconsistente: existía sin valor guardado".into(),
-                    ))
+                    ));
                 }
             }
             Ok(())

@@ -1,7 +1,7 @@
 //! Preferencias de la interfaz (tema e idioma) en `%APPDATA%\OtterSwiss`, un archivo JSON por preferencia.
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::core::platform::safe_fs::{read_bounded_bytes, write_file_inside};
 

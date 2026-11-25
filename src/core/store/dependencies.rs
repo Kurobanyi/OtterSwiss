@@ -1,16 +1,16 @@
 use std::thread;
 use std::time::Duration;
 
-use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 use winreg::RegKey;
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir, windows_dir};
 use crate::core::platform::process::INSTALLER_TIMEOUT;
-use crate::core::platform::process::{run_in_job, Launch};
+use crate::core::platform::process::{Launch, run_in_job};
 use crate::core::security::download::StagedDownload;
-use crate::core::security::download::{reopen_verified_for_exec, DownloadPolicy};
+use crate::core::security::download::{DownloadPolicy, reopen_verified_for_exec};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeDependency {
@@ -151,10 +151,10 @@ impl DependencyManager {
     pub fn is_vcredist_installed() -> bool {
         let root = RegKey::predef(HKEY_LOCAL_MACHINE);
         let path = r"SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64";
-        if let Ok(key) = root.open_subkey_with_flags(path, KEY_READ | KEY_WOW64_64KEY) {
-            if let Ok(installed) = key.get_value::<u32, _>("Installed") {
-                return installed == 1;
-            }
+        if let Ok(key) = root.open_subkey_with_flags(path, KEY_READ | KEY_WOW64_64KEY)
+            && let Ok(installed) = key.get_value::<u32, _>("Installed")
+        {
+            return installed == 1;
         }
         false
     }
@@ -162,10 +162,10 @@ impl DependencyManager {
     pub fn is_vcredist_x86_installed() -> bool {
         let root = RegKey::predef(HKEY_LOCAL_MACHINE);
         let path = r"SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86";
-        if let Ok(key) = root.open_subkey_with_flags(path, KEY_READ | KEY_WOW64_64KEY) {
-            if let Ok(installed) = key.get_value::<u32, _>("Installed") {
-                return installed == 1;
-            }
+        if let Ok(key) = root.open_subkey_with_flags(path, KEY_READ | KEY_WOW64_64KEY)
+            && let Ok(installed) = key.get_value::<u32, _>("Installed")
+        {
+            return installed == 1;
         }
         false
     }

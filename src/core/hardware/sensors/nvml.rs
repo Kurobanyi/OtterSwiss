@@ -1,9 +1,9 @@
 //! Temperaturas de GPU NVIDIA con NVML (`nvml.dll`, firmada por NVIDIA).
 
-use std::ffi::{c_char, c_uint, c_void, CStr};
+use std::ffi::{CStr, c_char, c_uint, c_void};
 use std::ptr;
 
-use super::{resolve_proc, SensorReading};
+use super::{SensorReading, resolve_proc};
 use crate::core::platform::handles::SafeLibrary;
 use crate::core::platform::safe_fs::open_verified_file_read;
 use crate::core::security::authenticode::verify_authenticode_on_handle;

@@ -12,25 +12,25 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use windows::core::{PCWSTR, PWSTR};
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::Security::{
-    DuplicateTokenEx, SecurityImpersonation, TokenPrimary, TOKEN_ALL_ACCESS, TOKEN_DUPLICATE,
-    TOKEN_QUERY,
+    DuplicateTokenEx, SecurityImpersonation, TOKEN_ALL_ACCESS, TOKEN_DUPLICATE, TOKEN_QUERY,
+    TokenPrimary,
 };
 use windows::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
 use windows::Win32::System::JobObjects::{
-    JobObjectBasicAccountingInformation, QueryInformationJobObject,
-    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JobObjectBasicAccountingInformation,
+    QueryInformationJobObject,
 };
 use windows::Win32::System::Threading::{
-    CreateProcessW, CreateProcessWithTokenW, GetExitCodeProcess, OpenProcess, OpenProcessToken,
-    ResumeThread, TerminateProcess, WaitForSingleObject, CREATE_SUSPENDED,
-    CREATE_UNICODE_ENVIRONMENT, LOGON_WITH_PROFILE, PROCESS_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, STARTUPINFOW,
+    CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, CreateProcessW, CreateProcessWithTokenW,
+    GetExitCodeProcess, LOGON_WITH_PROFILE, OpenProcess, OpenProcessToken, PROCESS_INFORMATION,
+    PROCESS_QUERY_LIMITED_INFORMATION, ResumeThread, STARTUPINFOW, TerminateProcess,
+    WaitForSingleObject,
 };
 use windows::Win32::UI::Shell::GetUserProfileDirectoryW;
 use windows::Win32::UI::WindowsAndMessaging::{GetShellWindow, GetWindowThreadProcessId};
+use windows::core::{PCWSTR, PWSTR};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::{JobObject, SafeHandle};
@@ -319,17 +319,17 @@ pub fn run_in_job(
             std::thread::sleep(Duration::from_millis(250));
         }
 
-        if let Some(code) = exit_code {
-            if active_processes(&job)? == 0 {
-                return Ok(ProcessExit { exit_code: code });
-            }
+        if let Some(code) = exit_code
+            && active_processes(&job)? == 0
+        {
+            return Ok(ProcessExit { exit_code: code });
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{run_captured, system32_dir, ProcessExit, ERROR_PRODUCT_VERSION};
+    use super::{ERROR_PRODUCT_VERSION, ProcessExit, run_captured, system32_dir};
 
     /// SYS-02: solo 0, 3010 y 1641 cuentan como éxito de un (des)instalador.
     #[test]
@@ -340,10 +340,12 @@ mod tests {
         for fail in [1, 1602, 1603, 5, u32::MAX] {
             assert!(!ProcessExit { exit_code: fail }.is_success());
         }
-        assert!(ProcessExit {
-            exit_code: ERROR_PRODUCT_VERSION
-        }
-        .is_installed_ok());
+        assert!(
+            ProcessExit {
+                exit_code: ERROR_PRODUCT_VERSION
+            }
+            .is_installed_ok()
+        );
     }
 
     #[test]

@@ -4,21 +4,21 @@ use std::collections::HashSet;
 use std::ptr;
 
 use serde::{Deserialize, Serialize};
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
+use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
-    PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY,
-    STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
+    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR,
+    STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
 };
 use windows::Win32::System::SystemInformation::{
     GetSystemInfo, GlobalMemoryStatusEx, MEMORYSTATUSEX, SYSTEM_INFO,
 };
-use windows::Win32::System::IO::DeviceIoControl;
-use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
+use windows::core::PCWSTR;
 use winreg::RegKey;
+use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_64KEY};
 
 use crate::core::platform::handles::SafeHandle;
 use crate::core::platform::memory::AlignedBuf;
@@ -105,12 +105,11 @@ fn detect_cpu_name() -> String {
     if let Ok(k) = hklm.open_subkey_with_flags(
         r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
         KEY_READ | KEY_WOW64_64KEY,
-    ) {
-        if let Ok(name) = k.get_value::<String, _>("ProcessorNameString") {
-            let trimmed = name.trim().to_string();
-            if !trimmed.is_empty() {
-                return trimmed;
-            }
+    ) && let Ok(name) = k.get_value::<String, _>("ProcessorNameString")
+    {
+        let trimmed = name.trim().to_string();
+        if !trimmed.is_empty() {
+            return trimmed;
         }
     }
     "Procesador x86_64".into()
@@ -161,12 +160,11 @@ fn detect_gpu_names() -> Vec<String> {
         for idx in 0..16 {
             let sub = format!("{:04}", idx);
             if let Ok(dev_key) = class_key.open_subkey_with_flags(&sub, KEY_READ | KEY_WOW64_64KEY)
+                && let Ok(desc) = dev_key.get_value::<String, _>("DriverDesc")
             {
-                if let Ok(desc) = dev_key.get_value::<String, _>("DriverDesc") {
-                    let clean = desc.trim().to_string();
-                    if !clean.is_empty() && seen.insert(clean.clone()) {
-                        gpus.push(clean);
-                    }
+                let clean = desc.trim().to_string();
+                if !clean.is_empty() && seen.insert(clean.clone()) {
+                    gpus.push(clean);
                 }
             }
         }

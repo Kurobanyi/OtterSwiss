@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use windows::core::PCWSTR;
 use windows::Win32::System::Environment::ExpandEnvironmentStringsForUserW;
+use windows::core::PCWSTR;
 
 use super::{InstalledApp, UninstallerManager};
 use crate::core::error::{CoreError, CoreResult};
@@ -12,7 +12,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::handles::SafeHandle;
 use crate::core::platform::process::ProcessExit;
 use crate::core::platform::process::{
-    duplicate_desktop_shell_primary_token, run_in_job, system32_dir, Launch,
+    Launch, duplicate_desktop_shell_primary_token, run_in_job, system32_dir,
 };
 use crate::core::platform::wide::to_wide_null;
 

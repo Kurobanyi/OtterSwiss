@@ -1,17 +1,17 @@
 //! Energía del equipo: batería y reinicio.
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HANDLE, LUID};
 use windows::Win32::Security::{
-    AdjustTokenPrivileges, LookupPrivilegeValueW, LUID_AND_ATTRIBUTES, SE_PRIVILEGE_ENABLED,
+    AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
     SE_SHUTDOWN_NAME, TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
 };
 use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use windows::Win32::System::Shutdown::{
-    ExitWindowsEx, EWX_FORCEIFHUNG, EWX_REBOOT, SHTDN_REASON_FLAG_PLANNED,
+    EWX_FORCEIFHUNG, EWX_REBOOT, ExitWindowsEx, SHTDN_REASON_FLAG_PLANNED,
     SHTDN_REASON_MAJOR_APPLICATION,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::SafeHandle;

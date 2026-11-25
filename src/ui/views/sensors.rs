@@ -68,11 +68,7 @@ pub fn SensorsView() -> Element {
     );
     let reset_peaks_lbl = if en { "Reset Peaks" } else { "Reiniciar picos" };
     let pause_lbl = if *paused.read() {
-        if en {
-            "Resume"
-        } else {
-            "Reanudar"
-        }
+        if en { "Resume" } else { "Reanudar" }
     } else if en {
         "Pause"
     } else {

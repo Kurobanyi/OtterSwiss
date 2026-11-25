@@ -3,16 +3,17 @@
 use std::mem::size_of;
 use std::ptr;
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
-use windows::Win32::System::Ioctl::{
-    PropertyStandardQuery, StorageDeviceTemperatureProperty, IOCTL_STORAGE_QUERY_PROPERTY,
-    STORAGE_PROPERTY_QUERY, STORAGE_TEMPERATURE_DATA_DESCRIPTOR, STORAGE_TEMPERATURE_INFO,
-};
 use windows::Win32::System::IO::DeviceIoControl;
+use windows::Win32::System::Ioctl::{
+    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_PROPERTY_QUERY,
+    STORAGE_TEMPERATURE_DATA_DESCRIPTOR, STORAGE_TEMPERATURE_INFO,
+    StorageDeviceTemperatureProperty,
+};
+use windows::core::PCWSTR;
 
 use super::{SensorReading, SensorSession};
 use crate::core::platform::handles::SafeHandle;

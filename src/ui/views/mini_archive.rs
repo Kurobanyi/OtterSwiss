@@ -1,21 +1,21 @@
 //! Mini ventana del archivador: extrae o comprime lo que se eligió desde el menú contextual de Windows.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::desktop::use_window;
 use dioxus::prelude::*;
 
 use crate::core::archive::{
-    default_extract_dir, default_zip_path, resolve_extract_destination, ArchiveFormat,
-    ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
+    ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
+    default_extract_dir, default_zip_path, resolve_extract_destination,
 };
 use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::format::{eta, mb_1};
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::run_with_progress;
 use crate::ui::theme::Theme;
 

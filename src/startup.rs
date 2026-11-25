@@ -18,10 +18,10 @@ fn show_error(title: &str, text: &str) {
 /// `ask_yes_no`, `show_warning` o `show_error` en vez de pasar los dos booleanos.
 fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> bool {
     use otter_swiss::core::platform::wide::to_wide_null;
-    use windows::core::PCWSTR;
     use windows::Win32::UI::WindowsAndMessaging::{
-        MessageBoxW, IDYES, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO,
+        IDYES, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO, MessageBoxW,
     };
+    use windows::core::PCWSTR;
     let title_w = to_wide_null(title);
     let text_w = to_wide_null(text);
     let mut style = if ask_yes_no { MB_YESNO } else { MB_OK };

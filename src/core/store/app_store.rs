@@ -4,24 +4,24 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use winreg::RegKey;
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY,
 };
-use winreg::RegKey;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::handles::SafeHandle;
 use crate::core::platform::process::INSTALLER_TIMEOUT;
 use crate::core::platform::process::{
-    duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir, Launch,
+    Launch, duplicate_desktop_shell_primary_token, run_in_job, system32_dir, user_profile_dir,
 };
 use crate::core::platform::safe_fs::{
     canonical_dos_path, create_verified_new_file, delete_verified_empty_dir_under,
     delete_verified_file_under, path_is_strictly_under,
 };
 use crate::core::security::download::StagedDownload;
-use crate::core::security::download::{reopen_verified_for_exec, DownloadPolicy};
+use crate::core::security::download::{DownloadPolicy, reopen_verified_for_exec};
 
 /// UI-15: la URL y los argumentos del catálogo vienen en español; si Windows no está en español se
 /// piden en inglés (Firefox `lang=en-US`, Battle.net `--lang=enUS`).
@@ -229,7 +229,11 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Voice chat & gaming communities",
         version: "Evergreen",
         url: "https://discord.com/api/downloads/distributions/app/installers/latest?channel=stable&platform=win&arch=x64",
-        allowed_hosts: &["discord.com", "dl.discordapp.net", "stable.dl2.discordapp.net"],
+        allowed_hosts: &[
+            "discord.com",
+            "dl.discordapp.net",
+            "stable.dl2.discordapp.net",
+        ],
         expected_sha256: None,
         signer_cn: Some("Discord Inc."),
         cert_thumbprint_sha1: None,
@@ -298,7 +302,9 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         url: "https://builds.parsec.app/package/parsec-windows.exe",
         allowed_hosts: &["builds.parsec.app"],
         expected_sha256: None,
-        signer_cn: Some("Unity Technologies SF|Parsec Cloud, Inc.|Unity Technologies|Unity Technologies ApS"),
+        signer_cn: Some(
+            "Unity Technologies SF|Parsec Cloud, Inc.|Unity Technologies|Unity Technologies ApS",
+        ),
         cert_thumbprint_sha1: None,
         is_msi: false,
         run_unelevated: false,
@@ -386,10 +392,7 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
         description_en: "Privacy-focused open browser",
         version: "Evergreen",
         url: "https://download.mozilla.org/?product=firefox-latest-ssl&os=win64&lang=es-ES",
-        allowed_hosts: &[
-            "download.mozilla.org",
-            "download-installer.cdn.mozilla.net",
-        ],
+        allowed_hosts: &["download.mozilla.org", "download-installer.cdn.mozilla.net"],
         expected_sha256: None,
         signer_cn: Some("Mozilla Corporation"),
         cert_thumbprint_sha1: None,
@@ -505,10 +508,10 @@ fn stage_copy_for_user(
 }
 
 fn check_spotify_presence_on_disk() -> bool {
-    if let Some(roaming) = dirs::config_dir() {
-        if roaming.join(r"Spotify\Spotify.exe").is_file() {
-            return true;
-        }
+    if let Some(roaming) = dirs::config_dir()
+        && roaming.join(r"Spotify\Spotify.exe").is_file()
+    {
+        return true;
     }
     if let Some(local) = dirs::data_local_dir() {
         if local.join(r"Microsoft\WindowsApps\Spotify.exe").is_file() {
@@ -528,10 +531,10 @@ fn check_spotify_presence_on_disk() -> bool {
             }
         }
     }
-    if let Some(pf) = crate::core::platform::folders::program_files_dir() {
-        if pf.join(r"Spotify\Spotify.exe").is_file() {
-            return true;
-        }
+    if let Some(pf) = crate::core::platform::folders::program_files_dir()
+        && pf.join(r"Spotify\Spotify.exe").is_file()
+    {
+        return true;
     }
     RegKey::predef(HKEY_CURRENT_USER)
         .open_subkey(r"Software\Spotify")
@@ -628,12 +631,12 @@ impl AppStoreManager {
                 flags,
             ) {
                 for sub_name in uninst.enum_keys().flatten() {
-                    if let Ok(app_key) = uninst.open_subkey_with_flags(&sub_name, flags) {
-                        if let Ok(dn) = app_key.get_value::<String, _>("DisplayName") {
-                            let trimmed = dn.trim().to_string();
-                            if !trimmed.is_empty() {
-                                display_names.push(trimmed);
-                            }
+                    if let Ok(app_key) = uninst.open_subkey_with_flags(&sub_name, flags)
+                        && let Ok(dn) = app_key.get_value::<String, _>("DisplayName")
+                    {
+                        let trimmed = dn.trim().to_string();
+                        if !trimmed.is_empty() {
+                            display_names.push(trimmed);
                         }
                     }
                 }

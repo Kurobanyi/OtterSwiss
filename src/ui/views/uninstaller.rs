@@ -8,9 +8,9 @@ use crate::core::uninstall::{
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
-use crate::ui::i18n::{plural, strings, Lang};
+use crate::ui::i18n::{Lang, plural, strings};
 use crate::ui::installer::{
-    refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
+    InstallJobRequest, InstallerDispatcher, ToolsSharedState, refresh_tools_inventory,
 };
 use crate::ui::task::run_blocking;
 
@@ -155,21 +155,31 @@ fn start_uninstall_and_scan(
                 },
                 Tone::Danger,
             ),
-            Ok(UninstallOutcome::Failed { code }) => {
-                (
-                    if en {
-                        format!("The uninstaller of '{}' ended with code {}; leftovers were not scanned.", name, code)
-                    } else {
-                        format!("El desinstalador de '{}' terminó con el código {}; no se buscaron restos.", name, code)
-                    },
-                    Tone::Danger,
-                )
-            }
+            Ok(UninstallOutcome::Failed { code }) => (
+                if en {
+                    format!(
+                        "The uninstaller of '{}' ended with code {}; leftovers were not scanned.",
+                        name, code
+                    )
+                } else {
+                    format!(
+                        "El desinstalador de '{}' terminó con el código {}; no se buscaron restos.",
+                        name, code
+                    )
+                },
+                Tone::Danger,
+            ),
             Ok(UninstallOutcome::StillRegistered) => (
                 if en {
-                    format!("'{}' is still installed; its uninstaller may need a restart or your input.", name)
+                    format!(
+                        "'{}' is still installed; its uninstaller may need a restart or your input.",
+                        name
+                    )
                 } else {
-                    format!("'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.", name)
+                    format!(
+                        "'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.",
+                        name
+                    )
                 },
                 Tone::Warning,
             ),

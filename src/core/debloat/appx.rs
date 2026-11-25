@@ -7,7 +7,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use super::registry_backup::debloat_backup_path;
-use super::{DebloatScanResult, DebloaterManager, DetectedBloatApp, DEBLOAT_APP_CATALOG};
+use super::{DEBLOAT_APP_CATALOG, DebloatScanResult, DebloaterManager, DetectedBloatApp};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::process::run_captured;
@@ -118,12 +118,12 @@ impl DebloaterManager {
             let entries = parse_ps_json(&ps_installed, "Get-AppxPackage")?;
             {
                 for e in entries {
-                    if let (Some(n), Some(full)) = (e.name, e.package_full_name) {
-                        if is_valid_package_ident(&full) {
-                            let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
-                            if !vec.contains(&full) {
-                                vec.push(full);
-                            }
+                    if let (Some(n), Some(full)) = (e.name, e.package_full_name)
+                        && is_valid_package_ident(&full)
+                    {
+                        let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
+                        if !vec.contains(&full) {
+                            vec.push(full);
                         }
                     }
                 }
@@ -141,12 +141,12 @@ impl DebloaterManager {
             let entries = parse_ps_json(&ps_prov, "Get-AppxProvisionedPackage")?;
             {
                 for e in entries {
-                    if let (Some(dn), Some(pn)) = (e.display_name, e.package_name) {
-                        if is_valid_package_ident(&pn) {
-                            let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
-                            if !vec.contains(&pn) {
-                                vec.push(pn);
-                            }
+                    if let (Some(dn), Some(pn)) = (e.display_name, e.package_name)
+                        && is_valid_package_ident(&pn)
+                    {
+                        let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
+                        if !vec.contains(&pn) {
+                            vec.push(pn);
                         }
                     }
                 }

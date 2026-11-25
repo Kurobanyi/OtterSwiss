@@ -9,7 +9,7 @@ use windows::Win32::System::Services::{
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::backup::ServiceSnapshot;
 use crate::core::optimize::tweaks_catalog::{
-    is_allowed_service_name, is_valid_service_start_type, ServiceTargetAction, ServiceTweakSpec,
+    ServiceTargetAction, ServiceTweakSpec, is_allowed_service_name, is_valid_service_start_type,
 };
 use crate::core::platform::handles::ScHandle;
 
@@ -83,10 +83,10 @@ pub fn apply_service_tweak(spec: &ServiceTweakSpec) -> CoreResult<ServiceOpOutco
 
     set_service_start_type(spec.service_name, &svc, target_start, false)?;
 
-    if spec.action == ServiceTargetAction::DisableAndStop {
-        if let Err(e) = stop_service_and_wait(spec.service_name, &svc, Duration::from_secs(12)) {
-            return Ok(ServiceOpOutcome::AppliedPendingStop(e.to_string()));
-        }
+    if spec.action == ServiceTargetAction::DisableAndStop
+        && let Err(e) = stop_service_and_wait(spec.service_name, &svc, Duration::from_secs(12))
+    {
+        return Ok(ServiceOpOutcome::AppliedPendingStop(e.to_string()));
     }
 
     Ok(ServiceOpOutcome::Applied)

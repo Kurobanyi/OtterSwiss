@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::{atomic_write_new, read_bounded_bytes};

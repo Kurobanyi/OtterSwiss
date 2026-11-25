@@ -8,8 +8,8 @@
 //   verificación y la ejecución) desde la carpeta de datos solo-admin.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use serde::Deserialize;
 
@@ -17,8 +17,8 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 use crate::core::security::download::{
-    reopen_verified_for_exec, secure_download_and_verify_with_progress, validate_https_host,
-    DownloadPolicy,
+    DownloadPolicy, reopen_verified_for_exec, secure_download_and_verify_with_progress,
+    validate_https_host,
 };
 use crate::core::security::http::{self, Timeouts};
 

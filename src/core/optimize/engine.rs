@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::ops::ControlFlow;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -8,14 +8,15 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::hardware::profile::{HardwareProfile, HardwareTier};
 use crate::core::optimize::backup::BackupManager;
 use crate::core::optimize::power_plan::{
+    GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
     activate_prepared_power_scheme, capture_and_prepare_power_scheme, discard_unused_scheme,
-    restore_power_snapshot, GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE,
+    restore_power_snapshot,
 };
 use crate::core::optimize::registry_tweaks::{
     apply_registry_tweak, capture_registry_tweak, restore_registry_snapshot,
 };
 use crate::core::optimize::service_tweaks::{
-    apply_service_tweak, capture_service_tweak, restore_service_snapshot, ServiceOpOutcome,
+    ServiceOpOutcome, apply_service_tweak, capture_service_tweak, restore_service_snapshot,
 };
 use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
 use crate::core::platform::elevation::ElevationManager;
@@ -494,13 +495,13 @@ impl OptimizationEngine {
         let mut step_idx = 0usize;
 
         let push_rb = |idx: usize, label: &str| {
-            if let Some(p_arc) = progress {
-                if let Ok(mut p) = p_arc.lock() {
-                    p.current_step = idx;
-                    p.total_steps = total_steps;
-                    p.current_label = label.to_string();
-                    p.percent = step_percent(idx, total_steps);
-                }
+            if let Some(p_arc) = progress
+                && let Ok(mut p) = p_arc.lock()
+            {
+                p.current_step = idx;
+                p.total_steps = total_steps;
+                p.current_label = label.to_string();
+                p.percent = step_percent(idx, total_steps);
             }
         };
 

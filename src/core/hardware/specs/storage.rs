@@ -7,11 +7,11 @@ use windows::Win32::Foundation::HANDLE;
 use windows::Win32::Storage::FileSystem::{
     CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
 };
+use windows::Win32::System::IO::DeviceIoControl;
 use windows::Win32::System::Ioctl::{
     IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_ID,
     STORAGE_PROPERTY_QUERY, STORAGE_QUERY_TYPE,
 };
-use windows::Win32::System::IO::DeviceIoControl;
 
 use super::StorageSpecs;
 use crate::core::platform::handles::SafeHandle;

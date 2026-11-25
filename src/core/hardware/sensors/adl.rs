@@ -1,11 +1,11 @@
 //! Temperaturas de GPU AMD con ADL2 (PMLog en RDNA, OverdriveN y Overdrive5).
 
 use std::collections::HashSet;
-use std::ffi::{c_char, c_int, c_void, CStr};
+use std::ffi::{CStr, c_char, c_int, c_void};
 use std::mem::{size_of, zeroed};
 use std::ptr;
 
-use super::{resolve_proc, SensorReading};
+use super::{SensorReading, resolve_proc};
 use crate::core::platform::handles::SafeLibrary;
 
 pub(super) const ADL_OK: i32 = 0;
@@ -259,78 +259,74 @@ impl AdlSession {
             }
 
             // 2) Fallback OverdriveN (milli-°C)
-            if !found_for_this_gpu {
-                if let Some(odn) = self.odn_temp {
-                    let mut milli_c: c_int = 0;
-                    let rc_edge = unsafe {
-                        odn(
-                            self.ctx,
-                            info.i_adapter_index,
-                            ADL_ODN_TEMP_EDGE,
-                            &mut milli_c,
-                        )
-                    };
-                    if rc_edge == ADL_OK {
-                        let c = milli_c as f32 / 1000.0;
-                        if c > 0.0 && c < 135.0 {
-                            out.push(SensorReading {
-                                name: format!("{} (Core)", base_name),
-                                sensor_type: "AMD GPU (ADL2 ODN)".into(),
-                                current_celsius: c,
-                                max_celsius: None,
-                            });
-                            found_for_this_gpu = true;
-                        }
-                    } else if last_diag.is_empty() {
-                        last_diag = format!("ODN rc={} idx={}", rc_edge, info.i_adapter_index);
+            if !found_for_this_gpu && let Some(odn) = self.odn_temp {
+                let mut milli_c: c_int = 0;
+                let rc_edge = unsafe {
+                    odn(
+                        self.ctx,
+                        info.i_adapter_index,
+                        ADL_ODN_TEMP_EDGE,
+                        &mut milli_c,
+                    )
+                };
+                if rc_edge == ADL_OK {
+                    let c = milli_c as f32 / 1000.0;
+                    if c > 0.0 && c < 135.0 {
+                        out.push(SensorReading {
+                            name: format!("{} (Core)", base_name),
+                            sensor_type: "AMD GPU (ADL2 ODN)".into(),
+                            current_celsius: c,
+                            max_celsius: None,
+                        });
+                        found_for_this_gpu = true;
                     }
+                } else if last_diag.is_empty() {
+                    last_diag = format!("ODN rc={} idx={}", rc_edge, info.i_adapter_index);
+                }
 
-                    let mut hotspot_mc: c_int = 0;
-                    if unsafe {
-                        odn(
-                            self.ctx,
-                            info.i_adapter_index,
-                            ADL_ODN_TEMP_HOTSPOT,
-                            &mut hotspot_mc,
-                        )
-                    } == ADL_OK
-                    {
-                        let c = hotspot_mc as f32 / 1000.0;
-                        if c > 0.0 && c < 140.0 {
-                            out.push(SensorReading {
-                                name: format!("{} (Hotspot)", base_name),
-                                sensor_type: "AMD GPU (ADL2 ODN)".into(),
-                                current_celsius: c,
-                                max_celsius: None,
-                            });
-                            found_for_this_gpu = true;
-                        }
+                let mut hotspot_mc: c_int = 0;
+                if unsafe {
+                    odn(
+                        self.ctx,
+                        info.i_adapter_index,
+                        ADL_ODN_TEMP_HOTSPOT,
+                        &mut hotspot_mc,
+                    )
+                } == ADL_OK
+                {
+                    let c = hotspot_mc as f32 / 1000.0;
+                    if c > 0.0 && c < 140.0 {
+                        out.push(SensorReading {
+                            name: format!("{} (Hotspot)", base_name),
+                            sensor_type: "AMD GPU (ADL2 ODN)".into(),
+                            current_celsius: c,
+                            max_celsius: None,
+                        });
+                        found_for_this_gpu = true;
                     }
                 }
             }
 
             // 3) Fallback Overdrive5 (milli-°C)
-            if !found_for_this_gpu {
-                if let Some(od5) = self.od5_temp {
-                    let mut adl_t = AdlTemperature {
-                        i_size: size_of::<AdlTemperature>() as c_int,
-                        i_temperature: 0,
-                    };
-                    let rc5 = unsafe { od5(self.ctx, info.i_adapter_index, 0, &mut adl_t) };
-                    if rc5 == ADL_OK {
-                        let c = adl_t.i_temperature as f32 / 1000.0;
-                        if c > 0.0 && c < 135.0 {
-                            out.push(SensorReading {
-                                name: base_name,
-                                sensor_type: "AMD GPU (ADL2 OD5)".into(),
-                                current_celsius: c,
-                                max_celsius: None,
-                            });
-                            found_for_this_gpu = true;
-                        }
-                    } else if last_diag.is_empty() {
-                        last_diag = format!("OD5 rc={} idx={}", rc5, info.i_adapter_index);
+            if !found_for_this_gpu && let Some(od5) = self.od5_temp {
+                let mut adl_t = AdlTemperature {
+                    i_size: size_of::<AdlTemperature>() as c_int,
+                    i_temperature: 0,
+                };
+                let rc5 = unsafe { od5(self.ctx, info.i_adapter_index, 0, &mut adl_t) };
+                if rc5 == ADL_OK {
+                    let c = adl_t.i_temperature as f32 / 1000.0;
+                    if c > 0.0 && c < 135.0 {
+                        out.push(SensorReading {
+                            name: base_name,
+                            sensor_type: "AMD GPU (ADL2 OD5)".into(),
+                            current_celsius: c,
+                            max_celsius: None,
+                        });
+                        found_for_this_gpu = true;
                     }
+                } else if last_diag.is_empty() {
+                    last_diag = format!("OD5 rc={} idx={}", rc5, info.i_adapter_index);
                 }
             }
 

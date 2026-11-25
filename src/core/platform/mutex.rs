@@ -1,8 +1,8 @@
 //! Mutex con nombre entre procesos, solo para Administradores y SYSTEM.
 
-use windows::core::PCWSTR;
 use windows::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
+use windows::core::PCWSTR;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::SafeHandle;

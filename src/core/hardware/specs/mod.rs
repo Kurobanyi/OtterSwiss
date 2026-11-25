@@ -11,8 +11,8 @@ use smbios::read_smbios_board_and_memory;
 use storage::read_storage_devices;
 
 use serde::{Deserialize, Serialize};
-use winreg::enums::HKEY_LOCAL_MACHINE;
 use winreg::RegKey;
+use winreg::enums::HKEY_LOCAL_MACHINE;
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs;
@@ -191,10 +191,11 @@ fn read_os_specs() -> OsSpecs {
     let current_build: String = key.get_value("CurrentBuild").unwrap_or_default();
     let ubr: u32 = key.get_value("UBR").unwrap_or(0);
 
-    if let Ok(build_num) = current_build.parse::<u32>() {
-        if build_num >= 22000 && edition.contains("Windows 10") {
-            edition = edition.replace("Windows 10", "Windows 11");
-        }
+    if let Ok(build_num) = current_build.parse::<u32>()
+        && build_num >= 22000
+        && edition.contains("Windows 10")
+    {
+        edition = edition.replace("Windows 10", "Windows 11");
     }
 
     let build = if ubr > 0 && !current_build.is_empty() {

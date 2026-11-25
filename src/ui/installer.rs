@@ -1,11 +1,11 @@
 //! Cola de instalación de apps y runtimes de Herramientas, y el estado que comparte con su vista.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ui::components::Tone;
-use crate::ui::i18n::{plural, strings, Lang};
+use crate::ui::i18n::{Lang, plural, strings};
 use dioxus::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 

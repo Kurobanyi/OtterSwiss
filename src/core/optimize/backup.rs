@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::tweaks_catalog::{
-    is_allowed_registry_entry, is_allowed_service_name, is_valid_service_start_type, RegHive,
+    RegHive, is_allowed_registry_entry, is_allowed_service_name, is_valid_service_start_type,
 };
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;

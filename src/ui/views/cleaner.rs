@@ -1,12 +1,12 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::run_with_progress;
 #[component]
 pub fn CleanerView() -> Element {

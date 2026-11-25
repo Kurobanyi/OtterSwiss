@@ -11,7 +11,7 @@ use crate::core::store::app_store::{AppCategory, AppStoreManager};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
 };

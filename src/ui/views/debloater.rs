@@ -1,15 +1,15 @@
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 
 use crate::core::debloat::{
-    DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult, DebloaterManager,
-    DetectedBloatApp, DEBLOAT_REG_TWEAKS,
+    DEBLOAT_REG_TWEAKS, DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult,
+    DebloaterManager, DetectedBloatApp,
 };
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
 
 fn apply_recommended_defaults(

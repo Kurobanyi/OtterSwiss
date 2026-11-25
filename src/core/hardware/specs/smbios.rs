@@ -1,6 +1,6 @@
 //! Tabla SMBIOS del firmware: placa base (tipo 2) y módulos de memoria (tipo 17).
 
-use windows::Win32::System::SystemInformation::{GetSystemFirmwareTable, FIRMWARE_TABLE_PROVIDER};
+use windows::Win32::System::SystemInformation::{FIRMWARE_TABLE_PROVIDER, GetSystemFirmwareTable};
 
 use super::{MemoryModuleSpec, MemorySpecs, MotherboardSpecs};
 use crate::core::error::{CoreError, CoreResult};

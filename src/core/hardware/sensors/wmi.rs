@@ -1,15 +1,15 @@
 //! Zonas térmicas ACPI por WMI (`MSAcpi_ThermalZoneTemperature` y `Win32_PerfFormattedData_Counters_ThermalZoneInformation`).
 
-use windows::core::{BSTR, PCWSTR, VARIANT};
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoSetProxyBlanket, CoTaskMemFree, CLSCTX_INPROC_SERVER, EOAC_NONE,
+    CLSCTX_INPROC_SERVER, CoCreateInstance, CoSetProxyBlanket, CoTaskMemFree, EOAC_NONE,
     RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE,
 };
 use windows::Win32::System::Variant::{VariantClear, VariantToInt32, VariantToStringAlloc};
 use windows::Win32::System::Wmi::{
-    IWbemClassObject, IWbemLocator, WbemLocator, WBEM_FLAG_FORWARD_ONLY,
-    WBEM_FLAG_RETURN_IMMEDIATELY,
+    IWbemClassObject, IWbemLocator, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY,
+    WbemLocator,
 };
+use windows::core::{BSTR, PCWSTR, VARIANT};
 
 use super::{SensorReading, SensorSession};
 use crate::core::platform::wide::to_wide_null;

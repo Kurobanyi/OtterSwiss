@@ -1,10 +1,10 @@
 //! Ventana principal: barra superior (marca, pestañas, idioma, tema, botones de ventana), pestañas y actualizador.
 
 use std::collections::HashSet;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-use crate::ui::i18n::{strings, Lang};
+use crate::ui::i18n::{Lang, strings};
 use crate::ui::theme::Theme;
 use crate::ui::views::archiver::ArchiverView;
 use crate::ui::views::cleaner::CleanerView;
@@ -15,19 +15,19 @@ use crate::ui::views::hardware::HardwareView;
 use crate::ui::views::sensors::SensorsView;
 use crate::ui::views::tools::ToolsView;
 use crate::ui::views::uninstaller::UninstallerView;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use dioxus::desktop::use_window;
 use dioxus::prelude::*;
 
 use crate::core::error::CoreError;
 use crate::core::updater::{
-    check_for_updates, download_and_install_update, launch_installer_and_exit, UpdateReleaseInfo,
+    UpdateReleaseInfo, check_for_updates, download_and_install_update, launch_installer_and_exit,
 };
 use crate::ui::components::{Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::installer::{
-    refresh_tools_inventory, run_installer_worker, InstallJobRequest, InstallerDispatcher,
-    ToolsSharedState,
+    InstallJobRequest, InstallerDispatcher, ToolsSharedState, refresh_tools_inventory,
+    run_installer_worker,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
