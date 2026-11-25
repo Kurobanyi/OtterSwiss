@@ -455,7 +455,7 @@ fn revertir_todo(c: &mut Checks, data: &Path) {
     let _ = engine.apply_profile(OptimizationProfile::HighEnd);
     let ids: Vec<&'static str> = DEBLOAT_REG_TWEAKS.iter().map(|t| t.id).collect();
     let _ = DebloaterManager::execute_debloat(&[], &ids, &AtomicBool::new(false), None);
-    match UninstallerManager::revert_all_changes() {
+    match otter_swiss::core::rollback::revert_all_changes() {
         Ok(r) => {
             c.check(r.is_complete(), "reversión completa");
             for f in &r.failures {

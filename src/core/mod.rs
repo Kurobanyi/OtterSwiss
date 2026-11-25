@@ -14,6 +14,7 @@ pub mod dns;
 pub mod drivers;
 pub mod hardware;
 pub mod optimize;
+pub mod rollback;
 pub mod store;
 pub mod sys_tools;
 pub mod uninstall;

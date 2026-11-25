@@ -452,7 +452,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     if args.iter().any(|a| a == "--rollback") {
-        let code = match otter_swiss::core::uninstall::UninstallerManager::revert_all_changes() {
+        let code = match otter_swiss::core::rollback::revert_all_changes() {
             Ok(report) if report.is_complete() => 0,
             Ok(_) => 2,
             Err(_) => 1,
