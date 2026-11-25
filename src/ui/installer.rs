@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::ui::components::Tone;
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{plural, strings, Lang};
 use dioxus::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -82,10 +82,10 @@ pub(super) fn run_installer_worker(
                         let mut s = state_sig.write();
                         s.is_working = true;
                         s.progress_percent = 30;
-                        s.progress_label = Some(format!("{}...", dep_id));
+                        s.progress_label = Some(format!("{}…", dep_id));
                         s.tool_log = Some((
                             format!(
-                                "{} '{}'...",
+                                "{} '{}'…",
                                 if lang_is_en() {
                                     "Installing"
                                 } else {
@@ -146,9 +146,9 @@ pub(super) fn run_installer_worker(
                         s.progress_percent = 5;
                         s.progress_label = Some(format!("0/{}", total));
                         s.summary_msg = Some(if lang_is_en() {
-                            format!("Queue: {} app(s)...", total)
+                            format!("Queue: {}…", plural(total, strings(true).app))
                         } else {
-                            format!("Cola: {} app(s)...", total)
+                            format!("Cola: {}…", plural(total, strings(false).app))
                         });
                         s.app_statuses.clear();
                         for &id in &ids {
@@ -234,8 +234,18 @@ pub(super) fn run_installer_worker(
                             "Cancelado: {} instaladas, {} con error.",
                             ok_count, err_count
                         ),
-                        (false, 0, true) => format!("{} app(s) installed.", ok_count),
-                        (false, 0, false) => format!("{} app(s) instalada(s).", ok_count),
+                        (false, 0, true) => {
+                            format!("{} installed.", plural(ok_count, strings(true).app))
+                        }
+                        (false, 0, false) => format!(
+                            "{} {}.",
+                            plural(ok_count, strings(false).app),
+                            if ok_count == 1 {
+                                "instalada"
+                            } else {
+                                "instaladas"
+                            }
+                        ),
                         (false, _, true) => format!(
                             "{} installed, {} failed: see each app's status.",
                             ok_count, err_count

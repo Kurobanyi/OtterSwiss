@@ -34,7 +34,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
         }
         return rsx! {
             LoadingState {
-                message: if en { "Scanning CPU, SMBIOS & DXGI...".to_string() } else { "Analizando CPU, SMBIOS y DXGI...".to_string() },
+                message: if en { "Scanning CPU, SMBIOS & DXGI…".to_string() } else { "Analizando CPU, SMBIOS y DXGI…".to_string() },
             }
         };
     };
@@ -62,7 +62,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                 style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); flex-wrap: wrap; gap: var(--space-3);",
                 div {
                     h3 { style: "margin: 0; font-size: var(--font-size-md); color: var(--text);",
-                        if en { "Hardware Specifications" } else { "Especificaciones del Sistema" }
+                        if en { "Hardware Specifications" } else { "Especificaciones del sistema" }
                     }
                     span { class: "text-xs text-muted",
                         "{specs.os.edition} {specs.os.display_version} • Build {specs.os.build}"
@@ -81,7 +81,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                             document::eval(&script);
                             status_msg.set(Some(if en { "Copied!".to_string() } else { "¡Copiado!".to_string() }));
                         },
-                        if en { "Copy Summary" } else { "Copiar Resumen" }
+                        if en { "Copy Summary" } else { "Copiar resumen" }
                     }
                     button {
                         class: "btn btn-primary",

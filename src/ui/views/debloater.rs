@@ -9,7 +9,7 @@ use crate::core::debloat::{
     DetectedBloatApp, DEBLOAT_REG_TWEAKS,
 };
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::task::{run_blocking, run_with_progress};
 
 fn apply_recommended_defaults(
@@ -126,7 +126,7 @@ pub fn DebloaterView() -> Element {
         progress_state.set(DebloatProgress {
             current_step: 0,
             total_steps: (apps_to_remove.len() + sel_reg_ids.len()).max(1),
-            current_label: if en { "Starting..." } else { "Iniciando..." }.to_string(),
+            current_label: strings(en).starting.to_string(),
             percent: 2,
         });
 
@@ -250,7 +250,7 @@ pub fn DebloaterView() -> Element {
                         "Las apps se quitan para todos los usuarios de este equipo y de la imagen de Windows. Se pueden reinstalar desde Microsoft Store. Los ajustes de registro se pueden revertir.".to_string()
                     }),
                     confirm_label: if en { format!("Apply ({})", total_selected) } else { format!("Aplicar ({})", total_selected) },
-                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    cancel_label: strings(en).cancel.to_string(),
                     tone: Tone::Danger,
                     wide: true,
                     on_cancel: move |_| confirm_open.set(false),
@@ -279,7 +279,7 @@ pub fn DebloaterView() -> Element {
                             disabled: busy || total_selected == 0,
                             onclick: move |_| confirm_open.set(true),
                             if *is_running.read() {
-                                if en { "Running..." } else { "Ejecutando..." }
+                                "{strings(en).running}"
                             } else if en {
                                 "Apply ({total_selected})"
                             } else {
@@ -290,7 +290,7 @@ pub fn DebloaterView() -> Element {
                             button {
                                 class: "btn btn-secondary",
                                 onclick: move |_| cancel_for_btn.store(true, Ordering::Release),
-                                if en { "Cancel" } else { "Cancelar" }
+                                "{strings(en).cancel}"
                             }
                         } else {
                             button {
@@ -309,7 +309,7 @@ pub fn DebloaterView() -> Element {
                                     selected_apps.write().clear();
                                     selected_regs.write().clear();
                                 },
-                                if en { "Clear" } else { "Limpiar" }
+                                "{strings(en).clear}"
                             }
                             button {
                                 class: "btn btn-secondary",
@@ -318,14 +318,14 @@ pub fn DebloaterView() -> Element {
                                     let mut r = run_scan;
                                     r();
                                 },
-                                if en { "Rescan" } else { "Re-escanear" }
+                                if en { "Rescan" } else { "Volver a escanear" }
                             }
                             if scan.has_reg_backup {
                                 button {
                                     class: "btn btn-secondary",
                                     disabled: busy,
                                     onclick: on_revert_reg,
-                                    if en { "Revert Registry" } else { "Revertir Registro" }
+                                    if en { "Revert Registry" } else { "Revertir registro" }
                                 }
                             }
                         }
@@ -333,7 +333,7 @@ pub fn DebloaterView() -> Element {
 
                     span { class: "badge badge-info",
                         if *is_scanning.read() {
-                            if en { "Scanning..." } else { "Escaneando..." }
+                            "{strings(en).scanning}"
                         } else if en {
                             "{installed_count} found"
                         } else {
@@ -419,7 +419,7 @@ pub fn DebloaterView() -> Element {
             for cat in categories {
                 {
                     let cat_label = match (cat, en) {
-                        (DebloatCategory::Recommended, false) => "Bloatware Común y Telemetría (Recomendado)",
+                        (DebloatCategory::Recommended, false) => "Bloatware común y telemetría (recomendado)",
                         (DebloatCategory::Recommended, true) => "Common Bloatware & Telemetry (Recommended)",
                         (DebloatCategory::OptionalApps, false) => "Aplicaciones Integradas Opcionales",
                         (DebloatCategory::OptionalApps, true) => "Optional Built-in Apps",
@@ -459,7 +459,7 @@ pub fn DebloaterView() -> Element {
                                                 span {
                                                     class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
                                                     if app.installed {
-                                                        if en { "Installed" } else { "Instalada" }
+                                                        "{strings(en).installed_app}"
                                                     } else if en {
                                                         "Not installed"
                                                     } else {

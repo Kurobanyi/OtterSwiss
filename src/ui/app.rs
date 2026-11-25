@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::theme::Theme;
 use crate::ui::views::archiver::ArchiverView;
 use crate::ui::views::cleaner::CleanerView;
@@ -263,7 +263,7 @@ pub fn App() -> Element {
                 div { class: "top-controls",
                     button {
                         class: "theme-toggle-btn",
-                        title: if en { "Switch language (ES/EN)" } else { "Cambiar idioma (ES/EN)" },
+                        title: strings(en).switch_language,
                         onclick: move |_| {
                             let next = current_lang.read().toggle();
                             current_lang.set(next);
@@ -274,8 +274,8 @@ pub fn App() -> Element {
                     // TE-03: selector en vez de recorrer los temas uno por uno.
                     select {
                         class: "theme-select",
-                        title: if en { "Theme" } else { "Tema" },
-                        "aria-label": if en { "Theme" } else { "Tema" },
+                        title: strings(en).theme,
+                        "aria-label": strings(en).theme,
                         onchange: move |evt| {
                             if let Some(next) = Theme::from_key(&evt.value()) {
                                 current_theme.set(next);
@@ -288,19 +288,19 @@ pub fn App() -> Element {
                     }
                     button {
                         class: "win-btn",
-                        title: if en { "Minimize" } else { "Minimizar" },
+                        title: strings(en).minimize,
                         onclick: move |_| { win_min.set_minimized(true); },
                         "─"
                     }
                     button {
                         class: "win-btn",
-                        title: if en { "Maximize" } else { "Maximizar" },
+                        title: strings(en).maximize,
                         onclick: move |_| { win_max.toggle_maximized(); },
                         "□"
                     }
                     button {
                         class: "win-btn win-close-btn",
-                        title: if en { "Close" } else { "Cerrar" },
+                        title: strings(en).close,
                         onclick: move |_| { win_close.close(); },
                         "✕"
                     }
@@ -314,13 +314,13 @@ pub fn App() -> Element {
                         let modal_title = if en { format!("Update available: v{}", upd.version) } else { format!("Actualización disponible: v{}", upd.version) };
                         let modal_sub = if en { format!("Current version: v{} → New version: v{}", pkg_ver, upd.version) } else { format!("Versión actual: v{} → Nueva versión: v{}", pkg_ver, upd.version) };
                         let update_btn_lbl = if *is_downloading_update.read() {
-                            if en { format!("Downloading {}%...", *update_progress.read()) } else { format!("Descargando {}%...", *update_progress.read()) }
+                            if en { format!("Downloading {}%…", *update_progress.read()) } else { format!("Descargando {}%…", *update_progress.read()) }
                         } else if en {
                             "Download and Install".to_string()
                         } else {
-                            "Descargar e Instalar".to_string()
+                            "Descargar e instalar".to_string()
                         };
-                        let close_modal_lbl = if en { "Later" } else { "Más tarde" };
+                        let close_modal_lbl = strings(en).later;
                         let notes_header = if en { "Release Notes:" } else { "Notas de la versión:" };
 
                         rsx! {

@@ -66,7 +66,7 @@ pub fn SensorsView() -> Element {
         }
         .to_string(),
     );
-    let reset_peaks_lbl = if en { "Reset Peaks" } else { "Reiniciar Picos" };
+    let reset_peaks_lbl = if en { "Reset Peaks" } else { "Reiniciar picos" };
     let pause_lbl = if *paused.read() {
         if en {
             "Resume"
@@ -80,9 +80,9 @@ pub fn SensorsView() -> Element {
     };
 
     let empty_title = if en {
-        "Waiting for sensors..."
+        "Waiting for sensors…"
     } else {
-        "Esperando sensores..."
+        "Esperando sensores…"
     }
     .to_string();
     let empty_desc = if en {

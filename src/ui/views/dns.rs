@@ -10,7 +10,7 @@ use crate::core::error::CoreError;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{plural, strings, Lang};
 
 /// Estado de la lista de adaptadores: `None` mientras se lee (UI-07).
 type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, String>>;
@@ -57,9 +57,9 @@ pub fn DnsView() -> Element {
         is_benchmarking.set(true);
         status_msg.set(Some((
             if en {
-                "Measuring ping..."
+                "Measuring ping…"
             } else {
-                "Midiendo el ping..."
+                "Midiendo el ping…"
             }
             .to_string(),
             Tone::Info,
@@ -134,9 +134,17 @@ pub fn DnsView() -> Element {
             status_msg.set(Some(match res {
                 Ok(count) => (
                     if en {
-                        format!("{} applied to {} adapter(s).", p_name, count)
+                        format!(
+                            "{} applied to {}.",
+                            p_name,
+                            plural(count, strings(true).adapter)
+                        )
                     } else {
-                        format!("{} aplicado a {} adaptador(es).", p_name, count)
+                        format!(
+                            "{} aplicado a {}.",
+                            p_name,
+                            plural(count, strings(false).adapter)
+                        )
                     },
                     Tone::Success,
                 ),
@@ -171,9 +179,15 @@ pub fn DnsView() -> Element {
             status_msg.set(Some(match res {
                 Ok(count) => (
                     if en {
-                        format!("Previous DNS restored on {} adapter(s).", count)
+                        format!(
+                            "Previous DNS restored on {}.",
+                            plural(count, strings(true).adapter)
+                        )
                     } else {
-                        format!("DNS anterior restaurado en {} adaptador(es).", count)
+                        format!(
+                            "DNS anterior restaurado en {}.",
+                            plural(count, strings(false).adapter)
+                        )
                     },
                     Tone::Success,
                 ),
@@ -220,9 +234,9 @@ pub fn DnsView() -> Element {
 
     let ping_btn_text = if *is_benchmarking.read() {
         if en {
-            "Pinging..."
+            "Pinging…"
         } else {
-            "Midiendo..."
+            "Midiendo…"
         }
     } else if en {
         "Test Ping"
@@ -247,7 +261,7 @@ pub fn DnsView() -> Element {
                         title: if en { format!("Apply {}?", p.name) } else { format!("¿Aplicar {}?", p.name) },
                         subtitle: Some(if en { p.privacy_notice_en.to_string() } else { p.privacy_notice.to_string() }),
                         confirm_label: apply_dns_lbl.to_string(),
-                        cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                        cancel_label: strings(en).cancel.to_string(),
                         tone: Tone::Warning,
                         on_cancel: move |_| confirm_apply.set(false),
                         on_confirm: move |_| {
@@ -344,7 +358,7 @@ pub fn DnsView() -> Element {
                 div { class: "stack-2",
                     match adapters_state.as_ref() {
                         None => rsx! {
-                            LoadingState { message: if en { "Reading network adapters...".to_string() } else { "Leyendo los adaptadores de red...".to_string() } }
+                            LoadingState { message: if en { "Reading network adapters…".to_string() } else { "Leyendo los adaptadores de red…".to_string() } }
                         },
                         Some(Err(err)) => rsx! {
                             ErrorState {

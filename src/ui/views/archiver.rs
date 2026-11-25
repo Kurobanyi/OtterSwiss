@@ -10,7 +10,7 @@ use crate::core::archive::{
 };
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::{bytes_mb, eta, mb_1};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::task::run_with_progress;
 
 #[component]
@@ -133,23 +133,23 @@ pub fn ArchiverView() -> Element {
             if *is_working.read() {
                 Modal {
                     title: match (*mode.read() == ArchiveMode::Extract, en) {
-                        (true, true) => "Extracting archive...".to_string(),
-                        (true, false) => "Extrayendo archivo...".to_string(),
-                        (false, true) => "Compressing...".to_string(),
-                        (false, false) => "Comprimiendo...".to_string(),
+                        (true, true) => "Extracting archive…".to_string(),
+                        (true, false) => "Extrayendo archivo…".to_string(),
+                        (false, true) => "Compressing…".to_string(),
+                        (false, false) => "Comprimiendo…".to_string(),
                     },
                     subtitle: Some(if prog.current_file.is_empty() { "...".to_string() } else { prog.current_file.clone() }),
                     on_close: move |_| {},
                         ProgressBar { percent: prog.percent }
                         div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
-                            span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
+                            span { "{prog.speed_mbps:.1} MB/s • {strings(en).time_left} {eta_txt}" }
                         }
                         div { class: "modal-actions",
                             button {
                                 class: "btn btn-danger",
                                 onclick: move |_| cancel_for_btn.store(true, Ordering::Release),
-                                if en { "Cancel" } else { "Cancelar" }
+                                "{strings(en).cancel}"
                             }
                         }
                 }

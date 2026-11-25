@@ -15,7 +15,7 @@ use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::format::{eta, mb_1};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::task::run_with_progress;
 use crate::ui::theme::Theme;
 
@@ -109,10 +109,10 @@ pub fn MiniArchiveView() -> Element {
     let dest_for_open = job.dest.clone();
 
     let title_txt = match (job.mode, en) {
-        (ArchiveMode::Extract, false) => "Extrayendo archivo...",
-        (ArchiveMode::Extract, true) => "Extracting archive...",
-        (ArchiveMode::Compress, false) => "Comprimiendo a ZIP...",
-        (ArchiveMode::Compress, true) => "Compressing to ZIP...",
+        (ArchiveMode::Extract, false) => "Extrayendo archivo…",
+        (ArchiveMode::Extract, true) => "Extracting archive…",
+        (ArchiveMode::Compress, false) => "Comprimiendo a ZIP…",
+        (ArchiveMode::Compress, true) => "Compressing to ZIP…",
     };
     let top_status_txt = if running {
         title_txt
@@ -125,16 +125,16 @@ pub fn MiniArchiveView() -> Element {
     };
     let current_file_lbl = if prog.current_file.is_empty() {
         if en {
-            "Preparing files...".to_string()
+            "Preparing files…".to_string()
         } else {
-            "Preparando archivos...".to_string()
+            "Preparando archivos…".to_string()
         }
     } else {
         prog.current_file.clone()
     };
-    let cancel_lbl = if en { "Cancel" } else { "Cancelar" };
-    let open_folder_lbl = if en { "Open folder" } else { "Abrir carpeta" };
-    let close_lbl = if en { "Close" } else { "Cerrar" };
+    let cancel_lbl = strings(en).cancel;
+    let open_folder_lbl = strings(en).open_folder;
+    let close_lbl = strings(en).close;
 
     let mb_done = mb_1(prog.bytes_processed);
     let mb_total = mb_1(prog.total_bytes);
@@ -180,7 +180,7 @@ pub fn MiniArchiveView() -> Element {
                         }
                         div { class: "row-between text-xs text-muted",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
-                            span { "{prog.speed_mbps:.1} MB/s • ETA {eta_txt}" }
+                            span { "{prog.speed_mbps:.1} MB/s • {strings(en).time_left} {eta_txt}" }
                         }
                     }
                 }

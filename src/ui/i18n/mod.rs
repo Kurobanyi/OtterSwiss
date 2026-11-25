@@ -1,4 +1,8 @@
+pub mod strings;
+
 use serde::{Deserialize, Serialize};
+
+pub use strings::{plural, Strings};
 
 use crate::ui::prefs;
 
@@ -49,11 +53,28 @@ impl Lang {
         }
     }
 
+    /// Catálogo de textos del idioma (IN-02).
+    pub fn t(self) -> &'static Strings {
+        match self {
+            Self::Es => &strings::ES,
+            Self::En => &strings::EN,
+        }
+    }
+
     pub fn load_persisted() -> Self {
         prefs::load(PREF_FILE).unwrap_or_else(Self::from_system)
     }
 
     pub fn save_persisted(self) {
         prefs::save(PREF_FILE, &self);
+    }
+}
+
+/// Catálogo para las vistas que ya tienen `en: bool` a mano.
+pub fn strings(en: bool) -> &'static Strings {
+    if en {
+        &strings::EN
+    } else {
+        &strings::ES
     }
 }

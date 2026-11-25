@@ -6,7 +6,7 @@ use dioxus::prelude::*;
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
 use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::task::run_with_progress;
 #[component]
 pub fn CleanerView() -> Element {
@@ -33,7 +33,7 @@ pub fn CleanerView() -> Element {
             current_step: 0,
             // AR-16: el total lo pone el core en el primer paso; aquí no se inventa.
             total_steps: 0,
-            current_category: if en { "Starting..." } else { "Iniciando..." }.to_string(),
+            current_category: strings(en).starting.to_string(),
             percent: 2,
             bytes_freed_so_far: 0,
             files_removed_so_far: 0,
@@ -109,7 +109,7 @@ pub fn CleanerView() -> Element {
                         "Cierra las apps abiertas, menos OtterSwiss, para evitar archivos en uso.".to_string()
                     }),
                     confirm_label: if en { "Clean now".to_string() } else { "Limpiar ahora".to_string() },
-                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    cancel_label: strings(en).cancel.to_string(),
                     tone: if *clean_recycle.read() { Tone::Danger } else { Tone::Warning },
                     on_cancel: move |_| show_confirm_modal.set(false),
                     on_confirm: move |_| {
@@ -171,7 +171,7 @@ pub fn CleanerView() -> Element {
                             disabled: *is_cleaning.read(),
                             onclick: move |_| show_confirm_modal.set(true),
                             if *is_cleaning.read() {
-                                if en { "Cleaning..." } else { "Limpiando..." }
+                                if en { "Cleaning…" } else { "Limpiando…" }
                             } else if en {
                                 "Start Cleanup"
                             } else {
@@ -183,7 +183,7 @@ pub fn CleanerView() -> Element {
                             button {
                                 class: "btn btn-danger",
                                 onclick: move |_| cancel_for_btn.store(true, Ordering::Release),
-                                if en { "Cancel" } else { "Cancelar" }
+                                "{strings(en).cancel}"
                             }
                         }
                     }

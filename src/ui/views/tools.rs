@@ -11,7 +11,7 @@ use crate::core::store::app_store::{AppCategory, AppStoreManager};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
 };
@@ -32,9 +32,9 @@ pub fn ToolsView() -> Element {
         local_working.set(true);
         tools_state.write().tool_log = Some((
             if en {
-                "Trimming RAM working sets...".to_string()
+                "Trimming RAM working sets…".to_string()
             } else {
-                "Optimizando memoria RAM...".to_string()
+                "Optimizando memoria RAM…".to_string()
             },
             Tone::Info,
         ));
@@ -162,7 +162,7 @@ pub fn ToolsView() -> Element {
     let ctx_title = if en {
         "Explorer Context Menu"
     } else {
-        "Menú Contextual"
+        "Menú contextual"
     }
     .to_string();
     let ctx_sub = Some(
@@ -176,7 +176,7 @@ pub fn ToolsView() -> Element {
     let runtimes_title = if en {
         "Gaming Runtimes"
     } else {
-        "Dependencias Gamer"
+        "Dependencias para juegos"
     }
     .to_string();
     let runtimes_sub = Some(
@@ -208,7 +208,7 @@ pub fn ToolsView() -> Element {
                         button {
                             class: "btn btn-primary",
                             onclick: move |_| ram_report_modal.set(None),
-                            if en { "Close" } else { "Cerrar" }
+                            "{strings(en).close}"
                         }
                     }
                 }
@@ -246,7 +246,7 @@ pub fn ToolsView() -> Element {
                         disabled: any_busy,
                         onclick: on_trim_ram,
                         if *local_working.read() {
-                            if en { "Trimming..." } else { "Procesando..." }
+                            if en { "Trimming…" } else { "Procesando…" }
                         } else if en {
                             "Trim RAM Now"
                         } else {
@@ -262,7 +262,7 @@ pub fn ToolsView() -> Element {
                         span {
                             class: if *context_menu_active.read() { "badge badge-success" } else { "badge badge-warning" },
                             if *context_menu_active.read() {
-                                if en { "Installed" } else { "Instalado" }
+                                "{strings(en).installed_runtime}"
                             } else if en {
                                 "Not Installed"
                             } else {
@@ -274,7 +274,7 @@ pub fn ToolsView() -> Element {
                             disabled: any_busy,
                             onclick: on_toggle_context_menu,
                             if *context_menu_active.read() {
-                                if en { "Uninstall" } else { "Desinstalar" }
+                                "{strings(en).uninstall}"
                             } else if en {
                                 "Install"
                             } else {
@@ -305,7 +305,7 @@ pub fn ToolsView() -> Element {
                                         span {
                                             class: if installed { "badge badge-success" } else { "badge badge-warning" },
                                             if installed {
-                                                if en { "Installed" } else { "Instalado" }
+                                                "{strings(en).installed_runtime}"
                                             } else if en {
                                                 "Missing"
                                             } else {
@@ -374,7 +374,7 @@ pub fn BatchAppStoreCard() -> Element {
     let store_title = if en {
         "Silent App Store"
     } else {
-        "App Store Silenciosa"
+        "Tienda silenciosa"
     }
     .to_string();
     let store_sub = Some(
@@ -398,7 +398,7 @@ pub fn BatchAppStoreCard() -> Element {
                             disabled: is_running || selected_count == 0,
                             onclick: on_install_selected,
                             if is_running {
-                                if en { "Installing..." } else { "Instalando..." }
+                                "{strings(en).installing}"
                             } else if en {
                                 "Install Selected ({selected_count})"
                             } else {
@@ -409,13 +409,13 @@ pub fn BatchAppStoreCard() -> Element {
                             button {
                                 class: "btn btn-danger",
                                 onclick: move |_| dispatcher.cancel_flag.store(true, Ordering::Release),
-                                if en { "Cancel" } else { "Cancelar" }
+                                "{strings(en).cancel}"
                             }
                         } else if selected_count > 0 {
                             button {
                                 class: "btn btn-secondary",
                                 onclick: move |_| selected.write().clear(),
-                                if en { "Clear" } else { "Limpiar" }
+                                "{strings(en).clear}"
                             }
                         }
                     }
@@ -479,12 +479,12 @@ pub fn BatchAppStoreCard() -> Element {
 
                                             div { class: "row",
                                                 if is_installed {
-                                                    span { class: "badge badge-success", if en { "Installed" } else { "Instalada" } }
+                                                    span { class: "badge badge-success", "{strings(en).installed_app}" }
                                                 }
                                                 if let Some(ref status) = st {
                                                     match status {
                                                         InstallStatus::Queued => rsx! { span { class: "badge badge-info", if en { "Queued" } else { "En cola" } } },
-                                                        InstallStatus::Installing => rsx! { span { class: "badge badge-warning", if en { "Installing..." } else { "Instalando..." } } },
+                                                        InstallStatus::Installing => rsx! { span { class: "badge badge-warning", "{strings(en).installing}" } },
                                                         InstallStatus::Done => rsx! { span { class: "badge badge-success", if en { "Done" } else { "Listo" } } },
                                                         InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "Error" } },
                                                     }

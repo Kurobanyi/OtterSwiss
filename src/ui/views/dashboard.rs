@@ -10,7 +10,7 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{strings, Lang};
 use crate::ui::task::run_with_progress;
 
 #[component]
@@ -56,9 +56,9 @@ pub fn DashboardView() -> Element {
             current_step: 0,
             total_steps: 0,
             current_label: if en {
-                "Creating backup..."
+                "Creating backup…"
             } else {
-                "Creando respaldo..."
+                "Creando respaldo…"
             }
             .to_string(),
             percent: 5,
@@ -105,9 +105,9 @@ pub fn DashboardView() -> Element {
             current_step: 0,
             total_steps: 0,
             current_label: if en {
-                "Reading backup..."
+                "Reading backup…"
             } else {
-                "Leyendo respaldo..."
+                "Leyendo respaldo…"
             }
             .to_string(),
             percent: 5,
@@ -153,7 +153,7 @@ pub fn DashboardView() -> Element {
         return rsx! {
             div { class: "content-body",
                 LoadingState {
-                    message: if en { "Detecting hardware...".to_string() } else { "Detectando el hardware...".to_string() },
+                    message: if en { "Detecting hardware…".to_string() } else { "Detectando el hardware…".to_string() },
                 }
             }
         };
@@ -169,7 +169,7 @@ pub fn DashboardView() -> Element {
     let overview_title = if en {
         "System Overview"
     } else {
-        "Resumen del Equipo"
+        "Resumen del equipo"
     }
     .to_string();
     let overview_sub = Some(
@@ -183,7 +183,7 @@ pub fn DashboardView() -> Element {
     let power_title = if en {
         "Active Power Plan"
     } else {
-        "Plan de Energía"
+        "Plan de energía"
     }
     .to_string();
     let power_sub = Some(
@@ -230,7 +230,7 @@ pub fn DashboardView() -> Element {
                         "Algunos cambios se aplican al cerrar sesión o al reiniciar Windows.".to_string()
                     }),
                     confirm_label: if en { "Restart now".to_string() } else { "Reiniciar ahora".to_string() },
-                    cancel_label: if en { "Later".to_string() } else { "Más tarde".to_string() },
+                    cancel_label: strings(en).later.to_string(),
                     tone: Tone::Warning,
                     on_cancel: move |_| show_reboot_modal.set(false),
                     on_confirm: move |_| on_reboot_now(),
@@ -254,7 +254,7 @@ pub fn DashboardView() -> Element {
                         "Cada valor se respalda antes; «Revertir» lo restaura.".to_string()
                     }),
                     confirm_label: if en { format!("Apply ({})", eligible_items.len()) } else { format!("Aplicar ({})", eligible_items.len()) },
-                    cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                    cancel_label: strings(en).cancel.to_string(),
                     wide: true,
                     on_cancel: move |_| confirm_optimize.set(false),
                     on_confirm: move |_| {
@@ -278,13 +278,13 @@ pub fn DashboardView() -> Element {
                 div { class: "card",
                     div { class: "card-header",
                         div {
-                            h3 { class: "card-title", if en { "Admin Rights Required" } else { "Se Requiere Administrador" } }
+                            h3 { class: "card-title", if en { "Admin Rights Required" } else { "Se requiere administrador" } }
                             p { class: "card-subtitle", if en { "Elevate to modify services, registry & power." } else { "Eleva para ajustar registro, servicios y energía." } }
                         }
                         button {
                             class: "btn btn-primary",
                             onclick: on_relaunch_admin,
-                            if en { "Relaunch as Admin" } else { "Ejecutar como Admin" }
+                            if en { "Relaunch as Admin" } else { "Ejecutar como administrador" }
                         }
                     }
                 }
@@ -339,11 +339,11 @@ pub fn DashboardView() -> Element {
                             disabled: *is_running.read() || eligible_items.is_empty(),
                             onclick: move |_| confirm_optimize.set(true),
                             if *is_running.read() {
-                                if en { "Processing..." } else { "Procesando..." }
+                                if en { "Processing…" } else { "Procesando…" }
                             } else if en {
                                 "Optimize System"
                             } else {
-                                "Optimizar Sistema"
+                                "Optimizar sistema"
                             }
                         }
                         button {

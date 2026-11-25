@@ -8,7 +8,7 @@ use crate::core::uninstall::{
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{plural, strings, Lang};
 use crate::ui::installer::{
     refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
 };
@@ -61,9 +61,9 @@ fn start_scan(
     is_working.set(true);
     status_msg.set(Some((
         if en {
-            format!("Scanning leftovers for '{}'...", app.display_name)
+            format!("Scanning leftovers for '{}'…", app.display_name)
         } else {
-            format!("Escaneando rastros de '{}'...", app.display_name)
+            format!("Escaneando rastros de '{}'…", app.display_name)
         },
         Tone::Info,
     )));
@@ -94,14 +94,14 @@ fn start_scan(
                 status_msg.set(Some((
                     if en {
                         format!(
-                            "Found {} leftover(s) for '{}'.",
-                            found.len(),
+                            "Found {} for '{}'.",
+                            plural(found.len(), strings(true).leftover),
                             app.display_name
                         )
                     } else {
                         format!(
-                            "{} rastro(s) detectados de '{}'.",
-                            found.len(),
+                            "{} de '{}'.",
+                            plural(found.len(), strings(false).leftover),
                             app.display_name
                         )
                     },
@@ -134,9 +134,9 @@ fn start_uninstall_and_scan(
     purge_summary.set(None);
     status_msg.set(Some((
         if en {
-            format!("Uninstalling '{}'...", app.display_name)
+            format!("Uninstalling '{}'…", app.display_name)
         } else {
-            format!("Desinstalando '{}'...", app.display_name)
+            format!("Desinstalando '{}'…", app.display_name)
         },
         Tone::Info,
     )));
@@ -417,7 +417,7 @@ pub fn UninstallerView() -> Element {
     let uninstaller_title = if en {
         "Deep Uninstaller"
     } else {
-        "Desinstalador Profundo"
+        "Desinstalador profundo"
     }
     .to_string();
     let uninstaller_sub = Some(
@@ -431,34 +431,34 @@ pub fn UninstallerView() -> Element {
     let installed_title = if en {
         "Installed Applications"
     } else {
-        "Aplicaciones Instaladas"
+        "Aplicaciones instaladas"
     }
     .to_string();
 
     let search_placeholder = if en {
-        "Search app or publisher..."
+        "Search app or publisher…"
     } else {
-        "Buscar aplicación o fabricante..."
+        "Buscar aplicación o fabricante…"
     };
-    let refresh_lbl = if en { "Refresh" } else { "Actualizar" };
+    let refresh_lbl = strings(en).reload_list;
     let sort_lbl = if en { "Sort:" } else { "Orden:" };
     let sort_largest_lbl = if en {
         "Size (Largest)"
     } else {
-        "Tamaño (Mayor)"
+        "Tamaño (mayor)"
     };
     let sort_smallest_lbl = if en {
         "Size (Smallest)"
     } else {
-        "Tamaño (Menor)"
+        "Tamaño (menor)"
     };
     let update_lbl = if en { "Update" } else { "Actualizar" };
     let scan_lbl = if en {
         "Scan Leftovers"
     } else {
-        "Escanear Rastros"
+        "Escanear restos"
     };
-    let uninst_lbl = if en { "Uninstall" } else { "Desinstalar" };
+    let uninst_lbl = strings(en).uninstall;
 
     rsx! {
         div { class: "content-body",
@@ -487,7 +487,7 @@ pub fn UninstallerView() -> Element {
                         "Los archivos y carpetas se borran de forma permanente (no van a la Papelera). Las claves de registro se exportan antes a ProgramData\\OtterSwiss\\RegBackups."
                     };
                     let review_lbl = if en { "Review" } else { "Revisar" };
-                    let close_lbl = if en { "Close" } else { "Cerrar" };
+                    let close_lbl = strings(en).close;
                     let purge_lbl = if en {
                         format!("Delete permanently ({})", sel_count)
                     } else {
@@ -594,7 +594,7 @@ pub fn UninstallerView() -> Element {
                             title,
                             subtitle: None,
                             confirm_label: uninst_lbl.to_string(),
-                            cancel_label: if en { "Cancel".to_string() } else { "Cancelar".to_string() },
+                            cancel_label: strings(en).cancel.to_string(),
                             tone: Tone::Danger,
                             on_cancel: move |_| confirm_uninstall.set(None),
                             on_confirm: move |_| {
@@ -697,7 +697,7 @@ pub fn UninstallerView() -> Element {
                 div { class: "stack-2",
                     if !*apps_loaded.read() {
                         LoadingState {
-                            message: if en { "Reading installed apps...".to_string() } else { "Leyendo las apps instaladas...".to_string() },
+                            message: if en { "Reading installed apps…".to_string() } else { "Leyendo las apps instaladas…".to_string() },
                         }
                     }
                     for app in filtered.into_iter() {
