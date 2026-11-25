@@ -379,6 +379,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Dónde**: `src/ui/views/uninstaller.rs:51-94`; `src/core/uninstaller.rs:738-746,873-893`.
 - **Propuesta**: si la app sigue presente, excluir `InstallLocation` y la clave Uninstall.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): `is_still_registered`: con la app instalada no se ofrecen su carpeta ni su entrada Uninstall. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
+- **Reabierto y cerrado** (2026-11-24, prueba como admin en Windows Sandbox): el primer arreglo solo omitía `InstallLocation`; el barrido de Program Files encontraba la misma carpeta por nombre y la ofrecía igual. Ahora, con la app registrada, se quita de los rastros cualquier ruta igual o dentro de su carpeta de instalación. Verificado con `tests/vm_sistema.rs` (paso «instalada: no se ofrece su carpeta»).
 
 
 <a id="sys-05"></a>
@@ -659,6 +660,18 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
   configurado en 0x26); la velocidad prioriza la nominal sobre la configurada; un módulo de 512 MB se muestra como «0 GB».
 - **Dónde**: `src/core/specs.rs:430-439,597-607`; `src/ui/views/hardware_tab.rs:181`.
 
+<a id="err-13"></a>
+### ERR-13 · Sin WebView2 la app se cierra con un `panic` en lugar de avisar
+- **Afecta**: Usuario · **Severidad**: Alta · **Origen**: Prueba en Windows Sandbox 24/11 · **Evidencia**: observado · **Estado**: Resuelto
+- **Qué pasa**: Dioxus desktop crea la ventana con WebView2. Si el runtime no está instalado, `dioxus-desktop` hace `unwrap` sobre el
+  error (`webview.rs:503`, HRESULT `0x80070002`) y el proceso termina sin ventana ni mensaje. La app ya sabe detectar e instalar
+  WebView2 (`DependencyManager::is_webview2_installed`, `install_runtime("webview2")`), pero eso solo se ofrece dentro de la interfaz,
+  que nunca llega a abrirse.
+- **Dónde**: `src/main.rs` (`dioxus::LaunchBuilder::desktop()` sin comprobación previa); `src/core/dependencies.rs:111,135`.
+- **Propuesta**: antes de lanzar Dioxus, comprobar WebView2; si falta, mostrar un `MessageBoxW` nativo que explique el problema y
+  ofrezca instalarlo con el instalador verificado de `dependencies.rs`, y relanzar al terminar.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): `main.rs` comprueba WebView2 antes de lanzar Dioxus y, si falta, muestra un `MessageBoxW` nativo que ofrece instalarlo con `install_runtime("webview2")`; si la instalación falla lo dice con el código en hexadecimal (`ProcessExit::code_display`). `is_webview2_installed` pregunta al cargador oficial (`GetAvailableCoreWebView2BrowserVersionString` vía `webview2-com`, ya presente en el árbol): el registro daba un falso «instalado» con restos de una instalación rota. Un hook de `panic` muestra cualquier otro error en un cuadro nativo. Verificado en Windows Sandbox: sin WebView2 aparece «Falta WebView2» con Sí/No y, al fallar la instalación (EdgeUpdate `0x80040902`, limitación del Sandbox), el error se explica; `cargo test` (37) y `clippy --all-targets -- -D warnings` en verde.
+
 # Expedientes · Concurrencia (`CON-`)
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Buffer SMBIOS acotado a lo reservado, voltaje leído en 0x26, velocidad configurada antes que la nominal y módulos < 1 GB en MB. Tests `voltaje_configurado_en_0x26`, `estructura_truncada_no_entra_en_panico`, `capacidad_de_modulos_pequenos`. Verificado: `cargo test` y `clippy --all-targets -- -D warnings` en verde en Windows; interfaz recorrida sin elevación (2026-11-24). Las acciones que cambian el sistema no se ejecutaron.
 
@@ -701,6 +714,17 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 ### ARQ-03 · `drivers.rs` es código muerto y devuelve siempre `None` en versión y fecha
 - **Afecta**: Desarrollador · **Severidad**: Baja · **Origen**: code-auditor · **Evidencia**: observado · **Estado**: Diferido
 - **Dónde**: `src/core/drivers.rs:15,54`; sin uso fuera del módulo.
+
+<a id="arq-04"></a>
+### ARQ-04 · En un Windows limpio `otter_swiss.exe` no abre: falta `VCRUNTIME140_1.dll`
+- **Afecta**: Usuario · **Severidad**: Crítica · **Origen**: Prueba en Windows Sandbox 24/11 · **Evidencia**: observado · **Estado**: Resuelto
+- **Qué pasa**: el binario se enlaza con el CRT dinámico de MSVC y depende del Visual C++ Redistributable. Windows no lo trae de
+  serie, así que en un equipo sin él el sistema muestra «no se encontró VCRUNTIME140_1.dll» y la app no arranca. El instalador
+  (`otterswiss.iss`) solo copia el `.exe`, y la app se anuncia como portable.
+- **Dónde**: `Cargo.toml` / `.cargo` (sin `target-feature=+crt-static`); `otterswiss.iss:41-42`.
+- **Propuesta**: compilar con CRT estático (el `.exe` no depende de ninguna DLL de VC y sirve también portable) o incluir y
+  ejecutar `vc_redist.x64.exe` en el instalador. Decide el autor.
+- **Cierre** (2026-11-24, rama `fix/auditoria`): decisión del autor, CRT estático. `.cargo/config.toml` vuelve a versionarse solo con `target-feature=+crt-static` para `x86_64-pc-windows-msvc` (las rutas propias de `--remap-path-prefix`, ARQ-01, van en el `~/.cargo/config.toml` de cada equipo). `dumpbin /dependents` del release ya no lista `VCRUNTIME140*.dll` ni `ucrtbase.dll`; el `.exe` pesa 9,2 MB. Verificado en Windows Sandbox sin ninguna DLL de VC: `--uninstall-context-menu` sale con 0 y la app abre.
 
 # Expedientes · Interfaz (`UI-`)
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): se usará para actualizar drivers desde la app.

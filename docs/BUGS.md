@@ -16,21 +16,24 @@ sin compilar ni ejecutar. Agentes para repetirla: `.claude/agents/security-audit
 
 ## Resumen
 
-Estado al 24/11/2026, rama `fix/auditoria`: `cargo test` (36 tests) y `clippy --all-targets -- -D warnings` en verde en Windows, e
-interfaz recorrida sin elevación en tema oscuro y claro, en español e inglés. **Falta** ejecutar como administrador las acciones que
-cambian el sistema (optimizar y revertir, Debloater, DNS, desinstalar, limpiar) y ver la ventana en tamaño chico.
+Estado al 24/11/2026, rama `fix/auditoria`: `cargo test` (37 tests) y `clippy --all-targets -- -D warnings` en verde en Windows, e
+interfaz recorrida sin elevación en tema oscuro y claro, en español e inglés. **Acciones que cambian el sistema probadas como
+administrador** en Windows Sandbox con `tests/vm_sistema.rs` (`cargo test --release --test vm_sistema -- --ignored --nocapture
+--test-threads=1`, solo en una máquina desechable): optimizar y revertir, Debloater (registro) y revertir, DNS IPv4/IPv6, limpiador con
+junction trampa, comprimir y extraer, desinstalar y purgar una app falsa, revertir todo y `--rollback`: 0 fallos. Sin probar: quitar una
+app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chico.
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
 | Seguridad (`SEC-`) | 28 | 0 | 1 | 0 | 27 |
 | Sistema y rollback (`SYS-`) | 24 | 0 | 1 | 0 | 23 |
-| Errores y procesos (`ERR-`) | 12 | 0 | 0 | 0 | 12 |
+| Errores y procesos (`ERR-`) | 13 | 0 | 0 | 0 | 13 |
 | Concurrencia (`CON-`) | 2 | 0 | 0 | 0 | 2 |
-| Arquitectura (`ARQ-`) | 3 | 0 | 1 | 0 | 2 |
+| Arquitectura (`ARQ-`) | 4 | 0 | 1 | 0 | 3 |
 | Interfaz (`UI-`) | 16 | 1 | 0 | 0 | 15 |
 | Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
 | Pruebas (`TST-`) | 1 | 1 | 0 | 0 | 0 |
-| **Total** | **90** | **2** | **4** | **1** | **83** |
+| **Total** | **92** | **2** | **4** | **1** | **85** |
 
 ## Abiertos
 
@@ -53,8 +56,7 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. **Probar como administrador** las acciones que cambian el sistema, idealmente en una VM o en Windows Sandbox: optimizar y
-   revertir, Debloater y revertir, aplicar y restaurar DNS, desinstalar y purgar, limpiar, extraer y comprimir.
+1. En un Windows completo: quitar una app Appx con el Debloater y ver la ventana en tamaño chico.
 2. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`, que necesitan registro y archivos de respaldo.
 3. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (y con él `SYS-24`), `UI-11` en el núcleo.
 
