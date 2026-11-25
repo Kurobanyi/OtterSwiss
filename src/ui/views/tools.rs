@@ -12,7 +12,9 @@ use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{Card, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
-use crate::ui::{InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState};
+use crate::ui::installer::{
+    InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
+};
 
 #[component]
 pub fn ToolsView() -> Element {

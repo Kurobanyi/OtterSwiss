@@ -4,7 +4,7 @@ use crate::ui::i18n::Lang;
 use dioxus::prelude::*;
 
 #[derive(Props, Clone, PartialEq)]
-pub struct HardwareTabProps {
+pub struct HardwareViewProps {
     pub specs: Option<SystemSpecs>,
     #[props(default = None)]
     pub error: Option<String>,
@@ -17,7 +17,7 @@ pub struct HardwareTabProps {
 }
 
 #[component]
-pub fn HardwareTab(props: HardwareTabProps) -> Element {
+pub fn HardwareView(props: HardwareViewProps) -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
     let mut status_msg = use_signal(|| None::<String>);

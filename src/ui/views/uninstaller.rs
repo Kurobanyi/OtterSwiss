@@ -9,7 +9,7 @@ use crate::core::uninstall::{
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::i18n::Lang;
-use crate::ui::{
+use crate::ui::installer::{
     refresh_tools_inventory, InstallJobRequest, InstallerDispatcher, ToolsSharedState,
 };
 
