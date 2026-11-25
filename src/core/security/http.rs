@@ -1,16 +1,20 @@
 //! Cliente HTTPS mínimo sobre WinInet: una sola implementación para las descargas verificadas y el actualizador
 //! (CL-03). No valida contenido: eso lo hace quien lee (`download.rs` con SHA-256 y Authenticode, el actualizador
-//! con su tope de tamaño).
+//! con su tope de tamaño). Sale por el proxy de la máquina, nunca por el del usuario (SEC-32).
 
+use windows::Win32::Foundation::{GlobalFree, HGLOBAL};
+use windows::Win32::Networking::WinHttp::{
+    WINHTTP_ACCESS_TYPE_NAMED_PROXY, WINHTTP_PROXY_INFO, WinHttpGetDefaultProxyConfiguration,
+};
 use windows::Win32::Networking::WinInet::{
     HTTP_QUERY_CONTENT_LENGTH, HTTP_QUERY_FLAG_NUMBER, HTTP_QUERY_STATUS_CODE, HttpOpenRequestW,
     HttpQueryInfoW, HttpSendRequestW, INTERNET_FLAG_NO_CACHE_WRITE, INTERNET_FLAG_RELOAD,
-    INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_PRECONFIG, INTERNET_OPTION_CONNECT_TIMEOUT,
-    INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT, INTERNET_OPTION_URL,
-    INTERNET_SERVICE_HTTP, InternetConnectW, InternetOpenUrlW, InternetOpenW, InternetQueryOptionW,
-    InternetReadFile, InternetSetOptionW,
+    INTERNET_FLAG_SECURE, INTERNET_OPEN_TYPE_DIRECT, INTERNET_OPEN_TYPE_PROXY,
+    INTERNET_OPTION_CONNECT_TIMEOUT, INTERNET_OPTION_RECEIVE_TIMEOUT, INTERNET_OPTION_SEND_TIMEOUT,
+    INTERNET_OPTION_URL, INTERNET_SERVICE_HTTP, InternetConnectW, InternetOpenUrlW, InternetOpenW,
+    InternetQueryOptionW, InternetReadFile, InternetSetOptionW,
 };
-use windows::core::PCWSTR;
+use windows::core::{PCWSTR, PWSTR};
 
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::WinInetHandle;
@@ -21,6 +25,13 @@ use crate::core::platform::wide::to_wide_null;
 pub struct Timeouts {
     pub connect_ms: u32,
     pub io_ms: u32,
+}
+
+/// Cómo sale una sesión a internet (SEC-32).
+#[derive(Debug, PartialEq, Eq)]
+enum SessionProxy {
+    Direct,
+    Named { proxy: String, bypass: String },
 }
 
 /// Respuesta abierta de una petición GET por HTTPS. La sesión vive mientras viva la respuesta.
@@ -140,15 +151,68 @@ fn default_agent() -> String {
 }
 
 /// Sesión WinInet con los tres timeouts aplicados.
+/// SEC-32: la app corre elevada pero comparte HKCU con el usuario; un programa sin privilegios podría poner ahí un
+/// proxy y ver o cambiar lo que se descarga. Se usa el proxy de WinHTTP de la máquina (HKLM, lo fija un administrador
+/// con `netsh winhttp set proxy`) o la conexión directa.
+fn machine_proxy() -> SessionProxy {
+    let mut info = WINHTTP_PROXY_INFO::default();
+    // SAFETY: estructura de salida local; si la llamada tiene éxito, WinHTTP reserva las cadenas con GlobalAlloc.
+    if unsafe { WinHttpGetDefaultProxyConfiguration(&mut info) }.is_err() {
+        return SessionProxy::Direct;
+    }
+    let proxy = take_global_string(info.lpszProxy);
+    let bypass = take_global_string(info.lpszProxyBypass);
+    proxy_choice(
+        info.dwAccessType == WINHTTP_ACCESS_TYPE_NAMED_PROXY,
+        proxy,
+        bypass,
+    )
+}
+
+/// Copia y libera una cadena que reservó WinHTTP con `GlobalAlloc`.
+fn take_global_string(p: PWSTR) -> Option<String> {
+    if p.is_null() {
+        return None;
+    }
+    // SAFETY: cadena terminada en NUL reservada por WinHTTP; se copia antes de liberarla.
+    let text = unsafe { p.to_string() }.ok();
+    // SAFETY: la memoria la reservó WinHTTP con GlobalAlloc y se libera una sola vez.
+    let _ = unsafe { GlobalFree(Some(HGLOBAL(p.0.cast()))) };
+    text
+}
+
+/// Con proxy de máquina, ese proxy; sin él, directo. Sin lista de exclusión explícita se usa `<local>`: con `NULL`
+/// WinInet leería la del usuario.
+fn proxy_choice(named: bool, proxy: Option<String>, bypass: Option<String>) -> SessionProxy {
+    match proxy.filter(|p| named && !p.trim().is_empty()) {
+        Some(proxy) => SessionProxy::Named {
+            proxy,
+            bypass: bypass
+                .filter(|b| !b.trim().is_empty())
+                .unwrap_or_else(|| "<local>".into()),
+        },
+        None => SessionProxy::Direct,
+    }
+}
+
 fn open_session(agent: &str, timeouts: Timeouts) -> CoreResult<WinInetHandle> {
     let agent_w = to_wide_null(agent);
-    // SAFETY: `agent_w` termina en NUL y vive durante la llamada; los punteros nulos son opcionales.
+    let (access, proxy_w, bypass_w) = match machine_proxy() {
+        SessionProxy::Direct => (INTERNET_OPEN_TYPE_DIRECT, None, None),
+        SessionProxy::Named { proxy, bypass } => (
+            INTERNET_OPEN_TYPE_PROXY,
+            Some(to_wide_null(&proxy)),
+            Some(to_wide_null(&bypass)),
+        ),
+    };
+    let ptr = |w: &Option<Vec<u16>>| w.as_ref().map_or(PCWSTR::null(), |v| PCWSTR(v.as_ptr()));
+    // SAFETY: las cadenas terminan en NUL y viven durante la llamada; los punteros nulos son opcionales.
     let session = WinInetHandle::new(unsafe {
         InternetOpenW(
             PCWSTR(agent_w.as_ptr()),
-            INTERNET_OPEN_TYPE_PRECONFIG.0,
-            PCWSTR::null(),
-            PCWSTR::null(),
+            access.0,
+            ptr(&proxy_w),
+            ptr(&bypass_w),
             0,
         )
     })
@@ -277,5 +341,37 @@ impl HttpsResponse {
                 )));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// SEC-32: sin proxy de máquina se sale directo, nunca por el proxy del usuario.
+    #[test]
+    fn proxy_de_la_maquina_o_directo() {
+        assert_eq!(proxy_choice(false, None, None), SessionProxy::Direct);
+        assert_eq!(
+            proxy_choice(false, Some("10.0.0.1:8080".into()), None),
+            SessionProxy::Direct
+        );
+        assert_eq!(
+            proxy_choice(true, Some("  ".into()), None),
+            SessionProxy::Direct
+        );
+        assert_eq!(
+            proxy_choice(true, Some("10.0.0.1:8080".into()), None),
+            SessionProxy::Named {
+                proxy: "10.0.0.1:8080".into(),
+                bypass: "<local>".into()
+            }
+        );
+    }
+
+    /// Lee la configuración real de la máquina sin fallar (en un equipo sin `netsh winhttp set proxy`, directo).
+    #[test]
+    fn lee_el_proxy_de_la_maquina() {
+        let _ = machine_proxy();
     }
 }

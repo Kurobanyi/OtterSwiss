@@ -997,7 +997,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="sec-32"></a>
 ### SEC-32 · Proxy y raíces de certificados de HKCU permiten interceptar el HTTPS elevado y falsificar firmas validadas solo por CN
-- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (comportamiento documentado de Windows, no probado) · **Estado**: Parcial
+- **Afecta**: Sistema · **Severidad**: Alta · **Origen**: auditoría v4.2.0 · **Evidencia**: probable (comportamiento documentado de Windows, no probado) · **Estado**: Resuelto
 - **Qué pasa**: el proceso elevado comparte HKCU con el usuario. Un malware del usuario fija un proxy en `Internet Settings` y planta una
   raíz en `HKCU\Software\Microsoft\SystemCertificates\Root`. WinInet (`INTERNET_OPEN_TYPE_PRECONFIG`) y WinVerifyTrust confían en el
   almacén del usuario: el atacante sirve los JSON/HTML/ZIP de drivers (SEC-30, SEC-33) y firma un `.exe` con CN «NVIDIA Corporation» o
@@ -1007,6 +1007,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Propuesta**: `INTERNET_OPEN_TYPE_DIRECT` o proxy leído de HKLM; fijar thumbprint o raíz además del CN, o validar la cadena con un
   motor que use solo las raíces de LocalMachine.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): la firma de todo ejecutable se vuelve a encadenar con el motor de la máquina (`HCCE_LOCAL_MACHINE`): una raíz agregada en HKCU ya no sirve para falsificar un CN (test con `msedge.exe`). Queda el transporte: WinInet sigue usando el proxy del usuario, así que los datos (JSON, HTML del Catálogo) se pueden manipular; solo deciden URLs que pasan por listas de hosts y firma, salvo el CAB del Catálogo (`SEC-33`). Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
+- **Cierre final** (2026-11-25): por decisión del autor, el cliente HTTPS común (`security/http.rs`) ya no abre WinInet con `INTERNET_OPEN_TYPE_PRECONFIG` (el proxy de HKCU): usa el proxy WinHTTP de la máquina (`WinHttpGetDefaultProxyConfiguration`, HKLM, lo fija un admin con `netsh winhttp set proxy`) o la conexión directa, con `<local>` como exclusión para no leer la del usuario. Costo aceptado: en una red con proxy obligatorio configurado solo por usuario, las descargas fallan hasta que un admin fije el proxy de máquina. Verificado: test `proxy_de_la_maquina_o_directo`, `catalogo_en_vivo` (GET y POST reales) en verde sin proxy WinHTTP, `cargo test` (72 + 2), `clippy --all-targets -- -D warnings` y `fmt --check`; sin probar detrás de un proxy real.
 
 <a id="sec-33"></a>
 ### SEC-33 · El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL
