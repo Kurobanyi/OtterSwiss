@@ -12,10 +12,6 @@ pub mod cli;
 pub mod context_menu;
 pub mod debloat;
 pub mod dns;
-#[allow(
-    clippy::undocumented_unsafe_blocks,
-    reason = "ARQ-03: módulo sin uso y diferido por el autor; se documenta cuando se retome"
-)]
 pub mod drivers;
 pub mod hardware;
 pub mod optimize;

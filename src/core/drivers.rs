@@ -1,38 +1,33 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
-use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CR_SUCCESS, DIGCF_ALLCLASSES,
-    DIGCF_PRESENT, DN_HAS_PROBLEM, DN_NEED_RESTART, HDEVINFO, SETUP_DI_REGISTRY_PROPERTY,
-    SP_DEVINFO_DATA, SPDRP_CLASS, SPDRP_DEVICEDESC, SPDRP_DRIVER, SPDRP_FRIENDLYNAME,
-    SPDRP_HARDWAREID, SPDRP_MFG, SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo,
-    SetupDiGetClassDevsW, SetupDiGetDeviceRegistryPropertyW,
+    CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CR_SUCCESS, DN_HAS_PROBLEM,
+    DN_NEED_RESTART, HDEVINFO, SETUP_DI_REGISTRY_PROPERTY, SP_DEVINFO_DATA, SPDRP_CLASS,
+    SPDRP_DEVICEDESC, SPDRP_DRIVER, SPDRP_FRIENDLYNAME, SPDRP_HARDWAREID, SPDRP_MFG,
+    SetupDiEnumDeviceInfo, SetupDiGetDeviceRegistryPropertyW,
 };
-use windows::Win32::Foundation::{RPC_E_CHANGED_MODE, VARIANT_BOOL};
-use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-    CoUninitialize,
-};
-use windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
-use windows::Win32::System::SystemInformation::GetSystemDirectoryW;
+use windows::Win32::Foundation::VARIANT_BOOL;
+use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
 use windows::Win32::System::UpdateAgent::{
-    IUpdate3, IUpdateCollection, IUpdateSession, IWindowsDriverUpdate, UpdateCollection,
+    IUpdate, IUpdate3, IUpdateCollection, IUpdateSession, IWindowsDriverUpdate, UpdateCollection,
     UpdateSession, orcFailed, orcSucceeded, orcSucceededWithErrors, ssDefault,
 };
-use windows::core::{BSTR, Interface, PCWSTR};
+use windows::core::{BSTR, Interface};
 use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::archive::ArchiveManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::folders::windows_dir;
+use crate::core::platform::handles::{ComGuard, DevInfoList};
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::memory::AlignedBuf;
+use crate::core::platform::power::detect_battery_presence;
 use crate::core::platform::process::{Launch, run_captured, run_in_job, system32_dir};
 use crate::core::platform::safe_fs::{create_verified_new_file, delete_tree_verified};
 use crate::core::security::acl::create_admin_only_dir;
@@ -41,8 +36,6 @@ use crate::core::security::download::{
     DownloadPolicy, StagedDownload, reopen_verified_for_exec, validate_https_host,
 };
 use crate::core::security::http;
-
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Debug, Clone)]
 pub struct InstalledDriverDevice {
@@ -227,49 +220,6 @@ pub struct FullDriverScanResult {
     pub notes: Vec<String>,
 }
 
-struct DevInfoGuard(HDEVINFO);
-impl Drop for DevInfoGuard {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let _ = SetupDiDestroyDeviceInfoList(self.0);
-            }
-        }
-    }
-}
-
-struct ComApartmentGuard {
-    should_uninit: bool,
-}
-impl ComApartmentGuard {
-    fn new_sta() -> CoreResult<Self> {
-        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
-        if hr.is_ok() {
-            Ok(Self {
-                should_uninit: true,
-            })
-        } else if hr == RPC_E_CHANGED_MODE {
-            Ok(Self {
-                should_uninit: false,
-            })
-        } else {
-            Err(CoreError::SystemTool {
-                message: format!("CoInitializeEx(STA) falló: {:?}", hr),
-                source: None,
-            })
-        }
-    }
-}
-impl Drop for ComApartmentGuard {
-    fn drop(&mut self) {
-        if self.should_uninit {
-            unsafe {
-                CoUninitialize();
-            }
-        }
-    }
-}
-
 pub fn describe_cm_problem(code: u32, en: bool) -> &'static str {
     if en {
         match code {
@@ -344,22 +294,13 @@ fn ensure_driver_updates_allowed() -> CoreResult<()> {
     Ok(())
 }
 
-fn get_system32_tool(name: &str) -> PathBuf {
-    let mut buf = [0u16; 260];
-    let len = unsafe { GetSystemDirectoryW(Some(&mut buf)) } as usize;
-    if len > 0 && len < buf.len() {
-        PathBuf::from(String::from_utf16_lossy(&buf[..len])).join(name)
-    } else {
-        PathBuf::from(r"C:\Windows\System32").join(name)
-    }
-}
-
 fn get_device_property(
     h_dev_info: HDEVINFO,
     dev_data: &mut SP_DEVINFO_DATA,
     property: SETUP_DI_REGISTRY_PROPERTY,
 ) -> Option<String> {
     let mut required_size = 0u32;
+    // SAFETY: consulta de tamaño sin búfer; `dev_data` es una entrada válida de `h_dev_info`.
     let _ = unsafe {
         SetupDiGetDeviceRegistryPropertyW(
             h_dev_info,
@@ -376,6 +317,7 @@ fn get_device_property(
     }
 
     let mut buf = AlignedBuf::zeroed(required_size as usize);
+    // SAFETY: el búfer es nuestro y mide `required_size`, el tamaño que pidió la API.
     let ok = unsafe {
         SetupDiGetDeviceRegistryPropertyW(
             h_dev_info,
@@ -389,6 +331,7 @@ fn get_device_property(
 
     if ok.is_ok() && required_size > 1 {
         let len_u16 = (required_size as usize).min(buf.len()) / 2;
+        // SAFETY: `AlignedBuf` está alineado a 8 bytes y tiene al menos `len_u16 * 2` bytes inicializados.
         let u16_slice = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u16, len_u16) };
         let end = u16_slice
             .iter()
@@ -564,14 +507,6 @@ fn is_version_newer(candidate: &str, current: &str) -> bool {
     false
 }
 
-fn is_system_laptop() -> bool {
-    let mut pwr = SYSTEM_POWER_STATUS::default();
-    if unsafe { GetSystemPowerStatus(&mut pwr).is_ok() } {
-        return pwr.BatteryFlag != 255 && (pwr.BatteryFlag & 128) == 0;
-    }
-    false
-}
-
 /// Número de build de Windows, o `None` si no se puede leer (antes se inventaba `22631`, ERR-23).
 fn read_windows_build() -> Option<String> {
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
@@ -682,22 +617,8 @@ impl DriverManager {
     }
 
     pub fn list_present_devices() -> CoreResult<Vec<InstalledDriverDevice>> {
-        let h_dev_info: HDEVINFO = unsafe {
-            SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT)
-        }
-        .map_err(|e| CoreError::SystemTool {
-            message: format!("SetupDiGetClassDevsW falló: {}", e),
-            source: None,
-        })?;
-
-        if h_dev_info.is_invalid() {
-            return Err(CoreError::SystemTool {
-                message: "Handle de dispositivo SetupAPI inválido".into(),
-                source: None,
-            });
-        }
-
-        let _guard = DevInfoGuard(h_dev_info);
+        let list = DevInfoList::present_devices()?;
+        let h_dev_info = list.raw();
         let mut devices = Vec::new();
         let mut dev_data = SP_DEVINFO_DATA {
             cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
@@ -706,6 +627,7 @@ impl DriverManager {
 
         let mut member_idx = 0u32;
         loop {
+            // SAFETY: `h_dev_info` sigue vivo (lo guarda `list`) y `dev_data` lleva su `cbSize`.
             let ok = unsafe { SetupDiEnumDeviceInfo(h_dev_info, member_idx, &mut dev_data) };
             if ok.is_err() {
                 break;
@@ -730,6 +652,7 @@ impl DriverManager {
 
             let mut status = CM_DEVNODE_STATUS_FLAGS::default();
             let mut problem = CM_PROB::default();
+            // SAFETY: salidas locales y un `DevInst` que acaba de devolver SetupAPI.
             let cr =
                 unsafe { CM_Get_DevNode_Status(&mut status, &mut problem, dev_data.DevInst, 0) };
 
@@ -787,22 +710,22 @@ impl DriverManager {
         let backup_dir = backup_root.join(format!("backup_{}", stamp));
         create_admin_only_dir(&backup_dir)?;
 
-        let pnputil = get_system32_tool("pnputil.exe");
-
-        let output = std::process::Command::new(&pnputil)
-            .args(["/export-driver", "*", backup_dir.to_string_lossy().as_ref()])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| CoreError::SystemTool {
-                message: format!("No se pudo ejecutar pnputil.exe: {}", e),
-                source: None,
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
+        let out = run_captured(
+            &system32_dir()?.join("pnputil.exe"),
+            &[
+                std::ffi::OsStr::new("/export-driver"),
+                std::ffi::OsStr::new("*"),
+                backup_dir.as_os_str(),
+            ],
+            PNPUTIL_TIMEOUT,
+        )?;
+        if !out.success {
             return Err(CoreError::SystemTool {
-                message: format!("pnputil falló al exportar drivers: {} {}", stderr, stdout),
+                message: format!(
+                    "pnputil falló al exportar drivers (código {}): {}",
+                    out.code.unwrap_or(-1),
+                    out.stdout.trim()
+                ),
                 source: None,
             });
         }
@@ -842,120 +765,17 @@ impl DriverManager {
 
     /// Búsqueda de drivers en WUA en el hilo actual (que no tenga COM iniciado en otro modo).
     fn search_driver_updates_on_this_thread() -> CoreResult<Vec<DriverUpdateCandidate>> {
-        {
-            let _com = ComApartmentGuard::new_sta()?;
-
-            let session: IUpdateSession =
-                unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER) }.map_err(
-                    |e| CoreError::SystemTool {
-                        message: format!("No se pudo iniciar Windows Update Agent (WUA): {}", e),
-                        source: None,
-                    },
-                )?;
-
-            let searcher =
-                unsafe { session.CreateUpdateSearcher() }.map_err(|e| CoreError::SystemTool {
-                    message: format!("CreateUpdateSearcher falló: {}", e),
-                    source: None,
-                })?;
-
-            unsafe {
-                let _ = searcher.SetOnline(VARIANT_BOOL(-1));
-                // SYS-25: el servidor que configuró el administrador (WSUS incluido), nunca Windows Update forzado.
-                let _ = searcher.SetServerSelection(ssDefault);
-            }
-
-            let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
-            let result =
-                unsafe { searcher.Search(&criteria) }.map_err(|e| CoreError::SystemTool {
-                    message: format!("WUA Search falló: {}", e),
-                    source: None,
-                })?;
-
-            let updates = unsafe { result.Updates() }.map_err(|e| CoreError::SystemTool {
-                message: format!("Updates() falló: {}", e),
-                source: None,
-            })?;
-
-            let count = unsafe { updates.Count() }.unwrap_or(0);
-            let mut candidates = Vec::new();
-
-            for idx in 0..count {
-                let Ok(update) = (unsafe { updates.get_Item(idx) }) else {
-                    continue;
-                };
-
-                let title = unsafe { update.Title() }
-                    .map(|b| b.to_string())
-                    .unwrap_or_default();
-                let is_downloaded = unsafe { update.IsDownloaded() }
-                    .map(|b| b.0 != 0)
-                    .unwrap_or(false);
-                let is_optional = update
-                    .cast::<IUpdate3>()
-                    .and_then(|u3| unsafe { u3.BrowseOnly() })
-                    .map(|b| b.0 != 0)
-                    .unwrap_or(false);
-                let size_mb = unsafe { update.RecommendedHardDiskSpace() }.unwrap_or(0);
-
-                let update_id = unsafe { update.Identity() }
-                    .and_then(|id| unsafe { id.UpdateID() })
-                    .map(|b| b.to_string())
-                    .unwrap_or_else(|_| format!("drv_{}", idx));
-
-                let (driver_class, driver_model, driver_manufacturer, driver_provider, hardware_id) =
-                    if let Ok(drv) = update.cast::<IWindowsDriverUpdate>() {
-                        (
-                            unsafe { drv.DriverClass() }
-                                .map(|b| b.to_string())
-                                .unwrap_or_default(),
-                            unsafe { drv.DriverModel() }
-                                .map(|b| b.to_string())
-                                .unwrap_or_default(),
-                            unsafe { drv.DriverManufacturer() }
-                                .map(|b| b.to_string())
-                                .unwrap_or_default(),
-                            unsafe { drv.DriverProvider() }
-                                .map(|b| b.to_string())
-                                .unwrap_or_default(),
-                            unsafe { drv.DriverHardwareID() }
-                                .map(|b| b.to_string())
-                                .unwrap_or_default(),
-                        )
-                    } else {
-                        (
-                            String::new(),
-                            String::new(),
-                            String::new(),
-                            String::new(),
-                            String::new(),
-                        )
-                    };
-
-                let low_title = title.to_ascii_lowercase();
-                let low_class = driver_class.to_ascii_lowercase();
-                let is_firmware = low_class.contains("firmware")
-                    || low_title.contains("firmware")
-                    || low_title.contains("uefi")
-                    || low_title.contains("bios");
-
-                candidates.push(DriverUpdateCandidate {
-                    id: update_id,
-                    title,
-                    driver_class,
-                    driver_model,
-                    driver_manufacturer,
-                    driver_provider,
-                    hardware_id,
-                    size_mb,
-                    is_downloaded,
-                    is_firmware,
-                    is_optional,
-                });
-            }
-
-            Ok(candidates)
-        }
+        let _com = ComGuard::init_sta()?;
+        let (_session, updates) = wua_pending_drivers()?;
+        // SAFETY: COM de WUA sobre una colección válida, en el hilo STA que la obtuvo.
+        let count = unsafe { updates.Count() }.unwrap_or(0);
+        Ok((0..count)
+            .filter_map(|idx| {
+                // SAFETY: igual que arriba; `idx` está dentro de `Count()`.
+                let update = unsafe { updates.get_Item(idx) }.ok()?;
+                Some(wua_candidate(&update, idx))
+            })
+            .collect())
     }
 
     fn install_driver_updates_inner(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
@@ -974,176 +794,7 @@ impl DriverManager {
         }
 
         let target_ids = selected_ids.to_vec();
-        let handle = std::thread::spawn(move || -> CoreResult<DriverInstallReport> {
-            let _com = ComApartmentGuard::new_sta()?;
-
-            let session: IUpdateSession =
-                unsafe { CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER) }.map_err(
-                    |e| CoreError::SystemTool {
-                        message: format!("No se pudo abrir sesión WUA: {}", e),
-                        source: None,
-                    },
-                )?;
-
-            let searcher =
-                unsafe { session.CreateUpdateSearcher() }.map_err(|e| CoreError::SystemTool {
-                    message: format!("CreateUpdateSearcher falló: {}", e),
-                    source: None,
-                })?;
-
-            unsafe {
-                let _ = searcher.SetOnline(VARIANT_BOOL(-1));
-                // SYS-25: el servidor que configuró el administrador (WSUS incluido), nunca Windows Update forzado.
-                let _ = searcher.SetServerSelection(ssDefault);
-            }
-
-            let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
-            let search_res =
-                unsafe { searcher.Search(&criteria) }.map_err(|e| CoreError::SystemTool {
-                    message: format!("Error al localizar paquetes seleccionados: {}", e),
-                    source: None,
-                })?;
-
-            let found_updates =
-                unsafe { search_res.Updates() }.map_err(|e| CoreError::SystemTool {
-                    message: format!("Updates() falló: {}", e),
-                    source: None,
-                })?;
-
-            let to_download: IUpdateCollection =
-                unsafe { CoCreateInstance(&UpdateCollection, None, CLSCTX_INPROC_SERVER) }
-                    .map_err(|e| CoreError::SystemTool {
-                        message: format!("CoCreateInstance(UpdateCollection) falló: {}", e),
-                        source: None,
-                    })?;
-
-            let to_install: IUpdateCollection =
-                unsafe { CoCreateInstance(&UpdateCollection, None, CLSCTX_INPROC_SERVER) }
-                    .map_err(|e| CoreError::SystemTool {
-                        message: format!("CoCreateInstance(UpdateCollection) falló: {}", e),
-                        source: None,
-                    })?;
-
-            let count = unsafe { found_updates.Count() }.unwrap_or(0);
-            let mut matched = 0usize;
-
-            for idx in 0..count {
-                let Ok(update) = (unsafe { found_updates.get_Item(idx) }) else {
-                    continue;
-                };
-                let uid = unsafe { update.Identity() }
-                    .and_then(|id| unsafe { id.UpdateID() })
-                    .map(|b| b.to_string())
-                    .unwrap_or_default();
-
-                if !target_ids.contains(&uid) {
-                    continue;
-                }
-
-                let eula_ok = unsafe { update.EulaAccepted() }
-                    .map(|b| b.0 != 0)
-                    .unwrap_or(true);
-                if !eula_ok {
-                    let _ = unsafe { update.AcceptEula() };
-                }
-
-                let is_dl = unsafe { update.IsDownloaded() }
-                    .map(|b| b.0 != 0)
-                    .unwrap_or(false);
-                if !is_dl {
-                    let _ = unsafe { to_download.Add(&update) };
-                }
-                // ERR-18: solo cuenta lo que de verdad entró en la colección a instalar.
-                if unsafe { to_install.Add(&update) }.is_ok() {
-                    matched += 1;
-                }
-            }
-
-            if matched == 0 {
-                return Err(CoreError::SystemTool {
-                    message:
-                        "Ninguno de los drivers seleccionados sigue pendiente en Windows Update."
-                            .into(),
-                    source: None,
-                });
-            }
-
-            if unsafe { to_download.Count() }.unwrap_or(0) > 0 {
-                let downloader = unsafe { session.CreateUpdateDownloader() }.map_err(|e| {
-                    CoreError::SystemTool {
-                        message: format!("CreateUpdateDownloader falló: {}", e),
-                        source: None,
-                    }
-                })?;
-                unsafe { downloader.SetUpdates(&to_download) }.map_err(|e| {
-                    CoreError::SystemTool {
-                        message: format!("Downloader.SetUpdates falló: {}", e),
-                        source: None,
-                    }
-                })?;
-                let dl_res =
-                    unsafe { downloader.Download() }.map_err(|e| CoreError::SystemTool {
-                        message: format!("Error descargando drivers desde Microsoft: {}", e),
-                        source: None,
-                    })?;
-                let dl_code = unsafe { dl_res.ResultCode() }.unwrap_or(orcFailed);
-                if dl_code != orcSucceeded && dl_code != orcSucceededWithErrors {
-                    return Err(CoreError::SystemTool {
-                        message: format!("La descarga oficial falló con estado {:?}", dl_code.0),
-                        source: None,
-                    });
-                }
-            }
-
-            let installer =
-                unsafe { session.CreateUpdateInstaller() }.map_err(|e| CoreError::SystemTool {
-                    message: format!("CreateUpdateInstaller falló: {}", e),
-                    source: None,
-                })?;
-            unsafe { installer.SetUpdates(&to_install) }.map_err(|e| CoreError::SystemTool {
-                message: format!("Installer.SetUpdates falló: {}", e),
-                source: None,
-            })?;
-
-            let inst_res = unsafe { installer.Install() }.map_err(|e| CoreError::SystemTool {
-                message: format!("Error instalando drivers seleccionados: {}", e),
-                source: None,
-            })?;
-
-            let reboot_required = unsafe { inst_res.RebootRequired() }
-                .map(|b| b.0 != 0)
-                .unwrap_or(false);
-
-            // ERR-18: el resultado de cada driver, no una estimación desde el código global. Si no se puede leer el
-            // resultado de uno, cuenta como fallo.
-            let total = unsafe { to_install.Count() }.unwrap_or(0);
-            let mut succeeded_count = 0usize;
-            let mut failed_count = 0usize;
-            for i in 0..total {
-                let ok = unsafe { inst_res.GetUpdateResult(i) }
-                    .and_then(|r| unsafe { r.ResultCode() })
-                    .is_ok_and(|code| code == orcSucceeded || code == orcSucceededWithErrors);
-                if ok {
-                    succeeded_count += 1;
-                } else {
-                    failed_count += 1;
-                }
-            }
-
-            Ok(DriverInstallReport {
-                succeeded_count,
-                failed_count,
-                reboot_required,
-                message: if failed_count == 0 {
-                    format!("Windows Update instaló {succeeded_count} driver(s).")
-                } else {
-                    format!(
-                        "Windows Update instaló {succeeded_count} driver(s); {failed_count} fallaron."
-                    )
-                },
-            })
-        });
-
+        let handle = std::thread::spawn(move || wua_install_on_this_thread(&target_ids));
         handle.join().map_err(|_| CoreError::SystemTool {
             message: "Fallo inesperado en hilo COM de instalación de drivers".into(),
             source: None,
@@ -1317,7 +968,7 @@ impl DriverManager {
         devices: &[InstalledDriverDevice],
     ) -> CoreResult<Vec<VendorDriverUpdate>> {
         let mut results = Vec::new();
-        let is_laptop = is_system_laptop();
+        let is_laptop = detect_battery_presence();
         let Some(os_build) = read_windows_build() else {
             return Ok(results);
         };
@@ -1680,6 +1331,212 @@ fn with_driver_history(
 }
 
 /// Plazo de una búsqueda de drivers en Windows Update (CON-03).
+fn wua_error(what: &str, e: windows::core::Error) -> CoreError {
+    CoreError::SystemTool {
+        message: format!("{what}: {e}"),
+        source: None,
+    }
+}
+
+fn bstr_text(r: windows::core::Result<BSTR>) -> String {
+    r.map(|b| b.to_string()).unwrap_or_default()
+}
+
+fn variant_flag(r: windows::core::Result<VARIANT_BOOL>, default: bool) -> bool {
+    r.map(|b| b.0 != 0).unwrap_or(default)
+}
+
+/// Sesión de WUA y drivers pendientes, buscados en el servidor que configuró el administrador (SYS-25: WSUS incluido,
+/// nunca Windows Update forzado). Debe llamarse en un hilo con `ComGuard::init_sta`.
+fn wua_pending_drivers() -> CoreResult<(IUpdateSession, IUpdateCollection)> {
+    // SAFETY: llamadas COM de WUA sobre interfaces que se acaban de crear, en el hilo STA del llamador; el criterio y
+    // los VARIANT_BOOL son valores propios.
+    unsafe {
+        let session: IUpdateSession = CoCreateInstance(&UpdateSession, None, CLSCTX_INPROC_SERVER)
+            .map_err(|e| wua_error("No se pudo iniciar Windows Update Agent (WUA)", e))?;
+        let searcher = session
+            .CreateUpdateSearcher()
+            .map_err(|e| wua_error("CreateUpdateSearcher falló", e))?;
+        let _ = searcher.SetOnline(VARIANT_BOOL(-1));
+        let _ = searcher.SetServerSelection(ssDefault);
+        let criteria = BSTR::from("IsInstalled=0 and Type='Driver' and IsHidden=0");
+        let result = searcher
+            .Search(&criteria)
+            .map_err(|e| wua_error("WUA Search falló", e))?;
+        let updates = result
+            .Updates()
+            .map_err(|e| wua_error("Updates() falló", e))?;
+        Ok((session, updates))
+    }
+}
+
+fn wua_update_id(update: &IUpdate) -> Option<String> {
+    // SAFETY: lecturas COM sobre una actualización válida, en el hilo STA que la obtuvo.
+    unsafe { update.Identity().and_then(|id| id.UpdateID()) }
+        .ok()
+        .map(|b| b.to_string())
+}
+
+/// Lo que la vista muestra de un driver pendiente de WUA.
+fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
+    // SAFETY: lecturas de propiedades COM sobre una actualización válida, en el hilo STA que la obtuvo.
+    let (title, is_downloaded, is_optional, size_mb, driver) = unsafe {
+        (
+            bstr_text(update.Title()),
+            variant_flag(update.IsDownloaded(), false),
+            variant_flag(
+                update.cast::<IUpdate3>().and_then(|u3| u3.BrowseOnly()),
+                false,
+            ),
+            update.RecommendedHardDiskSpace().unwrap_or(0),
+            update
+                .cast::<IWindowsDriverUpdate>()
+                .map(|drv| {
+                    [
+                        bstr_text(drv.DriverClass()),
+                        bstr_text(drv.DriverModel()),
+                        bstr_text(drv.DriverManufacturer()),
+                        bstr_text(drv.DriverProvider()),
+                        bstr_text(drv.DriverHardwareID()),
+                    ]
+                })
+                .unwrap_or_default(),
+        )
+    };
+    let [
+        driver_class,
+        driver_model,
+        driver_manufacturer,
+        driver_provider,
+        hardware_id,
+    ] = driver;
+    let low_title = title.to_ascii_lowercase();
+    let is_firmware = driver_class.to_ascii_lowercase().contains("firmware")
+        || low_title.contains("firmware")
+        || low_title.contains("uefi")
+        || low_title.contains("bios");
+    DriverUpdateCandidate {
+        id: wua_update_id(update).unwrap_or_else(|| format!("drv_{idx}")),
+        title,
+        driver_class,
+        driver_model,
+        driver_manufacturer,
+        driver_provider,
+        hardware_id,
+        size_mb,
+        is_downloaded,
+        is_firmware,
+        is_optional,
+    }
+}
+
+fn wua_new_collection() -> CoreResult<IUpdateCollection> {
+    // SAFETY: crea un objeto COM en proceso; COM ya está iniciado en este hilo.
+    unsafe { CoCreateInstance(&UpdateCollection, None, CLSCTX_INPROC_SERVER) }
+        .map_err(|e| wua_error("CoCreateInstance(UpdateCollection) falló", e))
+}
+
+/// Descarga e instala por WUA los drivers elegidos, en el hilo actual con COM en STA.
+fn wua_install_on_this_thread(target_ids: &[String]) -> CoreResult<DriverInstallReport> {
+    let _com = ComGuard::init_sta()?;
+    let (session, found_updates) = wua_pending_drivers()?;
+    let to_download = wua_new_collection()?;
+    let to_install = wua_new_collection()?;
+
+    // SAFETY: COM de WUA sobre colecciones válidas, en el hilo STA que las creó.
+    let count = unsafe { found_updates.Count() }.unwrap_or(0);
+    let mut matched = 0usize;
+    for idx in 0..count {
+        // SAFETY: igual que arriba; `idx` está dentro de `Count()`.
+        let Ok(update) = (unsafe { found_updates.get_Item(idx) }) else {
+            continue;
+        };
+        if !wua_update_id(&update).is_some_and(|uid| target_ids.contains(&uid)) {
+            continue;
+        }
+        // SAFETY: métodos COM sobre una actualización y colecciones válidas, en el hilo STA que las obtuvo.
+        let added = unsafe {
+            if !variant_flag(update.EulaAccepted(), true) {
+                let _ = update.AcceptEula();
+            }
+            if !variant_flag(update.IsDownloaded(), false) {
+                let _ = to_download.Add(&update);
+            }
+            to_install.Add(&update).is_ok()
+        };
+        // ERR-18: solo cuenta lo que de verdad entró en la colección a instalar.
+        if added {
+            matched += 1;
+        }
+    }
+    if matched == 0 {
+        return Err(CoreError::SystemTool {
+            message: "Ninguno de los drivers seleccionados sigue pendiente en Windows Update."
+                .into(),
+            source: None,
+        });
+    }
+
+    // SAFETY: COM de WUA sobre la sesión y la colección válidas, en este hilo STA.
+    unsafe {
+        if to_download.Count().unwrap_or(0) > 0 {
+            let downloader = session
+                .CreateUpdateDownloader()
+                .map_err(|e| wua_error("CreateUpdateDownloader falló", e))?;
+            downloader
+                .SetUpdates(&to_download)
+                .map_err(|e| wua_error("Downloader.SetUpdates falló", e))?;
+            let dl_res = downloader
+                .Download()
+                .map_err(|e| wua_error("Error descargando drivers desde Microsoft", e))?;
+            let dl_code = dl_res.ResultCode().unwrap_or(orcFailed);
+            if dl_code != orcSucceeded && dl_code != orcSucceededWithErrors {
+                return Err(CoreError::SystemTool {
+                    message: format!("La descarga oficial falló con estado {:?}", dl_code.0),
+                    source: None,
+                });
+            }
+        }
+    }
+
+    // SAFETY: COM de WUA sobre la sesión y la colección válidas, en este hilo STA.
+    let (reboot_required, results) = unsafe {
+        let installer = session
+            .CreateUpdateInstaller()
+            .map_err(|e| wua_error("CreateUpdateInstaller falló", e))?;
+        installer
+            .SetUpdates(&to_install)
+            .map_err(|e| wua_error("Installer.SetUpdates falló", e))?;
+        let inst_res = installer
+            .Install()
+            .map_err(|e| wua_error("Error instalando drivers seleccionados", e))?;
+        // ERR-18: el resultado de cada driver, no una estimación desde el código global. Si no se puede leer el
+        // resultado de uno, cuenta como fallo.
+        let results: Vec<bool> = (0..to_install.Count().unwrap_or(0))
+            .map(|i| {
+                inst_res
+                    .GetUpdateResult(i)
+                    .and_then(|r| r.ResultCode())
+                    .is_ok_and(|code| code == orcSucceeded || code == orcSucceededWithErrors)
+            })
+            .collect();
+        (variant_flag(inst_res.RebootRequired(), false), results)
+    };
+
+    let succeeded_count = results.iter().filter(|ok| **ok).count();
+    let failed_count = results.len() - succeeded_count;
+    Ok(DriverInstallReport {
+        succeeded_count,
+        failed_count,
+        reboot_required,
+        message: if failed_count == 0 {
+            format!("Windows Update instaló {succeeded_count} driver(s).")
+        } else {
+            format!("Windows Update instaló {succeeded_count} driver(s); {failed_count} fallaron.")
+        },
+    })
+}
+
 const WUA_SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4 * 60);
 
 /// Hosts de los que se aceptan CAB del Microsoft Update Catalog (SEC-33).

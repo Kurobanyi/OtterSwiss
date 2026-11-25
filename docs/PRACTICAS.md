@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **77 hechas, 11 parciales y 26 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **79 hechas, 11 parciales y 24 pendientes** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -41,9 +41,7 @@ dependencias directas se usan.
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
 | [`OR-06`](PRACTICAS-detalle.md#or-06) | `drivers.rs` tiene 1857 líneas y seis responsabilidades | M | Pendiente |
-| [`AR-23`](PRACTICAS-detalle.md#ar-23) | Procesos con `Command` directo y rutas de System32 a mano | S | Parcial |
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Pendiente |
-| [`CL-19`](PRACTICAS-detalle.md#cl-19) | 65 `unsafe` sin `// SAFETY:` tapados por un `#[allow]` con motivo obsoleto | S/M | Pendiente |
 | [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
 | [`CL-22`](PRACTICAS-detalle.md#cl-22) | Lógica pura nueva sin tests | M | Parcial |
 | [`TE-25`](PRACTICAS-detalle.md#te-25) | 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline | M | Pendiente |
@@ -60,7 +58,7 @@ dependencias directas se usan.
 | [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
 | [`IN-03`](PRACTICAS-detalle.md#in-03) | El estado guarda mensajes ya traducidos | M | Pendiente |
-| [`AR-24`](PRACTICAS-detalle.md#ar-24) | Guardianes y helpers Win32 duplicados | S | Pendiente |
+| [`AR-24`](PRACTICAS-detalle.md#ar-24) | Guardianes y helpers Win32 duplicados | S | Parcial |
 | [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Pendiente |
 | [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Pendiente |
 | [`AR-28`](PRACTICAS-detalle.md#ar-28) | API pública de drivers más ancha de lo que usa la UI, y campos muertos | S | Pendiente |
@@ -88,7 +86,7 @@ dependencias directas se usan.
 ## Siguiente
 
 1. Código de v4.2.0, junto con los defectos de `docs/BUGS.md`: `OR-06` con `AR-21`…`AR-23` (cliente HTTP, descargas y procesos por
-   las primitivas de `security/` y `platform/`, que cierra de paso `SEC-30`, `SEC-33`, `SEC-34`, `ERR-19`, `ERR-22`), `CL-19` y `CL-22`.
+   las primitivas de `security/` y `platform/`, que cierra de paso `SEC-30`, `SEC-33`, `SEC-34`, `ERR-19`, `ERR-22`) y `CL-22`.
 2. Regresiones de la fusión: `TE-25`, `TE-27`, `TE-28`, `IN-08`, y el freno `HE-14`.
 3. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 4. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.

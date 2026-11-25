@@ -3,9 +3,16 @@
 use std::path::Path;
 use std::ptr;
 
-use windows::Win32::Foundation::{CloseHandle, FreeLibrary, HANDLE, HMODULE, INVALID_HANDLE_VALUE};
+use windows::Win32::Devices::DeviceAndDriverInstallation::{
+    DIGCF_ALLCLASSES, DIGCF_PRESENT, HDEVINFO, SetupDiDestroyDeviceInfoList, SetupDiGetClassDevsW,
+};
+use windows::Win32::Foundation::{
+    CloseHandle, FreeLibrary, HANDLE, HMODULE, INVALID_HANDLE_VALUE, RPC_E_CHANGED_MODE,
+};
 use windows::Win32::Networking::WinInet::InternetCloseHandle;
-use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+use windows::Win32::System::Com::{
+    COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize,
+};
 use windows::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
@@ -189,6 +196,23 @@ impl ComGuard {
             initialized: hr.is_ok(),
         }
     }
+
+    /// COM en modo STA (Windows Update Agent lo exige). Si el hilo ya tenía COM en otro modo se usa como está y no
+    /// se cierra al salir.
+    pub fn init_sta() -> CoreResult<Self> {
+        // SAFETY: inicializa COM en este hilo; `Drop` solo lo cierra si esta llamada tuvo éxito.
+        let hr = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+        if hr.is_ok() {
+            Ok(Self { initialized: true })
+        } else if hr == RPC_E_CHANGED_MODE {
+            Ok(Self { initialized: false })
+        } else {
+            Err(CoreError::SystemTool {
+                message: format!("CoInitializeEx(STA) falló: {hr:?}"),
+                source: None,
+            })
+        }
+    }
 }
 
 impl Drop for ComGuard {
@@ -198,6 +222,43 @@ impl Drop for ComGuard {
             unsafe {
                 CoUninitialize();
             }
+        }
+    }
+}
+
+/// Lista de dispositivos de SetupAPI, liberada con `SetupDiDestroyDeviceInfoList`.
+pub struct DevInfoList(HDEVINFO);
+
+impl DevInfoList {
+    /// Dispositivos presentes de todas las clases.
+    pub fn present_devices() -> CoreResult<Self> {
+        // SAFETY: sin punteros de entrada; el handle devuelto queda a cargo de este guardián.
+        let handle = unsafe {
+            SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT)
+        }
+        .map_err(|e| CoreError::SystemTool {
+            message: format!("SetupDiGetClassDevsW falló: {e}"),
+            source: None,
+        })?;
+        if handle.is_invalid() {
+            return Err(CoreError::SystemTool {
+                message: "Handle de dispositivo SetupAPI inválido".into(),
+                source: None,
+            });
+        }
+        Ok(Self(handle))
+    }
+
+    pub fn raw(&self) -> HDEVINFO {
+        self.0
+    }
+}
+
+impl Drop for DevInfoList {
+    fn drop(&mut self) {
+        // SAFETY: el handle es válido (se comprobó al crearlo) y se libera una sola vez.
+        unsafe {
+            let _ = SetupDiDestroyDeviceInfoList(self.0);
         }
     }
 }

@@ -20,7 +20,8 @@ pub fn detect_battery_presence() -> bool {
     let mut status = SYSTEM_POWER_STATUS::default();
     // SAFETY: la estructura de salida es local.
     if unsafe { GetSystemPowerStatus(&mut status) }.is_ok() {
-        status.BatteryFlag != 128 && status.BatteryFlag != 255
+        // 255 = estado desconocido; el bit 128 = sin batería (puede venir junto a otros bits).
+        status.BatteryFlag != 255 && (status.BatteryFlag & 128) == 0
     } else {
         false
     }

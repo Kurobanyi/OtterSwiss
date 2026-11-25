@@ -991,7 +991,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-23"></a>
 ### AR-23 · Procesos con `Command` directo y rutas de System32 a mano
-- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: 6 `Command::new` en `drivers.rs`: tres `.output()` sin el timeout de `run_captured` y tres `.spawn()` sin Job ni espera.
   `get_system32_tool` duplica `process::system32_dir` con un `C:\Windows\System32` literal; `CREATE_NO_WINDOW` redefinido;
   `resolve_winget_binary` acaba en `"winget.exe"` relativo (`SEC-31`).
@@ -999,16 +999,18 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Propuesta**: `run_captured` para herramientas de consola, `run_in_job` con `INSTALLER_TIMEOUT` para instaladores, `Err` si no hay
   ruta absoluta.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): instaladores con `run_in_job` y `expand`/`pnputil` con `run_captured`; winget solo con ruta absoluta del perfil. Queda `export_driver_store_backup` con `Command` y `get_system32_tool`. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde.
+- **Cierre** (2026-11-25): `export_driver_store_backup` usa `run_captured` con `PNPUTIL_TIMEOUT` y `system32_dir`; fuera `get_system32_tool`, `CREATE_NO_WINDOW` y el último `Command` de `drivers.rs`. Verificado: `cargo test` (68), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-24"></a>
 ### AR-24 · Guardianes y helpers Win32 duplicados
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
 - **Qué pasa**: `ComApartmentGuard::new_sta` repite `ComGuard`; `DevInfoGuard` es RAII de plataforma dentro de una función de producto;
   `is_system_laptop` duplica `power::detect_battery_presence` con otro criterio; `decoded_vendor_name` es una segunda tabla PCI;
   `read_windows_build` inventa `"22631"` si falla.
 - **Dónde**: `src/core/drivers.rs:137-160`, `266-307`, `716-733`.
 - **Propuesta**: `ComGuard::init_sta()`, `DevInfoList` en `platform/handles.rs`, `power::detect_battery_presence`, tabla PCI compartida
   con `specs::gpu`, build como `Option<u32>`.
+- **Cierre parcial** (2026-11-25): `ComGuard::init_sta` y `DevInfoList` en `platform/handles.rs` reemplazan a `ComApartmentGuard` y `DevInfoGuard`; `is_system_laptop` usa `power::detect_battery_presence`, que ahora mira el bit 128 como máscara (antes solo el valor exacto 128). `read_windows_build` ya devolvía `Option` (`ERR-23`). Falta la tabla PCI compartida con `hardware`. Verificado: `cargo test` (68), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-25"></a>
 ### AR-25 · Tres comparadores de versiones con semánticas distintas
@@ -1056,11 +1058,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-19"></a>
 ### CL-19 · 65 `unsafe` sin `// SAFETY:` tapados por un `#[allow]` con motivo obsoleto
-- **Prioridad**: P1 · **Esfuerzo**: S/M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: S/M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `core/mod.rs` exime a `drivers` de `undocumented_unsafe_blocks` porque «ARQ-03: módulo sin uso». Ya se usa. Reparto:
   44 COM/WUA, 10 WinInet, 7 SetupAPI y guardianes, 4 resto.
 - **Dónde**: `src/core/mod.rs:15-19`; `src/core/drivers.rs`.
 - **Propuesta**: quitar el `#[allow]`; con `AR-21`, `AR-23` y `AR-24` desaparecen unos 20; los de COM se documentan en helpers.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): fuera el `#[allow]` de `core/mod.rs`; `drivers` queda bajo `undocumented_unsafe_blocks` como el resto. Los `unsafe` bajan de 57 a 16, todos con `// SAFETY:`: las llamadas COM de Windows Update se agrupan en `wua_pending_drivers`, `wua_candidate` y `wua_install_on_this_thread`, y los guardianes pasan a `platform/handles.rs` (`AR-24`). Verificado: `cargo test` (68), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; al quitar un `SAFETY` a propósito, clippy falla.
 
 <a id="cl-20"></a>
 ### CL-20 · 46 `source: None` nuevos en `drivers.rs`
