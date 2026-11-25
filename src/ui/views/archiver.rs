@@ -8,7 +8,7 @@ use crate::core::archive::{
     resolve_extract_destination, ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress,
     DEFAULT_EXTRACT_QUOTA,
 };
-use crate::ui::components::{Card, Modal, ProgressBar};
+use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::{bytes_mb, eta, mb_1};
 use crate::ui::i18n::Lang;
 use crate::ui::task::run_with_progress;
@@ -24,8 +24,7 @@ pub fn ArchiverView() -> Element {
     let mut selected_format = use_signal(|| ArchiveFormat::Zip);
     let mut is_working = use_signal(|| false);
     let mut progress_state = use_signal(ArchiveProgress::default);
-    let mut status_msg = use_signal(|| Option::<String>::None);
-    let mut is_error = use_signal(|| false);
+    let mut status_msg = use_signal(|| Option::<(String, Tone)>::None);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
 
     let cancel_for_exec = Arc::clone(&cancel_flag);
@@ -42,18 +41,20 @@ pub fn ArchiverView() -> Element {
         let fmt = *selected_format.read();
 
         if !src.exists() {
-            status_msg.set(Some(if en {
-                "Source path does not exist.".to_string()
-            } else {
-                "La ruta de origen no existe.".to_string()
-            }));
-            is_error.set(true);
+            status_msg.set(Some((
+                if en {
+                    "Source path does not exist."
+                } else {
+                    "La ruta de origen no existe."
+                }
+                .to_string(),
+                Tone::Danger,
+            )));
             return;
         }
 
         cancel_for_exec.store(false, Ordering::Release);
         is_working.set(true);
-        is_error.set(false);
         status_msg.set(None);
         progress_state.set(ArchiveProgress::default());
 
@@ -86,7 +87,7 @@ pub fn ArchiverView() -> Element {
 
             match res {
                 Ok(bytes) => {
-                    status_msg.set(Some(if en {
+                    let text = if en {
                         format!("Done ({} processed) → {}", bytes_mb(bytes), dest_display)
                     } else {
                         format!(
@@ -94,12 +95,11 @@ pub fn ArchiverView() -> Element {
                             bytes_mb(bytes),
                             dest_display
                         )
-                    }));
-                    is_error.set(false);
+                    };
+                    status_msg.set(Some((text, Tone::Success)));
                 }
                 Err(err) => {
-                    status_msg.set(Some(format!("Error: {}", err)));
-                    is_error.set(true);
+                    status_msg.set(Some((format!("Error: {}", err), Tone::Danger)));
                 }
             }
             is_working.set(false);
@@ -256,12 +256,8 @@ pub fn ArchiverView() -> Element {
                         }
                     }
 
-                    if let Some(msg) = status_msg.read().as_ref() {
-                        div {
-                            class: if *is_error.read() { "badge badge-danger" } else { "badge badge-success" },
-                            style: "padding: var(--space-2) var(--space-3);",
-                            "{msg}"
-                        }
+                    if let Some((msg, tone)) = status_msg.read().clone() {
+                        StatusBanner { text: msg, tone }
                     }
                 }
             }

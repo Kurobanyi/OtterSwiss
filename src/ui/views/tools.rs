@@ -30,11 +30,14 @@ pub fn ToolsView() -> Element {
 
     let on_trim_ram = move |_| {
         local_working.set(true);
-        tools_state.write().tool_log = Some(if en {
-            "Trimming RAM working sets...".to_string()
-        } else {
-            "Optimizando memoria RAM...".to_string()
-        });
+        tools_state.write().tool_log = Some((
+            if en {
+                "Trimming RAM working sets...".to_string()
+            } else {
+                "Optimizando memoria RAM...".to_string()
+            },
+            Tone::Info,
+        ));
 
         spawn(async move {
             let res = tokio::task::spawn_blocking(SysTools::trim_working_sets)
@@ -48,21 +51,24 @@ pub fn ToolsView() -> Element {
 
             match res {
                 Ok(report) => {
-                    tools_state.write().tool_log = Some(if en {
-                        format!(
-                            "RAM trimmed: {} processes, {} skipped.",
-                            report.processes_trimmed, report.processes_skipped
-                        )
-                    } else {
-                        format!(
-                            "RAM optimizada: {} procesos, {} omitidos.",
-                            report.processes_trimmed, report.processes_skipped
-                        )
-                    });
+                    tools_state.write().tool_log = Some((
+                        if en {
+                            format!(
+                                "RAM trimmed: {} processes, {} skipped.",
+                                report.processes_trimmed, report.processes_skipped
+                            )
+                        } else {
+                            format!(
+                                "RAM optimizada: {} procesos, {} omitidos.",
+                                report.processes_trimmed, report.processes_skipped
+                            )
+                        },
+                        Tone::Success,
+                    ));
                     ram_report_modal.set(Some(report));
                 }
                 Err(e) => {
-                    tools_state.write().tool_log = Some(format!("Error: {}", e));
+                    tools_state.write().tool_log = Some((format!("Error: {}", e), Tone::Danger));
                 }
             }
             local_working.set(false);
@@ -93,19 +99,22 @@ pub fn ToolsView() -> Element {
                 Ok(()) => {
                     let next = !currently_active;
                     *context_menu_active.write() = next;
-                    tools_state.write().tool_log = Some(if next {
-                        if en {
-                            "Context menu installed.".to_string()
+                    tools_state.write().tool_log = Some((
+                        if next {
+                            if en {
+                                "Context menu installed.".to_string()
+                            } else {
+                                "Menú contextual instalado.".to_string()
+                            }
                         } else {
-                            "Menú contextual instalado.".to_string()
-                        }
-                    } else {
-                        if en {
-                            "Context menu removed.".to_string()
-                        } else {
-                            "Menú contextual desinstalado.".to_string()
-                        }
-                    });
+                            if en {
+                                "Context menu removed.".to_string()
+                            } else {
+                                "Menú contextual desinstalado.".to_string()
+                            }
+                        },
+                        Tone::Success,
+                    ));
                 }
                 Err(CoreError::NotElevated(_)) => {
                     let flag = if currently_active {
@@ -126,7 +135,7 @@ pub fn ToolsView() -> Element {
                     }
                 }
                 Err(e) => {
-                    tools_state.write().tool_log = Some(format!("Error: {}", e));
+                    tools_state.write().tool_log = Some((format!("Error: {}", e), Tone::Danger));
                 }
             }
             local_working.set(false);
@@ -221,9 +230,9 @@ pub fn ToolsView() -> Element {
                 }
             }
 
-            if let Some(msg) = state.tool_log.clone() {
+            if let Some((msg, tone)) = state.tool_log.clone() {
                 StatusBanner {
-                    tone: if msg.starts_with("Error") { Tone::Danger } else { Tone::Info },
+                    tone,
                     text: msg,
                 }
             }

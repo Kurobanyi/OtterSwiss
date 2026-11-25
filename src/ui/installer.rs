@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::ui::components::Tone;
 use crate::ui::i18n::Lang;
 use dioxus::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
@@ -32,7 +33,8 @@ pub struct ToolsSharedState {
     pub is_working: bool,
     pub progress_percent: u8,
     pub progress_label: Option<String>,
-    pub tool_log: Option<String>,
+    /// Último aviso de Herramientas con su tono (CL-10: el tono ya no se deduce del texto).
+    pub tool_log: Option<(String, Tone)>,
     pub summary_msg: Option<String>,
     pub dep_states: HashMap<&'static str, bool>,
     pub installed_app_ids: HashSet<&'static str>,
@@ -81,14 +83,17 @@ pub(super) fn run_installer_worker(
                         s.is_working = true;
                         s.progress_percent = 30;
                         s.progress_label = Some(format!("{}...", dep_id));
-                        s.tool_log = Some(format!(
-                            "{} '{}'...",
-                            if lang_is_en() {
-                                "Installing"
-                            } else {
-                                "Instalando"
-                            },
-                            dep_id
+                        s.tool_log = Some((
+                            format!(
+                                "{} '{}'...",
+                                if lang_is_en() {
+                                    "Installing"
+                                } else {
+                                    "Instalando"
+                                },
+                                dep_id
+                            ),
+                            Tone::Info,
                         ));
                     }
 
@@ -119,13 +124,18 @@ pub(super) fn run_installer_worker(
                     s.is_working = false;
                     match res {
                         Ok(()) => {
-                            s.tool_log = Some(if lang_is_en() {
-                                format!("'{}' installed.", dep_id)
-                            } else {
-                                format!("'{}' instalado.", dep_id)
-                            })
+                            s.tool_log = Some((
+                                if lang_is_en() {
+                                    format!("'{}' installed.", dep_id)
+                                } else {
+                                    format!("'{}' instalado.", dep_id)
+                                },
+                                Tone::Success,
+                            ))
                         }
-                        Err(e) => s.tool_log = Some(format!("Error '{}': {}", dep_id, e)),
+                        Err(e) => {
+                            s.tool_log = Some((format!("Error '{}': {}", dep_id, e), Tone::Danger))
+                        }
                     }
                 }
                 InstallJobRequest::InstallAppBatch(ids) => {
