@@ -1,8 +1,22 @@
 # Changelog — OtterSwiss
 
-## [Sin publicar] - rama `fix/auditoria`
-Arreglos de la auditoría del 24/11/2026 (83 de 90 hallazgos resueltos; detalle en `docs/BUGS.md` y `docs/BUGS-detalle.md`).
-Tests e interfaz comprobados; falta ejecutar como administrador las acciones que cambian el sistema.
+## [Sin publicar]
+
+### Buenas prácticas (rama `auditoria/buenas-practicas`, detalle en `docs/PRACTICAS.md`)
+- Defectos: el build falla si no puede incrustar el manifiesto de administrador; `--apply-profile` fuera de los flags de
+  relanzamiento elevado; spinner de carga visible y error distinto de «sin datos»; textos de estado con contraste AA.
+- Código ordenado por capas (`core/platform`, `security`, `hardware`, `optimize`, `debloat`, `uninstall`, `archive`, `store`),
+  sin dependencias de una capa hacia la de encima, y módulos de más de 900 líneas partidos.
+- Un solo cliente HTTPS, un solo camino para descargar y ejecutar instaladores, un solo lanzador de herramientas con timeout
+  (el escaneo de Appx ya no puede colgarse) y un solo lector de respaldos JSON.
+- Tema «Según Windows» y selector de tema; idioma inicial según Windows; `color-scheme` (barras y casillas oscuras en temas
+  oscuros); `prefers-reduced-motion`; icono de 5 KB en lugar del GIF de 1,7 MB; catálogo de textos con plurales.
+- CI (formato, clippy, tests, MSRV, `cargo-deny`), lints del proyecto, edición 2024, `.gitattributes` y publicación por tag;
+  la versión del instalador sale del ejecutable.
+- Sale `sysinfo`; `thiserror` 2 y `dirs` 6.
+
+### Auditoría del 24/11/2026 (PR #1)
+Arreglos de seguridad y robustez (detalle en `docs/BUGS.md` y `docs/BUGS-detalle.md`).
 
 ### Seguridad
 - Borrado verificado sobre el handle antes de marcarlo; carpeta de datos `ProgramData\OtterSwiss` solo para administradores.
@@ -28,8 +42,8 @@ Tests e interfaz comprobados; falta ejecutar como administrador las acciones que
 - Hardware muestra lo que pudo leer y por qué falta el resto, sin GPU repetidas.
 
 ### Desarrollo
-- 36 tests unitarios; `cargo test` corre sin pedir administrador.
-- `.cargo/config.toml` deja de versionarse; changelog renombrado a `CHANGELOG.md`.
+- Tests unitarios; `cargo test` corre sin pedir administrador. Recorrido de sistema como administrador en `tests/vm_sistema.rs`.
+- `.cargo/config.toml` solo con el CRT estático; changelog renombrado a `CHANGELOG.md`.
 
 ## [3.5.1] - 2026-11-24
 - Auto-actualizador nativo desde GitHub Releases.

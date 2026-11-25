@@ -1,10 +1,10 @@
 <div align="center">
   <img src="assets/brand/logo.gif" alt="OtterSwiss" width="228" height="128" />
-  <h1>OtterSwiss v3.5.1</h1>
+  <h1>OtterSwiss</h1>
   <p><strong>Suite portable de optimización, diagnóstico y utilidades nativas para Windows 10 / 11 (x64)</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/Rust-1.82%2B-orange?logo=rust" alt="Rust Version" />
+    <img src="https://img.shields.io/badge/Rust-1.93%2B-orange?logo=rust" alt="Rust Version" />
     <img src="https://img.shields.io/badge/GUI-Dioxus%200.7-blue" alt="Dioxus 0.7" />
     <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(x64)-0078D6?logo=windows" alt="Platform Windows" />
     <img src="https://img.shields.io/badge/Architecture-Native%20Win32%20RAII-success" alt="Win32 Architecture" />
@@ -45,7 +45,7 @@ A diferencia de las herramientas convencionales basadas en scripts opacos de Pow
 
 ### 4. 🧹 Limpiador de Sistema Seguro
 * Mitigación de symlinks y condiciones de carrera (TOCTOU) eliminando exclusivamente a través de `HANDLE` con `FILE_FLAG_BACKUP_SEMANTICS`.
-* Purga de temporales de usuario y Windows, Prefetch, descargas pendientes de Windows Update y Papelera de reciclaje.
+* Purga de temporales de usuario y Windows, caché de Internet, descargas de Windows Update (solo con el servicio detenido) y Papelera de reciclaje. Prefetch no se toca: Windows lo usa para arrancar más rápido.
 * Selector de umbral de seguridad: modo seguro (> 24 horas) o limpieza total.
 
 ### 5. 🔲 Debloater Seguro de Windows
@@ -69,7 +69,7 @@ A diferencia de las herramientas convencionales basadas en scripts opacos de Pow
 
 ### 9. 🗜️ Archivador 100% Código Abierto
 * Compresión y extracción nativa de formatos **ZIP**, **7Z** y **TAR.GZ** (libre de librerías privativas).
-* Telemetría en vivo: velocidad en MB/s, porcentaje, archivo actual y tiempo estimado (ETA).
+* Telemetría en vivo: velocidad en MB/s, porcentaje, archivo actual y tiempo restante.
 * Integrado en el menú contextual de Windows con ventana compacta de progreso.
 
 ### 10. 🔄 Auto-Actualizador de GitHub Releases
@@ -93,10 +93,57 @@ OtterSwiss rechaza las prácticas engañosas comunes en herramientas de "optimiz
 ## 🛠️ Compilación y Desarrollo
 
 ### Requisitos previos:
-* [Rust](https://rustup.rs/) (versión 1.82 o superior, toolchain `stable-x86_64-pc-windows-msvc`).
+* [Rust](https://rustup.rs/) (versión 1.93 o superior, toolchain `stable-x86_64-pc-windows-msvc`).
 * [Inno Setup 6+](https://jrsoftware.org/isdl.php) (opcional, solo para generar el instalador final).
 
 ### 1. Clonar el repositorio:
 ```powershell
 git clone https://github.com/Kurobanyi/OtterSwiss.git
 cd OtterSwiss
+```
+
+### 2. Compilar y probar:
+```powershell
+cargo build --release
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+El ejecutable pide permisos de administrador (manifiesto `requireAdministrator`), así que `cargo run` desde una terminal sin
+elevar falla con el error 740: abre la terminal como administrador. El CRT de MSVC va enlazado estático (`.cargo/config.toml`),
+por eso el `.exe` no necesita el Visual C++ Redistributable.
+
+Las acciones que cambian el sistema se prueban aparte, **solo en una máquina virtual desechable** y como administrador:
+
+```powershell
+cargo test --release --test vm_sistema -- --ignored --nocapture --test-threads=1
+```
+
+### 3. Generar el instalador (opcional):
+```powershell
+cargo build --release
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\otterswiss.iss
+```
+
+El instalador queda en `dist\` y toma la versión del ejecutable. Las releases se publican solas al subir un tag `vX.Y.Z`
+que coincida con la versión de `Cargo.toml` (`.github/workflows/release.yml`).
+
+---
+
+## 📁 Estructura
+
+```text
+src/
+  main.rs        despacho de la línea de comandos y arranque de la ventana
+  startup.rs     diálogos nativos, comprobación de WebView2 y errores inesperados
+  core/          lógica sin interfaz, por capas:
+    platform/    primitivas de Windows (handles, archivos verificados, procesos, registro, servicios)
+    security/    carpeta de datos solo-admin, ACL, descargas HTTPS verificadas y Authenticode
+    hardware/    especificaciones y sensores
+    optimize/    perfil de optimización, respaldo y planes de energía
+    debloat/ uninstall/ archive/ store/   funciones de la app
+  ui/            interfaz Dioxus: app, componentes, vistas, temas e idiomas
+assets/          main.css y logos
+installer/       script de Inno Setup
+docs/            registro de bugs (BUGS.md) y de buenas prácticas (PRACTICAS.md)
+```
