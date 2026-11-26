@@ -18,7 +18,7 @@ use crate::core::optimize::registry_tweaks::{
 use crate::core::optimize::service_tweaks::{
     ServiceOpOutcome, apply_service_tweak, capture_service_tweak, restore_service_snapshot,
 };
-use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
+use crate::core::optimize::tweaks_catalog::{profile_registry_tweaks, profile_service_tweaks};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::progress::{StepProgress, report_step};
@@ -127,7 +127,7 @@ impl OptimizationEngine {
         };
 
         let mut plan = Vec::new();
-        for spec in REGISTRY_TWEAKS {
+        for spec in profile_registry_tweaks() {
             let eligible =
                 tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
@@ -138,7 +138,7 @@ impl OptimizationEngine {
             });
         }
 
-        for spec in SERVICE_TWEAKS {
+        for spec in profile_service_tweaks() {
             let eligible =
                 tweak_is_eligible(effective_tier, spec.min_tier, spec.applies_to_low_end);
             plan.push(PlannedOptimizationItem {
@@ -212,7 +212,7 @@ impl OptimizationEngine {
         let profile_name = format!("{:?}", tier);
         let mut rec = StepRecorder::new(
             progress,
-            (REGISTRY_TWEAKS.len() + SERVICE_TWEAKS.len() + 1).max(1),
+            (profile_registry_tweaks().count() + profile_service_tweaks().count() + 1).max(1),
         );
 
         // Si un respaldo no se puede guardar, no se aplica nada más: un cambio sin respaldo no se podría
@@ -235,7 +235,7 @@ impl OptimizationEngine {
         tier: HardwareTier,
         profile_name: &str,
     ) -> ControlFlow<()> {
-        for spec in REGISTRY_TWEAKS {
+        for spec in profile_registry_tweaks() {
             rec.begin(spec.label);
             let category = format!("Registro ({})", spec.hive.as_str());
 
@@ -282,7 +282,7 @@ impl OptimizationEngine {
         profile_name: &str,
     ) -> ControlFlow<()> {
         const CATEGORY: &str = "Servicio Windows";
-        for spec in SERVICE_TWEAKS {
+        for spec in profile_service_tweaks() {
             rec.begin(spec.label);
             let name = spec.service_name;
             let failed_tag = format!("[Servicio: {}]", name);

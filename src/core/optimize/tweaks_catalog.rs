@@ -19,6 +19,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::LowEnd,
         applies_to_low_end: true,
         requires_relogon: false,
+        in_profile: true,
     },
     RegistryTweakSpec {
         id: "game_config_store_fse",
@@ -31,6 +32,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::LowEnd,
         applies_to_low_end: true,
         requires_relogon: false,
+        in_profile: true,
     },
     RegistryTweakSpec {
         id: "hw_gpu_scheduling",
@@ -43,6 +45,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: true,
     },
     RegistryTweakSpec {
         id: "mmcss_network_throttling",
@@ -55,11 +58,12 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: false,
     },
     RegistryTweakSpec {
         id: "mmcss_system_responsiveness",
-        label: "Priorizar capacidad de respuesta interactiva (SystemResponsiveness)",
-        description: "Reduce SystemResponsiveness a 10% para procesos en primer plano.",
+        label: "Reservar menos CPU a tareas multimedia (SystemResponsiveness)",
+        description: "Reduce SystemResponsiveness a 10%: deja libre para el resto una parte menor de la CPU que MMCSS reserva a tareas multimedia.",
         hive: RegHive::Hklm,
         subkey: r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
         value_name: "SystemResponsiveness",
@@ -67,6 +71,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: true,
     },
     RegistryTweakSpec {
         id: "mouse_no_acceleration",
@@ -79,6 +84,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: false,
     },
     RegistryTweakSpec {
         id: "mouse_threshold_1",
@@ -91,6 +97,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: false,
     },
     RegistryTweakSpec {
         id: "mouse_threshold_2",
@@ -103,6 +110,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
         requires_relogon: true,
+        in_profile: false,
     },
     RegistryTweakSpec {
         id: "telemetry_minimal",
@@ -115,6 +123,7 @@ pub const REGISTRY_TWEAKS: &[RegistryTweakSpec] = &[
         min_tier: HardwareTier::LowEnd,
         applies_to_low_end: true,
         requires_relogon: false,
+        in_profile: true,
     },
 ];
 
@@ -126,6 +135,7 @@ pub const SERVICE_TWEAKS: &[ServiceTweakSpec] = &[
         action: ServiceTargetAction::DisableAndStop,
         min_tier: HardwareTier::LowEnd,
         applies_to_low_end: true,
+        in_profile: true,
     },
     ServiceTweakSpec {
         id: "svc_dmwappush",
@@ -134,6 +144,7 @@ pub const SERVICE_TWEAKS: &[ServiceTweakSpec] = &[
         action: ServiceTargetAction::DisableAndStop,
         min_tier: HardwareTier::LowEnd,
         applies_to_low_end: true,
+        in_profile: false,
     },
     ServiceTweakSpec {
         id: "svc_sysmain",
@@ -142,8 +153,19 @@ pub const SERVICE_TWEAKS: &[ServiceTweakSpec] = &[
         action: ServiceTargetAction::DisableAndStop,
         min_tier: HardwareTier::MidRange,
         applies_to_low_end: false,
+        in_profile: false,
     },
 ];
+
+/// Ajustes de registro que entran en el perfil automático (los demás solo se validan al revertir).
+pub fn profile_registry_tweaks() -> impl Iterator<Item = &'static RegistryTweakSpec> {
+    REGISTRY_TWEAKS.iter().filter(|t| t.in_profile)
+}
+
+/// Ajustes de servicio que entran en el perfil automático.
+pub fn profile_service_tweaks() -> impl Iterator<Item = &'static ServiceTweakSpec> {
+    SERVICE_TWEAKS.iter().filter(|t| t.in_profile)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RegValueKind {
@@ -207,6 +229,9 @@ pub struct RegistryTweakSpec {
     pub min_tier: HardwareTier,
     pub applies_to_low_end: bool,
     pub requires_relogon: bool,
+    /// `false`: el ajuste no entra en el perfil automático (UX-02); sigue en la tabla para que un respaldo
+    /// anterior que lo incluya se pueda validar y revertir.
+    pub in_profile: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +248,8 @@ pub struct ServiceTweakSpec {
     pub action: ServiceTargetAction,
     pub min_tier: HardwareTier,
     pub applies_to_low_end: bool,
+    /// Igual que en `RegistryTweakSpec::in_profile`.
+    pub in_profile: bool,
 }
 
 /// Comprueba si una entrada de registro del respaldo coincide exactamente con la tabla única.
@@ -239,4 +266,34 @@ pub fn is_allowed_service_name(service_name: &str) -> bool {
     SERVICE_TWEAKS
         .iter()
         .any(|spec| spec.service_name.eq_ignore_ascii_case(service_name))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// UX-02: lo que no tiene base documentada no entra en el perfil automático, pero un respaldo anterior que lo
+    /// incluya se sigue pudiendo validar y revertir.
+    #[test]
+    fn ajustes_sin_base_fuera_del_perfil_pero_validos_al_revertir() {
+        let fuera_reg = [
+            "mmcss_network_throttling",
+            "mouse_no_acceleration",
+            "mouse_threshold_1",
+            "mouse_threshold_2",
+        ];
+        for id in fuera_reg {
+            assert!(!profile_registry_tweaks().any(|t| t.id == id), "{id}");
+            assert!(REGISTRY_TWEAKS.iter().any(|t| t.id == id), "{id}");
+        }
+        for id in ["svc_dmwappush", "svc_sysmain"] {
+            assert!(!profile_service_tweaks().any(|t| t.id == id), "{id}");
+        }
+        assert!(is_allowed_registry_entry(
+            RegHive::Hklm,
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+            "NetworkThrottlingIndex"
+        ));
+        assert!(is_allowed_service_name("SysMain"));
+    }
 }

@@ -113,11 +113,11 @@ fn english(es: &str) -> Option<&'static str> {
         "Fija NetworkThrottlingIndex=0xFFFFFFFF en Multimedia\\SystemProfile." => {
             "Sets NetworkThrottlingIndex=0xFFFFFFFF in Multimedia\\SystemProfile."
         }
-        "Priorizar capacidad de respuesta interactiva (SystemResponsiveness)" => {
-            "Prioritize interactive responsiveness (SystemResponsiveness)"
+        "Reservar menos CPU a tareas multimedia (SystemResponsiveness)" => {
+            "Reserve less CPU for multimedia tasks (SystemResponsiveness)"
         }
-        "Reduce SystemResponsiveness a 10% para procesos en primer plano." => {
-            "Lowers SystemResponsiveness to 10% for foreground processes."
+        "Reduce SystemResponsiveness a 10%: deja libre para el resto una parte menor de la CPU que MMCSS reserva a tareas multimedia." => {
+            "Lowers SystemResponsiveness to 10%: frees for everything else the share of CPU that MMCSS would hold back for multimedia tasks."
         }
         "Desactivar aceleración del puntero (curva lineal)" => {
             "Turn off pointer acceleration (linear curve)"

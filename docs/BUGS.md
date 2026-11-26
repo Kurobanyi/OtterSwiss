@@ -57,8 +57,8 @@ Conservan su expediente; se retoman por decisión del autor.
 |---|---|---|---|---|
 | [`SYS-24`](BUGS-detalle.md#sys-24) | Con elevación «sobre el hombro», los tweaks HKCU van al perfil del admin | Usuario | Baja | Diferido |
 | [`SEC-17`](BUGS-detalle.md#sec-17) | Todo el programa corre como administrador aunque la mitad de las funciones no lo necesitan | Sistema, Usuario | Media | Diferido |
-| [`UX-02`](BUGS-detalle.md#ux-02) | «Optimizar Sistema» aplica sin confirmar tweaks sin base o mal descritos | Usuario, Sistema | Media | Diferido |
-| [`UX-03`](BUGS-detalle.md#ux-03) | «Optimizar RAM» es una práctica desacreditada | Usuario | Media | Pendiente de decisión |
+| [`UX-02`](BUGS-detalle.md#ux-02) | «Optimizar Sistema» aplica sin confirmar tweaks sin base o mal descritos | Usuario, Sistema | Media | Resuelto |
+| [`UX-03`](BUGS-detalle.md#ux-03) | «Optimizar RAM» es una práctica desacreditada | Usuario | Media | Resuelto |
 
 ## Siguiente
 

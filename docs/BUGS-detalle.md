@@ -924,7 +924,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="ux-02"></a>
 ### UX-02 · «Optimizar Sistema» aplica sin confirmar tweaks sin base o con descripciones equivocadas
-- **Afecta**: Usuario, Sistema · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: observado + fuentes · **Estado**: Diferido
+- **Afecta**: Usuario, Sistema · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: observado + fuentes · **Estado**: Resuelto
 - **Qué pasa**: `NetworkThrottlingIndex=0xFFFFFFFF` (sin documentación de Microsoft como optimización; análisis que miden más latencia
   DPC); `SystemResponsiveness` descrito como «para procesos en primer plano» cuando es la reserva de CPU de MMCSS; desactivar la
   aceleración del ratón (preferencia personal); SysMain deshabilitado; `dmwappushservice` deshabilitado (lo usa MDM/Intune, inferido).
@@ -932,17 +932,17 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Fuentes**: [Microsoft Learn MMCSS](https://learn.microsoft.com/en-us/windows/win32/procthread/multimedia-class-scheduler-service),
   [djdallmann GamingPCSetup](https://djdallmann.github.io/GamingPCSetup/CONTENT/RESEARCH/NETWORK).
 - **Propuesta**: confirmación con el plan; sacar NetworkThrottlingIndex y ratón del perfil automático o dejarlos opcionales desmarcados.
-- **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): qué ajustes salen del perfil automático queda para después. Ya hecho: «Optimizar Sistema» pide confirmación mostrando el plan con su detalle.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): «Optimizar Sistema» ya pedía confirmación con el plan. Ahora salen del perfil automático `NetworkThrottlingIndex`, la aceleración del ratón (preferencia personal), `dmwappushservice` (lo usa MDM/Intune) y `SysMain` (Windows ya lo ajusta solo en SSD y en HDD ayuda); `SystemResponsiveness` se queda con su descripción corregida (es la reserva de CPU de MMCSS). Los ajustes retirados siguen en la tabla única con `in_profile: false` para que un respaldo anterior se valide y se revierta. Prueba: `ajustes_sin_base_fuera_del_perfil_pero_validos_al_revertir`.
 
 
 <a id="ux-03"></a>
 ### UX-03 · «Optimizar RAM» es una práctica desacreditada y se anuncia como mejora
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: fuente · **Estado**: Pendiente de decisión
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: fuente · **Estado**: Resuelto
 - **Qué pasa**: `trim_working_sets` vacía el working set de todos los procesos; fuerza fallos de página y expulsa código útil (Russinovich,
   «The Memory-Optimization Hoax»). La UI dice «Optimización de RAM Completada».
 - **Dónde**: `src/core/sys_tools.rs:66+`; `src/ui/views/tools.rs:146`.
 - **Propuesta**: retirarlo o rotularlo «puede ralentizar temporalmente».
-- **Cierre** (2026-11-24, rama `fix/auditoria`): El autor avisará qué hacer (2026-11-24).
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Se retira «Optimizar RAM» (la tarjeta, el diálogo, `trim_working_sets` y sus textos): vaciar el working set no libera memoria útil, solo la devuelve a Windows para volver a pedirla. `sys_tools.rs` conserva `open_folder_in_explorer`.
 
 
 <a id="ux-04"></a>

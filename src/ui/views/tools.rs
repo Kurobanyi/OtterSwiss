@@ -9,10 +9,7 @@ use crate::core::error::CoreError;
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource};
 use crate::core::store::dependencies::DependencyManager;
-use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
-use crate::ui::components::{
-    AppIconBadge, Card, EmptyState, Modal, ProgressBar, StatusBanner, Tone,
-};
+use crate::ui::components::{AppIconBadge, Card, EmptyState, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::installer::{
@@ -30,43 +27,6 @@ pub fn ToolsView() -> Element {
     let mut tools_state = use_context::<Signal<ToolsSharedState>>();
     let dispatcher = use_context::<InstallerDispatcher>();
     let mut local_working = use_signal(|| false);
-    let mut ram_report_modal = use_signal(|| Option::<TrimWorkingSetsReport>::None);
-
-    let on_trim_ram = move |_| {
-        local_working.set(true);
-        tools_state.write().tool_log = Some((
-            Msg::new(|en| strings(en).tools.trimming_ram_working_sets.to_string()),
-            Tone::Info,
-        ));
-
-        spawn(async move {
-            let res = tokio::task::spawn_blocking(SysTools::trim_working_sets)
-                .await
-                .unwrap_or_else(|e| {
-                    Err(CoreError::SystemTool {
-                        message: e.to_string(),
-                        source: Some(Box::new(e)),
-                    })
-                });
-
-            match res {
-                Ok(report) => {
-                    let (trimmed, skipped) = (report.processes_trimmed, report.processes_skipped);
-                    tools_state.write().tool_log = Some((
-                        Msg::new(move |en| {
-                            (strings(en).tools.ram_trimmed_processes_skipped)(&trimmed, &skipped)
-                        }),
-                        Tone::Success,
-                    ));
-                    ram_report_modal.set(Some(report));
-                }
-                Err(e) => {
-                    tools_state.write().tool_log = Some((Msg::from(e), Tone::Danger));
-                }
-            }
-            local_working.set(false);
-        });
-    };
 
     let on_toggle_context_menu = move |_| {
         let currently_active = *context_menu_active.read();
@@ -134,8 +94,6 @@ pub fn ToolsView() -> Element {
     let state = tools_state.read();
     let any_busy = state.is_working || *local_working.read();
 
-    let ram_title = txt.ram_optimizer.to_string();
-    let ram_sub = Some(txt.move_idle_pages_to_windows.to_string());
     let ctx_title = txt.explorer_context_menu.to_string();
     let ctx_sub = Some(txt.right_click_compress_zip_extract.to_string());
     let runtimes_title = txt.gaming_runtimes.to_string();
@@ -143,26 +101,6 @@ pub fn ToolsView() -> Element {
 
     rsx! {
         div { class: "content-body",
-            if let Some(report) = ram_report_modal.read().clone() {
-                Modal {
-                    title: txt.ram_working_sets_trimmed.to_string(),
-                    subtitle: Some((strings(en).tools.trimmed_skipped)(&report.processes_trimmed, &report.processes_skipped)),
-                    on_close: move |_| ram_report_modal.set(None),
-                    div { class: "modal-list",
-                        for proc_name in report.trimmed_processes.iter() {
-                            div { key: "{proc_name}", "• {proc_name}" }
-                        }
-                    }
-                    div { class: "modal-actions",
-                        button {
-                            class: "btn btn-primary",
-                            onclick: move |_| ram_report_modal.set(None),
-                            "{strings(en).close}"
-                        }
-                    }
-                }
-            }
-
             if state.is_working {
                 div {
                     class: "card card-warning",
@@ -186,19 +124,6 @@ pub fn ToolsView() -> Element {
             }
 
             div { class: "cards-grid",
-                Card {
-                    title: ram_title,
-                    subtitle: ram_sub,
-                    button {
-                        class: "btn btn-primary",
-                        disabled: any_busy,
-                        onclick: on_trim_ram,
-                        if *local_working.read() {
-                            "{txt.trimming}"
-                        } else { "{txt.trim_ram_now}" }
-                    }
-                }
-
                 Card {
                     title: ctx_title,
                     subtitle: ctx_sub,
