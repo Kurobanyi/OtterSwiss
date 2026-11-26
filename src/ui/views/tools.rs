@@ -45,7 +45,7 @@ pub fn ToolsView() -> Element {
                 .unwrap_or_else(|e| {
                     Err(CoreError::SystemTool {
                         message: e.to_string(),
-                        source: None,
+                        source: Some(Box::new(e)),
                     })
                 });
 
@@ -84,7 +84,7 @@ pub fn ToolsView() -> Element {
             .unwrap_or_else(|e| {
                 Err(CoreError::SystemTool {
                     message: e.to_string(),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })
             });
 

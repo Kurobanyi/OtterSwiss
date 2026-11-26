@@ -29,7 +29,7 @@ pub(crate) fn open_service(service_name: &str, access: u32) -> CoreResult<Option
         .map_err(|e| CoreError::Service {
             service: service_name.to_string(),
             message: format!("OpenSCManagerW falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     let scm = ScHandle::new(scm_raw).ok_or_else(|| CoreError::Service {
         service: service_name.to_string(),
@@ -45,7 +45,7 @@ pub(crate) fn open_service(service_name: &str, access: u32) -> CoreResult<Option
         Err(e) => Err(CoreError::Service {
             service: service_name.to_string(),
             message: format!("OpenServiceW falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         }),
     }
 }
@@ -78,7 +78,7 @@ pub(crate) fn query_service_start_config(
     .map_err(|e| CoreError::Service {
         service: service_name.to_string(),
         message: format!("QueryServiceConfigW falló: {}", e),
-        source: None,
+        source: Some(Box::new(e)),
     })?;
 
     // SAFETY: el búfer es un AlignedBuf (alineado a 8) y se comprobó que la API escribió al menos el tamaño de la estructura.
@@ -144,7 +144,7 @@ pub(crate) fn query_service_current_state(service_name: &str, svc: &ScHandle) ->
     .map_err(|e| CoreError::Service {
         service: service_name.to_string(),
         message: format!("QueryServiceStatusEx falló: {}", e),
-        source: None,
+        source: Some(Box::new(e)),
     })?;
 
     Ok(ssp.dwCurrentState.0)
@@ -187,7 +187,7 @@ pub(crate) fn set_service_start_type(
     .map_err(|e| CoreError::Service {
         service: service_name.to_string(),
         message: format!("ChangeServiceConfigW({}) falló: {}", start_type, e),
-        source: None,
+        source: Some(Box::new(e)),
     })?;
 
     if start_type == SERVICE_AUTO_START.0 {
@@ -205,7 +205,7 @@ pub(crate) fn set_service_start_type(
         .map_err(|e| CoreError::Service {
             service: service_name.to_string(),
             message: format!("ChangeServiceConfig2W(DELAYED_AUTO_START) falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
     }
 
@@ -240,7 +240,7 @@ pub(crate) fn stop_service_and_wait(
             return Err(CoreError::Service {
                 service: service_name.to_string(),
                 message: format!("ControlService(STOP) falló: {}", e),
-                source: None,
+                source: Some(Box::new(e)),
             });
         }
     }
@@ -280,7 +280,7 @@ pub(crate) fn start_service_and_wait(
         return Err(CoreError::Service {
             service: service_name.to_string(),
             message: format!("StartServiceW falló: {}", e),
-            source: None,
+            source: Some(Box::new(e)),
         });
     }
 

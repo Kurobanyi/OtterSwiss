@@ -20,7 +20,7 @@ pub enum CoreError {
         path: String,
         message: String,
         #[source]
-        source: Option<io::Error>,
+        source: Option<BoxedSource>,
     },
 
     #[error("Error de servicio '{service}': {message}")]
@@ -28,7 +28,7 @@ pub enum CoreError {
         service: String,
         message: String,
         #[source]
-        source: Option<io::Error>,
+        source: Option<BoxedSource>,
     },
 
     #[error("Error de administración de energía: {message}")]

@@ -19,7 +19,7 @@ const INDICADORES: &[(&str, usize, &str)] = &[
     ),
     (
         "source: None",
-        116,
+        95,
         "errores sin causa: conservar el error original (AR-06, CL-20)",
     ),
 ];

@@ -211,7 +211,7 @@ pub fn App() -> Element {
             .unwrap_or_else(|e| {
                 Err(CoreError::Trust {
                     message: e.to_string(),
-                    source: None,
+                    source: Some(Box::new(e)),
                 })
             });
 

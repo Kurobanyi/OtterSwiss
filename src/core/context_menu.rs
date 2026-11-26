@@ -94,7 +94,7 @@ impl ContextMenuManager {
             Err(e) => Err(CoreError::Registry {
                 path: cmd_key_path,
                 message: format!("Error verificando menú contextual: {}", e),
-                source: Some(e),
+                source: Some(Box::new(e)),
             }),
         }
     }
@@ -138,7 +138,7 @@ impl ContextMenuManager {
                 .map_err(|e| CoreError::Registry {
                     path: entry.subkey.to_string(),
                     message: format!("Error creando clave de menú contextual: {}", e),
-                    source: Some(e),
+                    source: Some(Box::new(e)),
                 })?;
 
             menu_key.set_value("", &entry.label)?;
@@ -152,7 +152,7 @@ impl ContextMenuManager {
                 .map_err(|e| CoreError::Registry {
                     path: format!(r"{}\command", entry.subkey),
                     message: format!("Error creando comando de menú contextual: {}", e),
-                    source: Some(e),
+                    source: Some(Box::new(e)),
                 })?;
 
             let final_cmd = entry.cmd_template.replace("{exe}", &exe_str);
@@ -175,7 +175,7 @@ impl ContextMenuManager {
                     return Err(CoreError::Registry {
                         path: entry.subkey.to_string(),
                         message: format!("Error eliminando clave de menú contextual: {}", e),
-                        source: Some(e),
+                        source: Some(Box::new(e)),
                     });
                 }
             }

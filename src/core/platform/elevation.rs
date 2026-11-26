@@ -114,7 +114,7 @@ impl ElevationManager {
             }
             return Err(CoreError::SystemTool {
                 message: format!("ShellExecuteExW(runas) falló: {}", err),
-                source: None,
+                source: Some(Box::new(err)),
             });
         }
 

@@ -323,7 +323,7 @@ pub fn run_in_job(
                     job.terminate_all(1);
                     return Err(CoreError::SystemTool {
                         message: format!("GetExitCodeProcess falló: {}", e),
-                        source: None,
+                        source: Some(Box::new(e)),
                     });
                 }
                 exit_code = Some(code);

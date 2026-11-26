@@ -35,7 +35,7 @@ pub fn create_admin_only_dir(path: &Path) -> CoreResult<()> {
         Err(e) if e.code() == ERROR_ALREADY_EXISTS.to_hresult() => Ok(()),
         Err(e) => Err(CoreError::Trust {
             message: format!("No se pudo crear '{}': {}", path.display(), e),
-            source: None,
+            source: Some(Box::new(e)),
         }),
     }
 }

@@ -125,7 +125,7 @@ impl DebloaterManager {
                         return Err(CoreError::Registry {
                             path: format!("{}\\{}", entry.subkey, entry.value_name),
                             message: format!("No se pudo leer el valor original: {}", e),
-                            source: Some(e),
+                            source: Some(Box::new(e)),
                         });
                     }
                 },
@@ -134,7 +134,7 @@ impl DebloaterManager {
                     return Err(CoreError::Registry {
                         path: entry.subkey.to_string(),
                         message: format!("No se pudo abrir la clave original: {}", e),
-                        source: Some(e),
+                        source: Some(Box::new(e)),
                     });
                 }
             };
@@ -162,7 +162,7 @@ impl DebloaterManager {
                 .map_err(|e| CoreError::Registry {
                     path: entry.subkey.to_string(),
                     message: format!("Error creando clave debloat: {}", e),
-                    source: Some(e),
+                    source: Some(Box::new(e)),
                 })?;
             key.set_value(entry.value_name, &entry.target_dword)?;
         }

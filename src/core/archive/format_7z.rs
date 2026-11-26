@@ -84,7 +84,7 @@ impl ArchiveManager {
             discard_staging(&tmp_dir, parent);
             return Err(CoreError::Archive {
                 message: format!("Error extrayendo 7Z: {}", e),
-                source: None,
+                source: Some(Box::new(e)),
             });
         }
 

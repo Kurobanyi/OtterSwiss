@@ -94,7 +94,7 @@ pub(super) fn run_installer_worker(
                     .unwrap_or_else(|e| {
                         Err(CoreError::SystemTool {
                             message: e.to_string(),
-                            source: None,
+                            source: Some(Box::new(e)),
                         })
                     });
 
@@ -170,7 +170,7 @@ pub(super) fn run_installer_worker(
                         .unwrap_or_else(|e| {
                             Err(CoreError::SystemTool {
                                 message: e.to_string(),
-                                source: None,
+                                source: Some(Box::new(e)),
                             })
                         });
 

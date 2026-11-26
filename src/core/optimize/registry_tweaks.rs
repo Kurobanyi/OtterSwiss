@@ -50,7 +50,7 @@ pub fn capture_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<RegistrySn
                     spec.value_name
                 ),
                 message: format!("Error leyendo valor previo: {}", e),
-                source: Some(e),
+                source: Some(Box::new(e)),
             }),
         },
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(RegistrySnapshot {
@@ -66,7 +66,7 @@ pub fn capture_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<RegistrySn
         Err(e) => Err(CoreError::Registry {
             path: format!("{}\\{}", spec.hive.as_str(), spec.subkey),
             message: format!("Error abriendo subclave: {}", e),
-            source: Some(e),
+            source: Some(Box::new(e)),
         }),
     }
 }
@@ -85,7 +85,7 @@ pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
         .map_err(|e| CoreError::Registry {
             path: format!("{}\\{}", spec.hive.as_str(), spec.subkey),
             message: format!("No se pudo abrir/crear subclave con KEY_WRITE: {}", e),
-            source: Some(e),
+            source: Some(Box::new(e)),
         })?;
 
     let raw_val = RegValue {
@@ -102,7 +102,7 @@ pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
                 spec.value_name
             ),
             message: format!("Error escribiendo valor: {}", e),
-            source: Some(e),
+            source: Some(Box::new(e)),
         })
 }
 
@@ -122,7 +122,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
             return Err(CoreError::Registry {
                 path: format!("{}\\{}", snap.hive.as_str(), snap.subkey),
                 message: format!("Error abriendo subclave para revertir: {}", e),
-                source: Some(e),
+                source: Some(Box::new(e)),
             });
         }
     };
@@ -154,7 +154,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
                     snap.value_name
                 ),
                 message: format!("Error restaurando valor previo: {}", e),
-                source: Some(e),
+                source: Some(Box::new(e)),
             })?;
     } else {
         match key.delete_value(&snap.value_name) {
@@ -169,7 +169,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
                         snap.value_name
                     ),
                     message: format!("Error eliminando valor creado por OtterSwiss: {}", e),
-                    source: Some(e),
+                    source: Some(Box::new(e)),
                 });
             }
         }

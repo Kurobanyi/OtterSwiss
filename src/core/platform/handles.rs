@@ -238,7 +238,7 @@ impl DevInfoList {
         }
         .map_err(|e| CoreError::SystemTool {
             message: format!("SetupDiGetClassDevsW falló: {e}"),
-            source: None,
+            source: Some(Box::new(e)),
         })?;
         if handle.is_invalid() {
             return Err(CoreError::SystemTool {

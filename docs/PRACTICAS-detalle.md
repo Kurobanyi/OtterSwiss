@@ -147,6 +147,7 @@ Leyenda:
   solo tipo. Gradual, módulo por módulo.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): CoreError::sys/trust guardan el source (30 sitios), invalid_handle no lee GetLastError ajeno, NoActiveAdapters tipado. Quedan unos 125 `source: None` para migrar de a poco. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Más sitios con `source`; quedan 96 `source: None`, casi todos errores propios sin causa externa. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): `Registry` y `Service` guardan ahora su origen como `BoxedSource` (antes `io::Error`, que no admitía un HRESULT de `windows`), y 28 sitios con el error en la mano (servicios, SetupAPI, ACL, DNS, elevación, hilos de la UI) pasan de `source: None` a `Some(Box::new(e))`. `source: None` baja de 115 a 95 (techo de `tests/indicadores.rs`); los que quedan son códigos de salida, estados de API y validaciones sin error de origen. Siguen sin hacerse las variantes por causa (`NotFound`, `AccessDenied`, `ExitCode`…). Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-07"></a>
 ### AR-07 · La carpeta de datos la resuelve la UI y sus nombres están repartidos

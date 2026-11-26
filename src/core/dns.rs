@@ -318,7 +318,7 @@ fn read_nameserver_value(path: &str) -> CoreResult<String> {
                     "No se pudo leer la configuración DNS actual ({}): {}",
                     path, e
                 ),
-                source: None,
+                source: Some(Box::new(e)),
             });
         }
     };
@@ -327,7 +327,7 @@ fn read_nameserver_value(path: &str) -> CoreResult<String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(e) => Err(CoreError::Dns {
             message: format!("No se pudo leer NameServer ({}): {}", path, e),
-            source: None,
+            source: Some(Box::new(e)),
         }),
     }
 }
