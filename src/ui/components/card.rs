@@ -2,18 +2,18 @@
 
 use dioxus::prelude::*;
 
+use super::CardHeader;
+
 #[component]
-pub fn Card(title: String, subtitle: Option<String>, children: Element) -> Element {
+pub fn Card(
+    title: String,
+    subtitle: Option<String>,
+    actions: Option<Element>,
+    children: Element,
+) -> Element {
     rsx! {
         div { class: "card",
-            div { class: "card-header",
-                div {
-                    h3 { class: "card-title", "{title}" }
-                    if let Some(sub) = subtitle {
-                        p { class: "card-subtitle", "{sub}" }
-                    }
-                }
-            }
+            CardHeader { title, subtitle, actions }
             {children}
         }
     }

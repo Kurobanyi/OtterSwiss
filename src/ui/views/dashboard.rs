@@ -212,18 +212,16 @@ pub fn DashboardView() -> Element {
             }
 
             if !*is_elevated.read() {
-                div { class: "card",
-                    div { class: "card-header",
-                        div {
-                            h3 { class: "card-title", "{txt.admin_rights_required}" }
-                            p { class: "card-subtitle", "{txt.elevate_to_modify_services_registry}" }
-                        }
+                Card {
+                    title: txt.admin_rights_required.to_string(),
+                    subtitle: Some(txt.elevate_to_modify_services_registry.to_string()),
+                    actions: rsx! {
                         button {
                             class: "btn btn-primary",
                             onclick: on_relaunch_admin,
                             "{txt.relaunch_as_admin}"
                         }
-                    }
+                    },
                 }
             }
 

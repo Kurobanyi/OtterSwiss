@@ -2,6 +2,7 @@
 
 mod app_icon;
 mod card;
+mod card_header;
 mod check_row;
 mod modal;
 mod progress;
@@ -11,6 +12,7 @@ mod tone;
 
 pub use app_icon::AppIconBadge;
 pub use card::Card;
+pub use card_header::CardHeader;
 pub use check_row::CheckRow;
 pub use modal::{ConfirmDialog, Modal};
 pub use progress::ProgressBar;

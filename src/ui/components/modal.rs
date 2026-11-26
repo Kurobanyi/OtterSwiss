@@ -1,6 +1,6 @@
 //! Diálogos modales accesibles: `Modal` genérico y `ConfirmDialog` para confirmar una acción.
 
-use super::Tone;
+use super::{CardHeader, Tone};
 use dioxus::prelude::*;
 
 /// Diálogo modal accesible (UI-09): `role="dialog"`, `aria-modal`, Escape cierra y el foco entra al abrir.
@@ -37,14 +37,7 @@ pub fn Modal(
                 onmounted: move |evt: MountedEvent| async move {
                     let _ = evt.set_focus(true).await;
                 },
-                div { class: "card-header",
-                    div {
-                        h3 { class: "card-title", "{title}" }
-                        if let Some(sub) = subtitle {
-                            p { class: "card-subtitle", "{sub}" }
-                        }
-                    }
-                }
+                CardHeader { title: title.clone(), subtitle, actions: None }
                 {children}
             }
         }
