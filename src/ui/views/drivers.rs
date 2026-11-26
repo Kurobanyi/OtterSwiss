@@ -196,8 +196,11 @@ pub fn DriversView() -> Element {
                 drivers::run_full_scan(&current_devs, &worker_cancel)
             })
             .await;
-            // Cancelada: la vista ya quedó libre y quizá haya otra tarea en curso; no se toca nada.
+            // CON-04: cancelada. La vista siguió ocupada hasta que el hilo terminó de verdad, así no corren dos búsquedas
+            // de Windows Update a la vez; ahora sí queda libre.
             if cancel.load(Ordering::Acquire) {
+                status_msg.set(Some((drv(|t| t.scan_cancelled), Tone::Info)));
+                is_working.set(false);
                 return;
             }
             scan_cancel.set(None);
@@ -259,8 +262,7 @@ pub fn DriversView() -> Element {
     let on_cancel_scan = move |_| {
         if let Some(flag) = scan_cancel.take() {
             flag.store(true, Ordering::Release);
-            is_working.set(false);
-            status_msg.set(Some((drv(|t| t.scan_cancelled), Tone::Info)));
+            status_msg.set(Some((drv(|t| t.scan_cancelling), Tone::Info)));
         }
     };
 

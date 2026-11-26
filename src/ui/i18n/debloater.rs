@@ -1,6 +1,8 @@
 //! IN-02: textos de la vista debloater. Un campo por texto; el compilador exige los dos idiomas.
 
 pub struct DebloaterStrings {
+    pub confirm_revert_desc: &'static str,
+    pub confirm_revert_title: &'static str,
     pub result_failed: &'static str,
     pub result_ok: &'static str,
     pub apply_the_debloat: &'static str,
@@ -30,6 +32,8 @@ pub struct DebloaterStrings {
 }
 
 pub static ES: DebloaterStrings = DebloaterStrings {
+    confirm_revert_desc: "Vuelven los anuncios, sugerencias y demás ajustes a como estaban antes del Debloater. Las apps quitadas no se reinstalan.",
+    confirm_revert_title: "¿Revertir los ajustes de registro?",
     result_failed: "Falló",
     result_ok: "Hecho",
     apply_the_debloat: "¿Aplicar el Debloater?",
@@ -64,6 +68,8 @@ pub static ES: DebloaterStrings = DebloaterStrings {
 };
 
 pub static EN: DebloaterStrings = DebloaterStrings {
+    confirm_revert_desc: "Ads, suggestions and the other tweaks go back to how they were before the Debloater. Removed apps are not reinstalled.",
+    confirm_revert_title: "Revert the registry tweaks?",
     result_failed: "Failed",
     result_ok: "Done",
     apply_the_debloat: "Apply the debloat?",
@@ -106,6 +112,8 @@ mod tests {
     fn textos_completos() {
         for s in [&ES, &EN] {
             for f in [
+                s.confirm_revert_desc,
+                s.confirm_revert_title,
                 s.result_failed,
                 s.result_ok,
                 s.apply_the_debloat,

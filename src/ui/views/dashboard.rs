@@ -539,6 +539,8 @@ pub fn DashboardView() -> Element {
         });
     });
     let mut confirm_optimize = use_signal(|| false);
+    // UI-24: revertir deshace cambios del sistema; se confirma antes.
+    let mut confirm_rollback = use_signal(|| false);
     let sig = DashboardSignals {
         is_running: use_signal(|| false),
         active_action_label: use_signal(|| Msg::plain("")),
@@ -575,6 +577,21 @@ pub fn DashboardView() -> Element {
                 RebootConfirm { sig }
             }
 
+            if *confirm_rollback.read() {
+                ConfirmDialog {
+                    title: strings(en).dashboard.confirm_rollback_title.to_string(),
+                    subtitle: Some(strings(en).dashboard.confirm_rollback_desc.to_string()),
+                    confirm_label: strings(en).dashboard.revert_rollback.to_string(),
+                    cancel_label: strings(en).cancel.to_string(),
+                    tone: Tone::Warning,
+                    on_cancel: move |_| confirm_rollback.set(false),
+                    on_confirm: move |_| {
+                        confirm_rollback.set(false);
+                        start_rollback(sig, en);
+                    },
+                }
+            }
+
             if *confirm_optimize.read() {
                 OptimizeConfirm {
                     items: eligible_items.clone(),
@@ -591,7 +608,7 @@ pub fn DashboardView() -> Element {
                 is_running: sig.is_running,
                 nothing_to_apply: eligible_items.is_empty(),
                 on_optimize: move |_| confirm_optimize.set(true),
-                on_rollback: move |_| start_rollback(sig, en),
+                on_rollback: move |_| confirm_rollback.set(true),
             }
 
             if let Some(err) = sig.error_banner.read().as_ref().map(|m| m.text(en)) {

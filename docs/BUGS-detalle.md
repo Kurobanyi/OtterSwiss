@@ -1294,3 +1294,32 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Qué pasa**: con la ventana en su mínimo (960 px) las nueve pestañas no caben ni en español («Sensores» fuera) ni en inglés («Sensors» cortado). `TE-15` dejó `overflow-x: auto` pero sin barra visible, así que la última pestaña solo se alcanza con la rueda del mouse y nada avisa de que existe.
 - **Dónde**: `assets/main.css` (media query de `max-width: 1150px`).
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): a ≤1150 px también se oculta el nombre «OtterSwiss» junto a la versión (queda el logo). Verificado a 959 px: las nueve pestañas caben en español e inglés, en los temas Oscuro, Claro y Tokyo Night.
+
+<a id="ui-24"></a>
+### UI-24 · Tres acciones que deshacen cambios del sistema no piden confirmación
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: revisión de las vistas en el rediseño (`TE-30`, 26/11) · **Evidencia**: confirmado · **Estado**: Resuelto
+- **Qué pasa**: «Revertir cambios» (Inicio), «Revertir registro» (Debloater) y «Quitar» el menú contextual (Herramientas) se
+  ejecutaban al primer clic. Las tres cambian el sistema; un clic accidental revierte todo el perfil aplicado.
+- **Dónde**: `src/ui/views/dashboard.rs`, `debloater.rs`, `tools.rs`.
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): cada una abre un `ConfirmDialog` que dice qué se restaura o se
+  quita y qué se conserva; instalar el menú sigue sin confirmación. Verificado en la app: «Revertir cambios» muestra el diálogo y
+  «Cancelar» no hace nada. `cargo test` y `clippy -D warnings` en verde.
+
+<a id="ui-25"></a>
+### UI-25 · Archivos termina sin la ruta del resultado ni forma de abrirla
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: revisión de las vistas en el rediseño (`TE-30`, 26/11) · **Evidencia**: confirmado · **Estado**: Resuelto
+- **Qué pasa**: al comprimir o extraer solo aparecía un texto; para ver el resultado había que buscar la carpeta a mano (y al
+  extraer el destino puede ser «nombre (2)», distinto del escrito).
+- **Dónde**: `src/ui/views/archiver.rs`.
+- **Cierre** (2026-11-26): el resultado es un `InfoBar` de éxito con el destino real y «Abrir carpeta»
+  (`sys_tools::open_folder_in_explorer`, el mismo de la mini ventana). Verificado en la app comprimiendo una carpeta de prueba.
+
+<a id="con-04"></a>
+### CON-04 · Cancelar la búsqueda de drivers libera la vista mientras la búsqueda sigue
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: revisión de las vistas en el rediseño (`TE-30`, 26/11) · **Evidencia**: confirmado en el código · **Estado**: Resuelto
+- **Qué pasa**: «Cancelar» dejaba la vista libre al instante aunque el hilo de búsqueda seguía hasta su siguiente punto de
+  control; se podía lanzar otra búsqueda (dos consultas a Windows Update a la vez) o instalar con la anterior todavía viva.
+- **Dónde**: `src/ui/views/drivers.rs` (`on_cancel_scan` y el `spawn` de `on_full_scan`).
+- **Cierre** (2026-11-26): al cancelar se avisa «Cancelando la búsqueda…» y la vista sigue ocupada hasta que el hilo termina;
+  recién ahí muestra «búsqueda cancelada» y se libera. Verificado en la app: buscar y cancelar deja «Búsqueda cancelada» con los
+  botones activos de nuevo. `cargo test` y `clippy -D warnings` en verde.

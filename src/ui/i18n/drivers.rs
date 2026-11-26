@@ -4,6 +4,7 @@
 use super::strings::plural;
 
 pub struct DriversStrings {
+    pub scan_cancelling: &'static str,
     pub firmware_bios: &'static str,
     pub full_scan: &'static str,
     pub refresh_hardware: &'static str,
@@ -69,6 +70,7 @@ pub struct DriversStrings {
 }
 
 pub static ES: DriversStrings = DriversStrings {
+    scan_cancelling: "Cancelando la búsqueda…",
     firmware_bios: "Firmware o BIOS",
     full_scan: "Buscar actualizaciones",
     refresh_hardware: "Releer hardware",
@@ -173,6 +175,7 @@ pub static ES: DriversStrings = DriversStrings {
 };
 
 pub static EN: DriversStrings = DriversStrings {
+    scan_cancelling: "Cancelling the search…",
     firmware_bios: "Firmware or BIOS",
     full_scan: "Check for updates",
     refresh_hardware: "Reload hardware",
@@ -269,6 +272,7 @@ mod tests {
     fn textos_de_drivers_completos() {
         for s in [&ES, &EN] {
             for f in [
+                s.scan_cancelling,
                 s.firmware_bios,
                 s.stat_devices,
                 s.stat_errors,

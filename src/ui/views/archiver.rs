@@ -8,7 +8,8 @@ use crate::core::archive::{
     self, ArchiveFormat, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
     resolve_extract_destination,
 };
-use crate::ui::components::{Modal, ProgressBar, StatusBanner, Tone};
+use crate::core::sys_tools::open_folder_in_explorer;
+use crate::ui::components::{InfoBar, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::{bytes_mb, eta, mb_1};
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
@@ -26,6 +27,8 @@ pub fn ArchiverView() -> Element {
     let mut is_working = use_signal(|| false);
     let mut progress_state = use_signal(ArchiveProgress::default);
     let mut status_msg = use_signal(|| Option::<(Msg, Tone)>::None);
+    // UI-25: destino del último trabajo terminado, para mostrarlo y abrir su carpeta.
+    let mut last_dest = use_signal(|| Option::<PathBuf>::None);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
 
     let cancel_for_exec = Arc::clone(&cancel_flag);
@@ -52,11 +55,13 @@ pub fn ArchiverView() -> Element {
         cancel_for_exec.store(false, Ordering::Release);
         is_working.set(true);
         status_msg.set(None);
+        last_dest.set(None);
         progress_state.set(ArchiveProgress::default());
 
         let cancel_worker = Arc::clone(&cancel_for_exec);
 
         let dest_display = dest.display().to_string();
+        let dest_done = dest.clone();
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
                 if current_mode == ArchiveMode::Extract {
@@ -87,6 +92,7 @@ pub fn ArchiverView() -> Element {
                         (strings(en).archiver.done_processed)(&bytes_mb(bytes), &dest_display)
                     });
                     status_msg.set(Some((text, Tone::Success)));
+                    last_dest.set(Some(dest_done));
                 }
                 Err(err) => {
                     status_msg.set(Some((err, Tone::Danger)));
@@ -226,7 +232,23 @@ pub fn ArchiverView() -> Element {
             }
 
             if let Some((msg, tone)) = status_msg.read().clone() {
-                StatusBanner { text: msg.text(en), tone }
+                if let Some(done) = last_dest.read().clone() {
+                    InfoBar {
+                        tone: Tone::Success,
+                        title: strings(en).completed.to_string(),
+                        message: msg.text(en),
+                        action: rsx! {
+                            button {
+                                class: "btn btn-sm",
+                                onclick: move |_| open_folder_in_explorer(&done),
+                                span { class: "fluent-icon", "aria-hidden": "true", "\u{E8B7}" }
+                                "{strings(en).open_folder}"
+                            }
+                        },
+                    }
+                } else {
+                    StatusBanner { text: msg.text(en), tone }
+                }
             }
 
             p { class: "text-xs text-muted", "{txt.supported_formats}" }

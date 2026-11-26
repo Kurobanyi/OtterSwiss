@@ -9,7 +9,9 @@ use crate::core::error::CoreError;
 use crate::core::platform::elevation;
 use crate::core::store::app_store::{self, AppCategory, CuratedPackage, InstallSource};
 use crate::core::store::dependencies;
-use crate::ui::components::{AppIconBadge, EmptyState, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{
+    AppIconBadge, ConfirmDialog, EmptyState, ProgressBar, StatusBanner, Tone,
+};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, pick, strings};
 use crate::ui::installer::{
@@ -164,7 +166,9 @@ fn ContextMenuCard(any_busy: bool, local_working: Signal<bool>) -> Element {
     let active = use_signal(|| context_menu::is_installed().unwrap_or(false));
     let mut working = local_working;
 
-    let on_toggle = move |_| {
+    // UI-24: quitar el menú se confirma; instalarlo no.
+    let mut confirm_remove = use_signal(|| false);
+    let mut run_toggle = move || {
         let currently_active = *active.read();
         working.set(true);
         spawn(async move {
@@ -172,8 +176,29 @@ fn ContextMenuCard(any_busy: bool, local_working: Signal<bool>) -> Element {
             working.set(false);
         });
     };
+    let on_toggle = move |_| {
+        if *active.read() {
+            confirm_remove.set(true);
+        } else {
+            run_toggle();
+        }
+    };
 
     rsx! {
+        if *confirm_remove.read() {
+            ConfirmDialog {
+                title: txt.confirm_remove_menu_title.to_string(),
+                subtitle: Some(txt.confirm_remove_menu_desc.to_string()),
+                confirm_label: strings(en).uninstall.to_string(),
+                cancel_label: strings(en).cancel.to_string(),
+                tone: Tone::Danger,
+                on_cancel: move |_| confirm_remove.set(false),
+                on_confirm: move |_| {
+                    confirm_remove.set(false);
+                    run_toggle();
+                },
+            }
+        }
         ToolsGroup { title: txt.explorer_context_menu.to_string(), note: None,
             div { class: "tl-panel",
                 div { class: "tl-row",

@@ -27,6 +27,8 @@ struct DebloaterSignals {
     last_report: Signal<Option<DebloatReport>>,
     status_banner: Signal<Option<(Msg, Tone)>>,
     error_banner: Signal<Option<Msg>>,
+    /// UI-24: diálogo para confirmar «Revertir registro».
+    confirm_revert: Signal<bool>,
 }
 
 impl DebloaterSignals {
@@ -294,7 +296,10 @@ fn DebloatActions(
                             button {
                                 class: "btn",
                                 disabled: busy,
-                                onclick: move |_| start_revert_registry(sig),
+                                onclick: move |_| {
+                                    let mut confirm = sig.confirm_revert;
+                                    confirm.set(true);
+                                },
                                 "{txt.revert_registry}"
                             }
                         }
@@ -482,6 +487,7 @@ pub fn DebloaterView() -> Element {
         last_report: use_signal(|| Option::<DebloatReport>::None),
         status_banner: use_signal(|| Option::<(Msg, Tone)>::None),
         error_banner: use_signal(|| Option::<Msg>::None),
+        confirm_revert: use_signal(|| false),
     };
     let mut confirm_open = use_signal(|| false);
     let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
@@ -496,6 +502,24 @@ pub fn DebloaterView() -> Element {
 
     rsx! {
         div { class: "content-body",
+            if *sig.confirm_revert.read() {
+                ConfirmDialog {
+                    title: strings(en).debloater.confirm_revert_title.to_string(),
+                    subtitle: Some(strings(en).debloater.confirm_revert_desc.to_string()),
+                    confirm_label: strings(en).debloater.revert_registry.to_string(),
+                    cancel_label: strings(en).cancel.to_string(),
+                    tone: Tone::Warning,
+                    on_cancel: move |_| {
+                        let mut confirm = sig.confirm_revert;
+                        confirm.set(false);
+                    },
+                    on_confirm: move |_| {
+                        let mut confirm = sig.confirm_revert;
+                        confirm.set(false);
+                        start_revert_registry(sig);
+                    },
+                }
+            }
             if *confirm_open.read() {
                 DebloatConfirm {
                     sig,

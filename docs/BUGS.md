@@ -29,12 +29,12 @@ VM de Hyper-V (Windows 11 Enterprise 25H2): 7 de 7, con una app Appx real quitad
 | Seguridad (`SEC-`) | 37 | 0 | 0 | 0 | 37 |
 | Sistema y rollback (`SYS-`) | 27 | 0 | 0 | 0 | 27 |
 | Errores y procesos (`ERR-`) | 27 | 0 | 0 | 0 | 27 |
-| Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
+| Concurrencia (`CON-`) | 4 | 0 | 0 | 0 | 4 |
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
-| Interfaz (`UI-`) | 23 | 1 | 0 | 0 | 22 |
+| Interfaz (`UI-`) | 25 | 1 | 0 | 0 | 24 |
 | Diseño y producto (`UX-`) | 4 | 0 | 0 | 0 | 4 |
 | Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **128** | **1** | **0** | **0** | **127** |
+| **Total** | **131** | **1** | **0** | **0** | **130** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; todos están resueltos: `ERR-24` se cerró probando la tienda en la VM y `ERR-25` (Intel) quitando esa fuente.
 

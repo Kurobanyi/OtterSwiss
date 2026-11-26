@@ -1,6 +1,8 @@
 //! IN-02: textos de la vista dashboard. Un campo por texto; el compilador exige los dos idiomas.
 
 pub struct DashboardStrings {
+    pub confirm_rollback_desc: &'static str,
+    pub confirm_rollback_title: &'static str,
     pub active_power_plan: &'static str,
     pub apply_these_optimizations: &'static str,
     pub applying_system_optimizations: &'static str,
@@ -58,6 +60,8 @@ pub struct DashboardStrings {
 }
 
 pub static ES: DashboardStrings = DashboardStrings {
+    confirm_rollback_desc: "Se restauran los valores respaldados de registro, servicios y plan de energía. Lo que cambiaste a mano después se conserva.",
+    confirm_rollback_title: "¿Revertir los cambios de OtterSwiss?",
     active_power_plan: "Plan de energía",
     apply_these_optimizations: "¿Aplicar estas optimizaciones?",
     applying_system_optimizations: "Aplicando optimizaciones",
@@ -116,6 +120,8 @@ pub static ES: DashboardStrings = DashboardStrings {
 };
 
 pub static EN: DashboardStrings = DashboardStrings {
+    confirm_rollback_desc: "The backed-up registry, service and power plan values are restored. What you changed by hand afterwards is kept.",
+    confirm_rollback_title: "Revert the OtterSwiss changes?",
     active_power_plan: "Power plan",
     apply_these_optimizations: "Apply these optimizations?",
     applying_system_optimizations: "Applying system optimizations",
@@ -180,6 +186,8 @@ mod tests {
     fn textos_completos() {
         for s in [&ES, &EN] {
             for f in [
+                s.confirm_rollback_desc,
+                s.confirm_rollback_title,
                 s.active_power_plan,
                 s.apply_these_optimizations,
                 s.applying_system_optimizations,

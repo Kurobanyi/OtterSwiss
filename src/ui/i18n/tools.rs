@@ -1,6 +1,8 @@
 //! IN-02: textos de la vista tools. Un campo por texto; el compilador exige los dos idiomas.
 
 pub struct ToolsStrings {
+    pub confirm_remove_menu_desc: &'static str,
+    pub confirm_remove_menu_title: &'static str,
     pub essential_official_windows_libraries: &'static str,
     pub explorer_context_menu: &'static str,
     pub gaming_runtimes: &'static str,
@@ -15,6 +17,8 @@ pub struct ToolsStrings {
 }
 
 pub static ES: ToolsStrings = ToolsStrings {
+    confirm_remove_menu_desc: "Comprimir y Extraer dejan de aparecer al hacer clic derecho en el Explorador. Puedes volver a instalarlo cuando quieras.",
+    confirm_remove_menu_title: "¿Quitar el menú contextual?",
     essential_official_windows_libraries: "Bibliotecas oficiales esenciales",
     explorer_context_menu: "Menú contextual del Explorador",
     gaming_runtimes: "Dependencias para juegos",
@@ -29,6 +33,8 @@ pub static ES: ToolsStrings = ToolsStrings {
 };
 
 pub static EN: ToolsStrings = ToolsStrings {
+    confirm_remove_menu_desc: "Compress and Extract stop showing up when you right-click in File Explorer. You can install it again at any time.",
+    confirm_remove_menu_title: "Remove the context menu?",
     essential_official_windows_libraries: "Essential official Windows libraries",
     explorer_context_menu: "Explorer context menu",
     gaming_runtimes: "Gaming runtimes",
@@ -51,6 +57,8 @@ mod tests {
     fn textos_completos() {
         for s in [&ES, &EN] {
             for f in [
+                s.confirm_remove_menu_desc,
+                s.confirm_remove_menu_title,
                 s.essential_official_windows_libraries,
                 s.explorer_context_menu,
                 s.gaming_runtimes,
