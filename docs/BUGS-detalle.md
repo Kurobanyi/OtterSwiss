@@ -1196,7 +1196,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 
 <a id="err-24"></a>
 ### ERR-24 · Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo
-- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Parcial
+- **Afecta**: Usuario · **Severidad**: Media · **Origen**: auditoría v4.2.0 · **Evidencia**: inferido (conocimiento externo; verificar en VM) · **Estado**: Resuelto
 - **Qué pasa**: Moonlight usa `/S` pero su instalador es WiX Burn (`/quiet`): abriría la UI y esperaría hasta el timeout. GOG está como
   `Evergreen` con URL fija 2.0.75.1: la UI dice «última» y es falso. IDs msstore sospechosos: Calculadora `9WZDNCRFJ364` (la
   Calculadora es `9WZDNCRFHVN5`), Fotos `9NBLGGH42THS`, Enlace Móvil `9NBLGGH4S547`.
@@ -1204,6 +1204,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Propuesta**: verificar cada uno con `winget show --id X --source msstore` y probar los instaladores en una VM.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): IDs de la Store corregidos según listas de la comunidad: Calculadora `9WZDNCRFHVN5` (el anterior era Skype), Fotos `9WZDNCRFJBH4`, Enlace Móvil `9NMPJ99VJBWV`. Faltan los argumentos silenciosos de Moonlight y la versión de GOG, que piden una VM. Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre parcial** (2026-11-25): con la tienda por winget (`SEC-35`), los argumentos silenciosos y la versión salen del manifiesto del repositorio (Moonlight es un Burn con sus argumentos; GOG Galaxy, la última versión), no del catálogo. Falta probar una instalación real en una VM.
+- **Cierre final** (2026-11-26): probado en la VM de Hyper-V con `tests/vm_sistema.rs` (`paso_8_tienda`, winget 1.29): 7-Zip por equipo y Playnite por usuario se instalan y aparecen, cancelar VLC a mitad devuelve `Cancelled` sin dejarlo registrado y 7-Zip se quita con su desinstalador. De ahí salió `ERR-27`. Quitar un driver de cada camino y el proxy de máquina no se probaron: la VM no tiene hardware con drivers de fabricante.
 
 <a id="con-03"></a>
 ### CON-03 · Windows Update se consulta e instala sin plazo ni cancelación
@@ -1279,3 +1280,10 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Qué pasa**: en Windows 11 25H2, `Remove-AppxPackage -AllUsers` ya desaprovisiona el paquete; la llamada siguiente a `Remove-AppxProvisionedPackage` falla con 0x80070003 («The system cannot find the path specified»). La app desaparecía pero el informe decía «fallo» y el contador de errores subía.
 - **Dónde**: `src/core/debloat/mod.rs` (bucle de `provisioned_names`).
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): el desaprovisionado solo corre si `Get-AppxProvisionedPackage -Online` aún lista el paquete exacto. Verificado en la VM: `paso_2_debloater` quita `Microsoft.BingWeather` con «Eliminada para todos los usuarios y desaprovisionada» y las 7 pruebas de `vm_sistema` pasan; `cargo fmt --check` y `clippy --all-targets -- -D warnings` en verde.
+
+<a id="err-27"></a>
+### ERR-27 · Con el winget de fábrica de Windows 11 la tienda falla con un código de firma
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: prueba de la tienda en la VM de Hyper-V (26/11) · **Evidencia**: confirmado · **Estado**: Resuelto
+- **Qué pasa**: Windows 11 Enterprise 25H2 recién instalado trae App Installer 1.21 (winget 1.6), cuyo `winget.exe` no lleva firma incrustada. `machine_winget` lo rechaza con «WinVerifyTrust rechazó la firma (código 0x800B0100)», sin decir qué hacer. El rechazo es correcto (SEC-31: solo se ejecuta un winget verificado); el mensaje no.
+- **Dónde**: `src/core/store/winget.rs` (`machine_winget`).
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): se mantiene el rechazo y el error de firma ahora explica la causa (App Installer desactualizado) y cómo arreglarlo. Verificado en la VM: con App Installer 1.29 (firma válida) la prueba `paso_8_tienda` instala 7-Zip (equipo) y Playnite (usuario), cancela VLC a mitad sin dejarlo registrado y quita 7-Zip: 0 fallos. El camino por usuario necesita la sesión de escritorio (la prueba corre como tarea interactiva): por PowerShell Direct no hay Explorador y falla con «No se encontró el Explorador de escritorio», que es el comportamiento esperado de `SEC-17`.

@@ -96,7 +96,14 @@ pub(super) fn machine_winget() -> CoreResult<(PathBuf, File)> {
         expected_signer_cn: Some(WINGET_SIGNER),
         max_bytes: 0,
     };
-    let lock = reopen_verified_for_exec(&exe, &policy)?;
+    // ERR-27: un App Installer viejo (winget 1.6 de fábrica) no trae firma incrustada y se rechaza; el código de
+    // WinVerifyTrust no le dice nada al usuario, así que se explica la causa y la salida.
+    let lock = reopen_verified_for_exec(&exe, &policy).map_err(|e| match e {
+        CoreError::Trust { .. } => CoreError::trust_msg(
+            "El winget instalado no tiene una firma válida de Microsoft (suele ser un «App Installer» desactualizado).              Actualízalo desde Microsoft Store (ms-windows-store://pdp/?productid=9NBLGGH4NNS1) y reintenta.",
+        ),
+        other => other,
+    })?;
     Ok((exe, lock))
 }
 

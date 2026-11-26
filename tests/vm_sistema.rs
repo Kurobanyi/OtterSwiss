@@ -29,6 +29,7 @@ use otter_swiss::core::dns::{DnsManager, list_active_adapters};
 use otter_swiss::core::optimize::engine::{OptimizationEngine, OptimizationProfile};
 use otter_swiss::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, RegHive, SERVICE_TWEAKS};
 use otter_swiss::core::security::data_dir::ensure_admin_only_data_dir;
+use otter_swiss::core::store::app_store;
 use otter_swiss::core::uninstall::{self, LeftoverKind};
 use winreg::RegKey;
 use winreg::enums::{
@@ -471,6 +472,60 @@ fn revertir_todo(c: &mut Checks, data: &Path) {
     c.check(debloat_snapshot() == before_debloat, "Debloater revertido");
 }
 
+/// ERR-24: instala de verdad una app de la tienda para el equipo y otra por usuario, cancela una a mitad y quita la primera.
+/// Necesita red y winget; es lenta, por eso va en su propio paso.
+fn tienda(c: &mut Checks, _data: &Path) {
+    println!(
+        "
+== Tienda (winget real)"
+    );
+    let cancel = AtomicBool::new(false);
+    for id in ["7zip", "playnite"] {
+        let before = app_store::detect_installed_ids().contains(id);
+        c.check(!before, &format!("{id}: no estaba instalada"));
+        let res = app_store::install_package_cancellable(id, &cancel);
+        c.check(res.is_ok(), &format!("{id}: instalar {:?}", res.err()));
+        c.check(
+            app_store::detect_installed_ids().contains(id),
+            &format!("{id}: aparece instalada"),
+        );
+    }
+
+    // Cancelar a mitad: VLC pesa lo bastante como para que 4 s caigan dentro de la descarga.
+    let cancel = std::sync::Arc::new(AtomicBool::new(false));
+    let flag = std::sync::Arc::clone(&cancel);
+    let stopper = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(4));
+        flag.store(true, std::sync::atomic::Ordering::Release);
+    });
+    let res = app_store::install_package_cancellable("vlc", &cancel);
+    let _ = stopper.join();
+    c.check(
+        matches!(res, Err(otter_swiss::core::error::CoreError::Cancelled)),
+        &format!("cancelar a mitad devuelve Cancelled ({res:?})"),
+    );
+    c.check(
+        !app_store::detect_installed_ids().contains("vlc"),
+        "la instalación cancelada no deja la app registrada",
+    );
+
+    // Quitar 7-Zip con el desinstalador de la app.
+    if let Some(app) = uninstall::list_installed_apps()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|a| a.display_name.starts_with("7-Zip"))
+    {
+        let code = uninstall::run_uninstaller(&app, std::time::Duration::from_secs(120));
+        c.note(&format!("desinstalador de 7-Zip: {code:?}"));
+        c.check(
+            !app_store::detect_installed_ids().contains("7zip"),
+            "7-Zip ya no aparece instalada",
+        );
+    } else {
+        c.check(false, "7-Zip aparece en la lista de apps instaladas");
+    }
+}
+
 /// Corre un área con su propia lista de comprobaciones y falla si alguna falló.
 fn run_area(name: &str, area: impl FnOnce(&mut Checks, &Path)) {
     let mut c = Checks::new();
@@ -523,4 +578,10 @@ fn paso_6_desinstalador() {
 #[ignore = "cambia el sistema: solo en una VM desechable, como administrador"]
 fn paso_7_revertir_todo() {
     run_area("revertir todo", revertir_todo);
+}
+
+#[test]
+#[ignore = "cambia el sistema: solo en una VM desechable, como administrador y con red"]
+fn paso_8_tienda() {
+    run_area("tienda", tienda);
 }

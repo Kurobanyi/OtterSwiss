@@ -16,28 +16,27 @@ sin compilar ni ejecutar. Agentes para repetirla: `.claude/agents/security-audit
 
 ## Resumen
 
-Estado al 26/11/2026, rama `auditoria/buenas-practicas`: `cargo test` (99 unitarios y 4 de integración, más 3 ignorados y 7 de VM) y
+Estado al 26/11/2026, rama `auditoria/buenas-practicas`: `cargo test` (99 unitarios y 4 de integración, más 3 ignorados y 8 de VM) y
 `clippy --all-targets -- -D warnings` en verde en Windows. La interfaz se recorrió sin elevación en tema oscuro y claro, en español e
 inglés, el 25/11 (antes de partir las vistas de `CL-05` y de `SEC-17`). **Acciones que cambian el sistema probadas como
 administrador** en Windows Sandbox con `tests/vm_sistema.rs` (`cargo test --release --test vm_sistema -- --ignored --nocapture
 --test-threads=1`, solo en una máquina desechable): optimizar y revertir, Debloater (registro) y revertir, DNS IPv4/IPv6, limpiador con
 junction trampa, comprimir y extraer, desinstalar y purgar una app falsa, revertir todo y `--rollback`: 0 fallos. El 26/11 se repitió en una
-VM de Hyper-V (Windows 11 Enterprise 25H2): 7 de 7, con una app Appx real quitada (`ERR-26` salió de ahí). Sin probar: la ventana en tamaño chico.
+VM de Hyper-V (Windows 11 Enterprise 25H2): 7 de 7, con una app Appx real quitada (`ERR-26`), y la tienda con winget real (`paso_8_tienda`: instalar por equipo y por usuario, cancelar, quitar; `ERR-27`). Sin probar: drivers de fabricante, proxy de máquina y la ventana en tamaño chico.
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
 | Seguridad (`SEC-`) | 37 | 0 | 0 | 0 | 37 |
 | Sistema y rollback (`SYS-`) | 27 | 0 | 0 | 0 | 27 |
-| Errores y procesos (`ERR-`) | 26 | 1 | 0 | 0 | 25 |
+| Errores y procesos (`ERR-`) | 27 | 0 | 0 | 0 | 27 |
 | Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
 | Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
 | Diseño y producto (`UX-`) | 4 | 0 | 0 | 0 | 4 |
 | Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **126** | **2** | **0** | **0** | **124** |
+| **Total** | **127** | **1** | **0** | **0** | **126** |
 
-La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; queda abierto `ERR-24`
-(parcial: probar una instalación real de la tienda por winget en una VM); `ERR-25` (Intel) se cerró quitando esa fuente. Sin probar instalando en una VM.
+La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; todos están resueltos: `ERR-24` se cerró probando la tienda en la VM y `ERR-25` (Intel) quitando esa fuente.
 
 Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditoría de buenas prácticas del 24/11) viven en
 `docs/PRACTICAS.md`; aquí solo quedan los defectos que esa auditoría encontró.
@@ -48,7 +47,6 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 |---|---|---|---|---|
 | [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Resuelto |
-| [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
 
 ## Diferidos y pendientes de decisión
 
@@ -57,11 +55,10 @@ expediente conserva el motivo del enfoque elegido y lo descartado.
 
 ## Siguiente
 
-1. En la VM de Hyper-V (`OtterTest`): dos apps de la tienda (una para el equipo y una por usuario), instalar y quitar un
-   driver de cada camino y la ventana en tamaño chico (`ERR-24`). `vm_sistema` y quitar una app Appx ya están hechos.
+1. Pendiente solo lo que la VM no cubre: instalar y quitar un driver de cada camino (hace falta hardware real) y la ventana en tamaño chico.
 2. Recorrer en la app lo hecho el 26/11 (aviso «Modo estándar» de `SEC-17`, y las vistas partidas por `CL-05`) en español e inglés y
    en los dos temas, y la reapertura elevada con UAC (`SEC-17`); `UI-11` en inglés con detalles del motor.
-3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. `SYS-24`: probar el caso «otra cuenta» con dos cuentas en la VM.
+3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. `SYS-24`: el caso «otra cuenta» solo se reproduce con una cuenta estándar que pide credenciales de administrador (UAC); no se probó.
 4. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
 
 ## Patrones
