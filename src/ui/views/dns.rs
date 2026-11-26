@@ -328,13 +328,13 @@ pub fn DnsView() -> Element {
                     }
 
                     if let Some(active_p) = active_preset {
-                        div { style: "background: var(--bg); padding: var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); font-size: var(--font-size-xs);",
+                        div { class: "info-box text-xs",
                             p { strong { "IPv4: " } "{active_p.ipv4_primary}, {active_p.ipv4_secondary}   |   " strong { "IPv6: " } "{active_p.ipv6_primary}, {active_p.ipv6_secondary}" }
                             p { class: "text-muted", if en { "{active_p.privacy_notice_en}" } else { "{active_p.privacy_notice}" } }
                         }
                     }
 
-                    div { style: "display: flex; gap: var(--space-3);",
+                    div { class: "flex gap-3",
                         button {
                             class: "btn btn-primary",
                             disabled: *is_working.read() || physical.is_empty(),
@@ -382,7 +382,7 @@ pub fn DnsView() -> Element {
                             for adapter in list.iter() {
                                 div {
                                     key: "{adapter.interface_guid}",
-                                    style: "padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); display: flex; justify-content: space-between; align-items: center;",
+                                    class: "item-row row-between",
                                     div {
                                         div { class: "text-sm fw-semibold", "{adapter.friendly_name}" }
                                         div { class: "text-xs text-muted",

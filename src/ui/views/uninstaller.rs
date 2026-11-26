@@ -590,8 +590,8 @@ pub fn UninstallerView() -> Element {
                                             rsx! {
                                                 label {
                                                     key: "{item_id}",
-                                                    style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2); border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--font-size-xs);",
-                                                    div { style: "display: flex; align-items: center; gap: var(--space-2); min-width: 0;",
+                                                    class: "list-row padded clickable text-xs",
+                                                    div { class: "row min-w-0",
                                                         input {
                                                             r#type: "checkbox",
                                                             checked: checked,
@@ -611,7 +611,7 @@ pub fn UninstallerView() -> Element {
                                                                     span { class: "badge badge-warning", "{review_lbl}" }
                                                                 }
                                                             }
-                                                            div { style: "color: var(--text-muted); word-break: break-all;", "{item.target_display}" }
+                                                            div { class: "text-muted break-all", "{item.target_display}" }
                                                         }
                                                     }
                                                     span { class: "badge badge-info", "{format_size_mb(item.size_bytes)}" }
@@ -684,7 +684,7 @@ pub fn UninstallerView() -> Element {
                     Card {
                         title: locked_title,
                         subtitle: None,
-                        div { style: "font-size: var(--font-size-xs); color: var(--danger-text); display: flex; flex-direction: column; gap: var(--space-1);",
+                        div { class: "stack-1 text-xs text-danger",
                             for err in rep.errors.iter() {
                                 div { "{err}" }
                             }
@@ -702,7 +702,7 @@ pub fn UninstallerView() -> Element {
                             r#type: "text",
                             placeholder: "{search_placeholder}",
                             value: "{search_query.read()}",
-                            style: "flex: 1; min-width: 220px; padding: var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--text);",
+                            class: "input grow-wide",
                             oninput: move |evt| search_query.set(evt.value()),
                         }
                         span { class: "badge badge-info", "{filtered.len()}" }
@@ -717,30 +717,26 @@ pub fn UninstallerView() -> Element {
                     div { class: "row wrap",
                         span { class: "text-xs text-muted", "{sort_lbl}" }
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn btn-secondary btn-sm",
                             "aria-pressed": if *sort_mode.read() == SortMode::NameAsc { "true" } else { "false" },
-                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameAsc),
                             "A - Z"
                         }
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn btn-secondary btn-sm",
                             "aria-pressed": if *sort_mode.read() == SortMode::NameDesc { "true" } else { "false" },
-                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::NameDesc),
                             "Z - A"
                         }
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn btn-secondary btn-sm",
                             "aria-pressed": if *sort_mode.read() == SortMode::SizeDesc { "true" } else { "false" },
-                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeDesc),
                             "{sort_largest_lbl}"
                         }
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn btn-secondary btn-sm",
                             "aria-pressed": if *sort_mode.read() == SortMode::SizeAsc { "true" } else { "false" },
-                            style: "padding: var(--space-1) var(--space-3); font-size: var(--font-size-xs);",
                             onclick: move |_| sort_mode.set(SortMode::SizeAsc),
                             "{sort_smallest_lbl}"
                         }
@@ -771,9 +767,9 @@ pub fn UninstallerView() -> Element {
                             rsx! {
                                 div {
                                     key: "{app.id}",
-                                    style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--border); flex-wrap: wrap;",
-                                    div { style: "min-width: 240px; flex: 1;",
-                                        div { style: "display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;",
+                                    class: "list-row wrap",
+                                    div { class: "grow-wide",
+                                        div { class: "row wrap",
                                             span { class: "fw-semibold", "{app.display_name}" }
                                             if !app.display_version.is_empty() {
                                                 span { class: "text-xs text-muted",

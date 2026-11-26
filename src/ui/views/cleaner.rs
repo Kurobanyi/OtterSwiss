@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use dioxus::prelude::*;
 
 use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
-use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{Card, CheckRow, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, strings};
@@ -134,24 +134,18 @@ pub fn CleanerView() -> Element {
                 title: cleaner_title,
                 subtitle: cleaner_sub,
                 div { class: "stack-3",
-                    div { style: "display: flex; gap: var(--space-4); align-items: center; flex-wrap: wrap;",
-                        label { class: "row clickable",
-                            input {
-                                r#type: "checkbox",
-                                checked: *clean_recycle.read(),
-                                disabled: *is_cleaning.read(),
-                                onchange: move |evt| clean_recycle.set(evt.checked()),
-                            }
+                    div { class: "row wrap gap-4",
+                        CheckRow {
+                            checked: *clean_recycle.read(),
+                            disabled: *is_cleaning.read(),
+                            on_change: move |on| clean_recycle.set(on),
                             span { if en { "Empty Recycle Bin (permanent)" } else { "Vaciar Papelera (permanente)" } }
                         }
 
-                        label { class: "row clickable",
-                            input {
-                                r#type: "checkbox",
-                                checked: *clean_all_temps.read(),
-                                disabled: *is_cleaning.read(),
-                                onchange: move |evt| clean_all_temps.set(evt.checked()),
-                            }
+                        CheckRow {
+                            checked: *clean_all_temps.read(),
+                            disabled: *is_cleaning.read(),
+                            on_change: move |on| clean_all_temps.set(on),
                             span { if en { "All temp files (skip 24h wait)" } else { "Todo el directorio (sin espera de 24h)" } }
                         }
                     }
@@ -227,12 +221,12 @@ pub fn CleanerView() -> Element {
                     Card {
                         title: freed_title,
                         subtitle: None,
-                        h2 { style: "color: var(--success-text); font-size: var(--font-size-xl);", "{bytes_mb(total_freed)}" }
+                        h2 { class: "text-xl text-success", "{bytes_mb(total_freed)}" }
                     }
                     Card {
                         title: files_title,
                         subtitle: None,
-                        h2 { style: "color: var(--accent-text); font-size: var(--font-size-xl);", "{total_files}" }
+                        h2 { class: "text-xl text-accent", "{total_files}" }
                     }
                 }
 

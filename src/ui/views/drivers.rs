@@ -8,7 +8,9 @@ use crate::core::drivers::{
     CatalogDriverMatch, DriverManager, DriverUpdateCandidate, InstalledDriverDevice,
     InstalledDriverRecord, VendorDriverUpdate,
 };
-use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
+use crate::ui::components::{
+    Card, CheckRow, ConfirmDialog, EmptyState, LoadingState, StatusBanner, Tone,
+};
 use crate::ui::i18n::drivers::DriversStrings;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_blocking;
@@ -134,13 +136,11 @@ pub fn DriversView() -> Element {
     let mut has_checked_updates = use_signal(|| false);
     let mut wua_policy_warn = use_signal(|| false);
 
-    let mut search_query = use_signal(String::new);
-    let mut filter_mode = use_signal(|| DeviceFilter::All);
     let mut is_working = use_signal(|| false);
     let mut status_msg = use_signal(|| Option::<(Msg, Tone)>::None);
     let mut reboot_alert = use_signal(|| false);
     let mut pending_install = use_signal(|| Option::<PendingInstall>::None);
-    let mut backup_first = use_signal(|| true);
+    let backup_first = use_signal(|| true);
     let install_history = use_signal(Vec::<InstalledDriverRecord>::new);
     let mut pending_revert = use_signal(|| Option::<InstalledDriverRecord>::None);
     // CON-03: bandera de la búsqueda en curso; cada búsqueda tiene la suya, así una cancelada no pisa a la siguiente.
@@ -329,61 +329,7 @@ pub fn DriversView() -> Element {
         });
     };
 
-    let devs_guard = devices.read();
-    let total_devs = devs_guard.len();
-    let problem_count = devs_guard.iter().filter(|d| d.has_problem).count();
-    let oem_count = devs_guard.iter().filter(|d| d.is_third_party_oem()).count();
-
-    let q = search_query.read().trim().to_ascii_lowercase();
-    let cur_filter = *filter_mode.read();
-    let filtered_devs: Vec<InstalledDriverDevice> = devs_guard
-        .iter()
-        .filter(|d| match cur_filter {
-            DeviceFilter::All => true,
-            DeviceFilter::ErrorsOnly => d.has_problem,
-            DeviceFilter::ThirdPartyOem => d.is_third_party_oem(),
-        })
-        .filter(|d| {
-            if q.is_empty() {
-                return true;
-            }
-            d.display_title().to_ascii_lowercase().contains(&q)
-                || d.manufacturer
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_ascii_lowercase()
-                    .contains(&q)
-                || d.provider_name
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_ascii_lowercase()
-                    .contains(&q)
-                || d.inf_path
-                    .as_deref()
-                    .unwrap_or("")
-                    .to_ascii_lowercase()
-                    .contains(&q)
-                || d.short_hw_id()
-                    .unwrap_or_default()
-                    .to_ascii_lowercase()
-                    .contains(&q)
-                || d.decoded_vendor_name()
-                    .unwrap_or("")
-                    .to_ascii_lowercase()
-                    .contains(&q)
-                || d.hardware_hint()
-                    .unwrap_or("")
-                    .to_ascii_lowercase()
-                    .contains(&q)
-        })
-        .cloned()
-        .collect();
-
-    let wua_guard = wua_updates.read();
-    let vendor_guard = vendor_updates.read();
-    let catalog_guard = catalog_matches.read();
-    let selected_wua_count = selected_wua.read().len();
-
+    let problem_count = devices.read().iter().filter(|d| d.has_problem).count();
     let problems_badge_txt = if problem_count > 0 {
         (t.device_errors)(problem_count)
     } else {
@@ -428,55 +374,11 @@ pub fn DriversView() -> Element {
                         }
                     }
 
-                    if let Some(pending) = pending_install.read().clone() {
-                        {
-                            let items: Vec<(String, bool)> = match &pending {
-                                PendingInstall::Wua(ids) => wua_updates
-                                    .read()
-                                    .iter()
-                                    .filter(|u| ids.contains(&u.id))
-                                    .map(|u| (u.title.clone(), u.is_firmware))
-                                    .collect(),
-                                PendingInstall::Vendor(upd) => vec![(
-                                    format!("{} {} → {}", upd.vendor, upd.title, upd.latest_version),
-                                    false,
-                                )],
-                                PendingInstall::Catalog { title, .. } => vec![(title.clone(), false)],
-                            };
-                            let has_firmware = items.iter().any(|(_, fw)| *fw);
-                            rsx! {
-                                ConfirmDialog {
-                                    title: t.confirm_title.to_string(),
-                                    subtitle: Some(t.confirm_subtitle.to_string()),
-                                    confirm_label: t.install.to_string(),
-                                    cancel_label: strings(en).cancel.to_string(),
-                                    tone: if has_firmware { Tone::Danger } else { Tone::Warning },
-                                    on_confirm: on_confirm_install,
-                                    on_cancel: move |_| pending_install.set(None),
-                                    ul { class: "stack-1",
-                                        for (title, fw) in items.iter() {
-                                            li { key: "{title}", class: "text-sm",
-                                                "{title}"
-                                                if *fw {
-                                                    span { class: "badge badge-danger", " FIRMWARE / BIOS" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if has_firmware {
-                                        StatusBanner { text: t.firmware_warning.to_string(), tone: Tone::Danger }
-                                    }
-                                    label { class: "row gap-2 clickable",
-                                        input {
-                                            r#type: "checkbox",
-                                            checked: *backup_first.read(),
-                                            onchange: move |evt| backup_first.set(evt.checked()),
-                                        }
-                                        span { class: "text-sm", "{t.backup_first}" }
-                                    }
-                                }
-                            }
-                        }
+                    InstallConfirm {
+                        pending_install,
+                        wua_updates,
+                        backup_first,
+                        on_confirm: on_confirm_install,
                     }
 
                     if *wua_policy_warn.read() {
@@ -493,73 +395,9 @@ pub fn DriversView() -> Element {
                 }
             }
 
-            if !vendor_guard.is_empty() {
-                Card {
-                    title: t.vendor_title.to_string(),
-                    subtitle: Some(t.vendor_subtitle.to_string()),
-                    div { class: "stack-2",
-                        for v_upd in vendor_guard.iter() {
-                            {
-                                let upd_clone = v_upd.clone();
-                                rsx! {
-                                    div {
-                                        key: "{v_upd.id}",
-                                        class: "item-row row-between gap-3 wrap",
-                                        div { class: "grow-wide",
-                                            div { class: "row wrap",
-                                                span { class: "badge badge-info", "{v_upd.vendor}" }
-                                                span { class: "text-sm fw-semibold", "{v_upd.title}" }
-                                            }
-                                            div { class: "text-xs text-muted mt-1",
-                                                "{v_upd.current_version} → {v_upd.latest_version} • {v_upd.size_label}"
-                                                if !v_upd.release_date.is_empty() {
-                                                    " • {v_upd.release_date}"
-                                                }
-                                            }
-                                        }
-                                        button {
-                                            class: "btn btn-primary",
-                                            disabled: *is_working.read(),
-                                            onclick: move |_| {
-                                                pending_install.set(Some(PendingInstall::Vendor(Box::new(upd_clone.clone()))));
-                                            },
-                                            "{t.download_install}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            VendorUpdatesCard { vendor_updates, is_working, pending_install }
 
-            if !install_history.read().is_empty() {
-                Card {
-                    title: t.history_title.to_string(),
-                    subtitle: Some(t.history_subtitle.to_string()),
-                    div { class: "stack-2",
-                        for rec in install_history.read().iter() {
-                            {
-                                let rec_c = rec.clone();
-                                rsx! {
-                                    div { key: "{rec.published_name}", class: "list-row row-between gap-3",
-                                        div {
-                                            div { class: "text-sm fw-semibold", "{rec.title}" }
-                                            div { class: "text-xs text-muted", "{rec.published_name}" }
-                                        }
-                                        button {
-                                            class: "btn btn-secondary btn-sm",
-                                            disabled: *is_working.read(),
-                                            onclick: move |_| pending_revert.set(Some(rec_c.clone())),
-                                            "{t.remove}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            HistoryCard { install_history, is_working, pending_revert }
 
             if let Some(rec) = pending_revert.read().clone() {
                 ConfirmDialog {
@@ -574,259 +412,511 @@ pub fn DriversView() -> Element {
                 }
             }
 
-            if !catalog_guard.is_empty() {
-                Card {
-                    title: t.catalog_title.to_string(),
-                    subtitle: Some(t.catalog_subtitle.to_string()),
-                    div { class: "stack-2",
-                        for cat in catalog_guard.iter() {
-                            {
-                                let uid = cat.update_id.clone();
-                                let title_c = cat.title.clone();
-                                rsx! {
-                                    div {
-                                        key: "{uid}",
-                                        class: "item-row row-between gap-3 wrap",
-                                        div { class: "grow-wide",
-                                            div { class: "text-sm fw-semibold", "{cat.title}" }
-                                            div { class: "text-xs text-muted mt-1",
-                                                "{cat.query_hw_id} • v{cat.version} • {cat.last_updated} • {cat.size_str}"
-                                            }
-                                        }
-                                        button {
-                                            class: "btn btn-primary",
-                                            disabled: *is_working.read(),
-                                            onclick: move |_| {
-                                                pending_install.set(Some(PendingInstall::Catalog {
-                                                    uid: uid.clone(),
-                                                    title: title_c.clone(),
-                                                }));
-                                            },
-                                            "{t.install_cab}"
+            CatalogCard { catalog_matches, is_working, pending_install }
+
+            WuaCard {
+                wua_updates,
+                selected_wua,
+                is_working,
+                on_install: on_install_wua,
+            }
+
+            DeviceListCard { devices, is_working, status_msg, catalog_matches }
+        }
+    }
+}
+
+/// SEC-37: diálogo de confirmación de la instalación pendiente, con la casilla del respaldo del Driver Store.
+#[component]
+fn InstallConfirm(
+    mut pending_install: Signal<Option<PendingInstall>>,
+    wua_updates: Signal<Vec<DriverUpdateCandidate>>,
+    mut backup_first: Signal<bool>,
+    on_confirm: EventHandler<()>,
+) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let t = strings(en).drivers;
+    let Some(pending) = pending_install.read().clone() else {
+        return rsx! {};
+    };
+    let items: Vec<(String, bool)> = match &pending {
+        PendingInstall::Wua(ids) => wua_updates
+            .read()
+            .iter()
+            .filter(|u| ids.contains(&u.id))
+            .map(|u| (u.title.clone(), u.is_firmware))
+            .collect(),
+        PendingInstall::Vendor(upd) => vec![(
+            format!("{} {} → {}", upd.vendor, upd.title, upd.latest_version),
+            false,
+        )],
+        PendingInstall::Catalog { title, .. } => vec![(title.clone(), false)],
+    };
+    let has_firmware = items.iter().any(|(_, fw)| *fw);
+    rsx! {
+        ConfirmDialog {
+            title: t.confirm_title.to_string(),
+            subtitle: Some(t.confirm_subtitle.to_string()),
+            confirm_label: t.install.to_string(),
+            cancel_label: strings(en).cancel.to_string(),
+            tone: if has_firmware { Tone::Danger } else { Tone::Warning },
+            on_confirm,
+            on_cancel: move |_| pending_install.set(None),
+            ul { class: "stack-1",
+                for (title, fw) in items.iter() {
+                    li { key: "{title}", class: "text-sm",
+                        "{title}"
+                        if *fw {
+                            span { class: "badge badge-danger", " FIRMWARE / BIOS" }
+                        }
+                    }
+                }
+            }
+            if has_firmware {
+                StatusBanner { text: t.firmware_warning.to_string(), tone: Tone::Danger }
+            }
+            CheckRow {
+                checked: *backup_first.read(),
+                on_change: move |on| backup_first.set(on),
+                span { class: "text-sm", "{t.backup_first}" }
+            }
+        }
+    }
+}
+
+/// Actualizaciones de fabricante (NVIDIA): una fila por paquete con su botón de instalar.
+#[component]
+fn VendorUpdatesCard(
+    vendor_updates: Signal<Vec<VendorDriverUpdate>>,
+    is_working: Signal<bool>,
+    mut pending_install: Signal<Option<PendingInstall>>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let list = vendor_updates.read();
+    if list.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        Card {
+            title: t.vendor_title.to_string(),
+            subtitle: Some(t.vendor_subtitle.to_string()),
+            div { class: "stack-2",
+                for v_upd in list.iter() {
+                    {
+                        let upd_clone = v_upd.clone();
+                        rsx! {
+                            div {
+                                key: "{v_upd.id}",
+                                class: "item-row row-between gap-3 wrap",
+                                div { class: "grow-wide",
+                                    div { class: "row wrap",
+                                        span { class: "badge badge-info", "{v_upd.vendor}" }
+                                        span { class: "text-sm fw-semibold", "{v_upd.title}" }
+                                    }
+                                    div { class: "text-xs text-muted mt-1",
+                                        "{v_upd.current_version} → {v_upd.latest_version} • {v_upd.size_label}"
+                                        if !v_upd.release_date.is_empty() {
+                                            " • {v_upd.release_date}"
                                         }
                                     }
+                                }
+                                button {
+                                    class: "btn btn-primary",
+                                    disabled: *is_working.read(),
+                                    onclick: move |_| {
+                                        pending_install.set(Some(PendingInstall::Vendor(Box::new(upd_clone.clone()))));
+                                    },
+                                    "{t.download_install}"
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            if !wua_guard.is_empty() {
-                Card {
-                    title: t.wua_title.to_string(),
-                    subtitle: Some(t.wua_subtitle.to_string()),
-                    div { class: "stack-2",
-                        for upd in wua_guard.iter() {
-                            {
-                                let uid = upd.id.clone();
-                                let checked = selected_wua.read().contains(&uid);
-                                let size_txt = if upd.size_mb > 0 {
-                                    format!("{} MB", upd.size_mb)
-                                } else {
-                                    "—".to_string()
-                                };
-
-                                rsx! {
-                                    label {
-                                        key: "{uid}",
-                                        class: "item-row row-between gap-3 clickable",
-                                        div { class: "row grow",
-                                            input {
-                                                r#type: "checkbox",
-                                                checked: checked,
-                                                onchange: move |evt| {
-                                                    let mut s = selected_wua.write();
-                                                    if evt.checked() {
-                                                        s.insert(uid.clone());
-                                                    } else {
-                                                        s.remove(&uid);
-                                                    }
-                                                },
-                                            }
-                                            div { class: "min-w-0",
-                                                div { class: "row wrap",
-                                                    span { class: "text-sm fw-semibold", "{upd.title}" }
-                                                    if upd.is_firmware {
-                                                        span { class: "badge badge-danger", "FIRMWARE / BIOS" }
-                                                    }
-                                                }
-                                                div { class: "text-xs text-muted mt-1",
-                                                    if !upd.driver_provider.is_empty() {
-                                                        "{upd.driver_provider} • "
-                                                    }
-                                                    if !upd.driver_class.is_empty() {
-                                                        "{upd.driver_class} • "
-                                                    }
-                                                    if !upd.hardware_id.is_empty() {
-                                                        "{upd.hardware_id}"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        span { class: "badge badge-info", "{size_txt}" }
-                                    }
+/// SYS-26: drivers instalados desde OtterSwiss, cada uno con «Quitar».
+#[component]
+fn HistoryCard(
+    install_history: Signal<Vec<InstalledDriverRecord>>,
+    is_working: Signal<bool>,
+    mut pending_revert: Signal<Option<InstalledDriverRecord>>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let list = install_history.read();
+    if list.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        Card {
+            title: t.history_title.to_string(),
+            subtitle: Some(t.history_subtitle.to_string()),
+            div { class: "stack-2",
+                for rec in list.iter() {
+                    {
+                        let rec_c = rec.clone();
+                        rsx! {
+                            div { key: "{rec.published_name}", class: "list-row row-between gap-3",
+                                div {
+                                    div { class: "text-sm fw-semibold", "{rec.title}" }
+                                    div { class: "text-xs text-muted", "{rec.published_name}" }
                                 }
-                            }
-                        }
-
-                        div { class: "row-end",
-                            button {
-                                class: "btn btn-primary",
-                                disabled: *is_working.read() || selected_wua_count == 0,
-                                onclick: on_install_wua,
-                                "{(t.download_install_n)(selected_wua_count)}"
+                                button {
+                                    class: "btn btn-secondary btn-sm",
+                                    disabled: *is_working.read(),
+                                    onclick: move |_| pending_revert.set(Some(rec_c.clone())),
+                                    "{t.remove}"
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            Card {
-                title: t.hardware_title.to_string(),
-                subtitle: Some((t.showing_devices)(filtered_devs.len())),
-                div { class: "stack-3",
-                    div { class: "row wrap",
-                        input {
-                            r#type: "text",
-                            class: "input grow-wide",
-                            placeholder: "{t.search_placeholder}",
-                            value: "{search_query.read()}",
-                            oninput: move |evt| search_query.set(evt.value()),
-                        }
-                        // TE-28: el filtro elegido se marca con aria-pressed, no alternando btn-primary.
-                        button {
-                            class: "btn btn-secondary btn-sm",
-                            "aria-pressed": if cur_filter == DeviceFilter::All { "true" } else { "false" },
-                            onclick: move |_| filter_mode.set(DeviceFilter::All),
-                            "{(t.filter_all)(total_devs)}"
-                        }
-                        button {
-                            class: "btn btn-secondary btn-sm",
-                            "aria-pressed": if cur_filter == DeviceFilter::ErrorsOnly { "true" } else { "false" },
-                            onclick: move |_| filter_mode.set(DeviceFilter::ErrorsOnly),
-                            "{(t.filter_errors)(problem_count)}"
-                        }
-                        button {
-                            class: "btn btn-secondary btn-sm",
-                            "aria-pressed": if cur_filter == DeviceFilter::ThirdPartyOem { "true" } else { "false" },
-                            onclick: move |_| filter_mode.set(DeviceFilter::ThirdPartyOem),
-                            "{(t.filter_oem)(oem_count)}"
-                        }
-                    }
-
-                    div { class: "modal-list tall",
-                        for dev in filtered_devs.into_iter() {
-                            {
-                                let title_str = dev.display_title().to_string();
-                                let vendor_str = dev
-                                    .provider_name
-                                    .as_deref()
-                                    .or(dev.manufacturer.as_deref())
-                                    .unwrap_or("")
-                                    .to_string();
-                                let decoded_ven = dev.decoded_vendor_name().unwrap_or("").to_string();
-                                let hw_hint = dev.hardware_hint().unwrap_or("").to_string();
-                                let short_hw = dev.short_hw_id().unwrap_or_default();
-                                let ver_str = dev.driver_version.as_deref().unwrap_or("").to_string();
-                                let date_str = dev.driver_date.as_deref().unwrap_or("").to_string();
-                                let inf_str = dev.inf_path.as_deref().unwrap_or("").to_string();
-                                let class_str = dev.class_name.as_deref().unwrap_or("").to_string();
-                                let nv_ver = dev.friendly_gpu_version();
-
-                                let status_badge_cls = if dev.has_problem {
-                                    "badge badge-danger"
-                                } else if dev.needs_reboot {
-                                    "badge badge-warning"
-                                } else {
-                                    "badge badge-success"
-                                };
-
-                                let status_badge_txt = if dev.has_problem {
-                                    (t.cm_problem)(dev.problem_code)
-                                } else if dev.needs_reboot {
-                                    t.pending_reboot
-                                } else {
-                                    "OK"
-                                };
-
-                                let key_str = format!("dev_{}_{}", dev.dev_inst, title_str);
-                                let hw_for_btn = short_hw.clone();
-
-                                rsx! {
-                                    div {
-                                        key: "{key_str}",
-                                        class: "item-row row-between wrap",
-                                        div { class: "grow-wide",
-                                            div { class: "row wrap",
-                                                span { class: "text-sm fw-semibold", "{title_str}" }
-                                                if !hw_hint.is_empty() {
-                                                    span { class: "badge badge-warning", "{hw_hint}" }
-                                                } else if !decoded_ven.is_empty() {
-                                                    span { class: "badge badge-info", "{decoded_ven}" }
-                                                }
-                                                if !class_str.is_empty() {
-                                                    span { class: "badge badge-info", "{class_str}" }
-                                                }
-                                                if let Some(nv) = nv_ver {
-                                                    span { class: "badge badge-success", "GeForce {nv}" }
-                                                }
-                                            }
-                                            div { class: "text-xs text-muted mt-1",
-                                                if !vendor_str.is_empty() {
-                                                    "{vendor_str} • "
-                                                }
-                                                if !ver_str.is_empty() {
-                                                    "v{ver_str} • "
-                                                }
-                                                if !date_str.is_empty() {
-                                                    "{date_str} • "
-                                                }
-                                                if !inf_str.is_empty() {
-                                                    "{inf_str} • "
-                                                }
-                                                if !short_hw.is_empty() {
-                                                    "{short_hw}"
-                                                }
-                                            }
-                                        }
-                                        div { class: "row",
-                                            if dev.has_problem && !hw_for_btn.is_empty() {
-                                                button {
-                                                    class: "btn btn-secondary",
-                                                    disabled: *is_working.read(),
-                                                    onclick: move |_| {
-                                                        let q_id = hw_for_btn.clone();
-                                                        is_working.set(true);
-                                                        let shown = q_id.clone();
-                                                        status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.searching_catalog)(&shown)), Tone::Info)));
-                                                        spawn(async move {
-                                                            let res = run_blocking(move || {
-                                                                DriverManager::search_microsoft_catalog(&q_id)
-                                                            })
-                                                            .await;
-                                                            match res {
-                                                                Ok(list) => {
-                                                                    let n = list.len();
-                                                                    catalog_matches.set(list);
-                                                                    status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.catalog_found)(n)), Tone::Info)));
-                                                                }
-                                                                Err(e) => status_msg.set(Some((e, Tone::Danger))),
-                                                            }
-                                                            is_working.set(false);
-                                                        });
-                                                    },
-                                                    "{t.search_catalog}"
-                                                }
-                                            }
-                                            span { class: "{status_badge_cls}", "{status_badge_txt}" }
-                                        }
+/// Coincidencias del Catálogo de Microsoft para un dispositivo con problema.
+#[component]
+fn CatalogCard(
+    catalog_matches: Signal<Vec<CatalogDriverMatch>>,
+    is_working: Signal<bool>,
+    mut pending_install: Signal<Option<PendingInstall>>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let list = catalog_matches.read();
+    if list.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        Card {
+            title: t.catalog_title.to_string(),
+            subtitle: Some(t.catalog_subtitle.to_string()),
+            div { class: "stack-2",
+                for cat in list.iter() {
+                    {
+                        let uid = cat.update_id.clone();
+                        let title_c = cat.title.clone();
+                        rsx! {
+                            div {
+                                key: "{uid}",
+                                class: "item-row row-between gap-3 wrap",
+                                div { class: "grow-wide",
+                                    div { class: "text-sm fw-semibold", "{cat.title}" }
+                                    div { class: "text-xs text-muted mt-1",
+                                        "{cat.query_hw_id} • v{cat.version} • {cat.last_updated} • {cat.size_str}"
                                     }
+                                }
+                                button {
+                                    class: "btn btn-primary",
+                                    disabled: *is_working.read(),
+                                    onclick: move |_| {
+                                        pending_install.set(Some(PendingInstall::Catalog {
+                                            uid: uid.clone(),
+                                            title: title_c.clone(),
+                                        }));
+                                    },
+                                    "{t.install_cab}"
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Actualizaciones de Windows Update con casilla; las seguras vienen marcadas.
+#[component]
+fn WuaCard(
+    wua_updates: Signal<Vec<DriverUpdateCandidate>>,
+    mut selected_wua: Signal<HashSet<String>>,
+    is_working: Signal<bool>,
+    on_install: EventHandler<()>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let list = wua_updates.read();
+    if list.is_empty() {
+        return rsx! {};
+    }
+    let selected_count = selected_wua.read().len();
+    rsx! {
+        Card {
+            title: t.wua_title.to_string(),
+            subtitle: Some(t.wua_subtitle.to_string()),
+            div { class: "stack-2",
+                for upd in list.iter() {
+                    {
+                        let uid = upd.id.clone();
+                        let checked = selected_wua.read().contains(&uid);
+                        let size_txt = if upd.size_mb > 0 {
+                            format!("{} MB", upd.size_mb)
+                        } else {
+                            "—".to_string()
+                        };
+                        rsx! {
+                            CheckRow {
+                                key: "{uid}",
+                                class: "item-row gap-3",
+                                checked,
+                                on_change: move |on| {
+                                    let mut s = selected_wua.write();
+                                    if on {
+                                        s.insert(uid.clone());
+                                    } else {
+                                        s.remove(&uid);
+                                    }
+                                },
+                                div { class: "grow",
+                                    div { class: "row wrap",
+                                        span { class: "text-sm fw-semibold", "{upd.title}" }
+                                        if upd.is_firmware {
+                                            span { class: "badge badge-danger", "FIRMWARE / BIOS" }
+                                        }
+                                    }
+                                    div { class: "text-xs text-muted mt-1",
+                                        if !upd.driver_provider.is_empty() {
+                                            "{upd.driver_provider} • "
+                                        }
+                                        if !upd.driver_class.is_empty() {
+                                            "{upd.driver_class} • "
+                                        }
+                                        if !upd.hardware_id.is_empty() {
+                                            "{upd.hardware_id}"
+                                        }
+                                    }
+                                }
+                                span { class: "badge badge-info", "{size_txt}" }
+                            }
+                        }
+                    }
+                }
+
+                div { class: "row-end",
+                    button {
+                        class: "btn btn-primary",
+                        disabled: *is_working.read() || selected_count == 0,
+                        onclick: move |_| on_install.call(()),
+                        "{(t.download_install_n)(selected_count)}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ¿El dispositivo coincide con el texto buscado? Compara en minúsculas contra todos los campos visibles.
+fn device_matches(d: &InstalledDriverDevice, q: &str) -> bool {
+    let fields = [
+        d.display_title().to_string(),
+        d.manufacturer.clone().unwrap_or_default(),
+        d.provider_name.clone().unwrap_or_default(),
+        d.inf_path.clone().unwrap_or_default(),
+        d.short_hw_id().unwrap_or_default(),
+        d.decoded_vendor_name().unwrap_or("").to_string(),
+        d.hardware_hint().unwrap_or("").to_string(),
+    ];
+    fields.iter().any(|f| f.to_ascii_lowercase().contains(q))
+}
+
+/// Busca en el Catálogo de Microsoft los drivers de un dispositivo con problema.
+fn search_catalog(
+    hw_id: String,
+    mut is_working: Signal<bool>,
+    mut status_msg: Signal<Option<(Msg, Tone)>>,
+    mut catalog_matches: Signal<Vec<CatalogDriverMatch>>,
+) {
+    is_working.set(true);
+    let shown = hw_id.clone();
+    status_msg.set(Some((
+        Msg::new(move |en| (strings(en).drivers.searching_catalog)(&shown)),
+        Tone::Info,
+    )));
+    spawn(async move {
+        let res = run_blocking(move || DriverManager::search_microsoft_catalog(&hw_id)).await;
+        match res {
+            Ok(list) => {
+                let n = list.len();
+                catalog_matches.set(list);
+                status_msg.set(Some((
+                    Msg::new(move |en| (strings(en).drivers.catalog_found)(n)),
+                    Tone::Info,
+                )));
+            }
+            Err(e) => status_msg.set(Some((e, Tone::Danger))),
+        }
+        is_working.set(false);
+    });
+}
+
+/// Dispositivos presentes con búsqueda y filtros (todos, con error, de terceros).
+#[component]
+fn DeviceListCard(
+    devices: Signal<Vec<InstalledDriverDevice>>,
+    is_working: Signal<bool>,
+    status_msg: Signal<Option<(Msg, Tone)>>,
+    catalog_matches: Signal<Vec<CatalogDriverMatch>>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+
+    let mut search_query = use_signal(String::new);
+    let mut filter_mode = use_signal(|| DeviceFilter::All);
+
+    let all = devices.read();
+    let total_devs = all.len();
+    let problem_count = all.iter().filter(|d| d.has_problem).count();
+    let oem_count = all.iter().filter(|d| d.is_third_party_oem()).count();
+
+    let q = search_query.read().trim().to_ascii_lowercase();
+    let cur_filter = *filter_mode.read();
+    let filtered: Vec<InstalledDriverDevice> = all
+        .iter()
+        .filter(|d| match cur_filter {
+            DeviceFilter::All => true,
+            DeviceFilter::ErrorsOnly => d.has_problem,
+            DeviceFilter::ThirdPartyOem => d.is_third_party_oem(),
+        })
+        .filter(|d| q.is_empty() || device_matches(d, &q))
+        .cloned()
+        .collect();
+
+    rsx! {
+        Card {
+            title: t.hardware_title.to_string(),
+            subtitle: Some((t.showing_devices)(filtered.len())),
+            div { class: "stack-3",
+                div { class: "row wrap",
+                    input {
+                        r#type: "text",
+                        class: "input grow-wide",
+                        placeholder: "{t.search_placeholder}",
+                        value: "{search_query.read()}",
+                        oninput: move |evt| search_query.set(evt.value()),
+                    }
+                    // TE-28: el filtro elegido se marca con aria-pressed, no alternando btn-primary.
+                    button {
+                        class: "btn btn-secondary btn-sm",
+                        "aria-pressed": if cur_filter == DeviceFilter::All { "true" } else { "false" },
+                        onclick: move |_| filter_mode.set(DeviceFilter::All),
+                        "{(t.filter_all)(total_devs)}"
+                    }
+                    button {
+                        class: "btn btn-secondary btn-sm",
+                        "aria-pressed": if cur_filter == DeviceFilter::ErrorsOnly { "true" } else { "false" },
+                        onclick: move |_| filter_mode.set(DeviceFilter::ErrorsOnly),
+                        "{(t.filter_errors)(problem_count)}"
+                    }
+                    button {
+                        class: "btn btn-secondary btn-sm",
+                        "aria-pressed": if cur_filter == DeviceFilter::ThirdPartyOem { "true" } else { "false" },
+                        onclick: move |_| filter_mode.set(DeviceFilter::ThirdPartyOem),
+                        "{(t.filter_oem)(oem_count)}"
+                    }
+                }
+
+                if filtered.is_empty() {
+                    if total_devs == 0 && *is_working.read() {
+                        LoadingState { message: t.scanning_devices.to_string() }
+                    } else if total_devs > 0 {
+                        EmptyState {
+                            title: t.no_devices.to_string(),
+                            description: t.no_devices_hint.to_string(),
+                        }
+                    }
+                }
+
+                div { class: "modal-list tall",
+                    for dev in filtered.into_iter() {
+                        DeviceRow { key: "dev_{dev.dev_inst}_{dev.display_title()}", dev, is_working, status_msg, catalog_matches }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Una fila de dispositivo: nombre, insignias, detalle del driver y, si falla, la búsqueda en el Catálogo.
+#[component]
+fn DeviceRow(
+    dev: InstalledDriverDevice,
+    is_working: Signal<bool>,
+    status_msg: Signal<Option<(Msg, Tone)>>,
+    catalog_matches: Signal<Vec<CatalogDriverMatch>>,
+) -> Element {
+    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let title_str = dev.display_title().to_string();
+    let vendor_str = dev
+        .provider_name
+        .as_deref()
+        .or(dev.manufacturer.as_deref())
+        .unwrap_or("")
+        .to_string();
+    let decoded_ven = dev.decoded_vendor_name().unwrap_or("").to_string();
+    let hw_hint = dev.hardware_hint().unwrap_or("").to_string();
+    let short_hw = dev.short_hw_id().unwrap_or_default();
+    let ver_str = dev.driver_version.as_deref().unwrap_or("").to_string();
+    let date_str = dev.driver_date.as_deref().unwrap_or("").to_string();
+    let inf_str = dev.inf_path.as_deref().unwrap_or("").to_string();
+    let class_str = dev.class_name.as_deref().unwrap_or("").to_string();
+    let nv_ver = dev.friendly_gpu_version();
+
+    let (status_badge_cls, status_badge_txt) = if dev.has_problem {
+        ("badge badge-danger", (t.cm_problem)(dev.problem_code))
+    } else if dev.needs_reboot {
+        ("badge badge-warning", t.pending_reboot)
+    } else {
+        ("badge badge-success", "OK")
+    };
+    let hw_for_btn = short_hw.clone();
+
+    rsx! {
+        div { class: "item-row row-between wrap",
+            div { class: "grow-wide",
+                div { class: "row wrap",
+                    span { class: "text-sm fw-semibold", "{title_str}" }
+                    if !hw_hint.is_empty() {
+                        span { class: "badge badge-warning", "{hw_hint}" }
+                    } else if !decoded_ven.is_empty() {
+                        span { class: "badge badge-info", "{decoded_ven}" }
+                    }
+                    if !class_str.is_empty() {
+                        span { class: "badge badge-info", "{class_str}" }
+                    }
+                    if let Some(nv) = nv_ver {
+                        span { class: "badge badge-success", "GeForce {nv}" }
+                    }
+                }
+                div { class: "text-xs text-muted mt-1",
+                    if !vendor_str.is_empty() {
+                        "{vendor_str} • "
+                    }
+                    if !ver_str.is_empty() {
+                        "v{ver_str} • "
+                    }
+                    if !date_str.is_empty() {
+                        "{date_str} • "
+                    }
+                    if !inf_str.is_empty() {
+                        "{inf_str} • "
+                    }
+                    if !short_hw.is_empty() {
+                        "{short_hw}"
+                    }
+                }
+            }
+            div { class: "row",
+                if dev.has_problem && !hw_for_btn.is_empty() {
+                    button {
+                        class: "btn btn-secondary",
+                        disabled: *is_working.read(),
+                        onclick: move |_| search_catalog(hw_for_btn.clone(), is_working, status_msg, catalog_matches),
+                        "{t.search_catalog}"
+                    }
+                }
+                span { class: "{status_badge_cls}", "{status_badge_txt}" }
             }
         }
     }

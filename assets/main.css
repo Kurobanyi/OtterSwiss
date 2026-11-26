@@ -747,6 +747,16 @@ button.badge {
     border-bottom: none;
 }
 
+/* TE-02: variantes de `.list-row`: compacta (lista de resultados) y con aire a los lados (lista dentro de un modal). */
+.list-row.dense {
+    padding: var(--space-1) 0;
+}
+
+.list-row.padded {
+    padding: var(--space-2);
+    gap: var(--space-2);
+}
+
 /* TE-25: fila con borde de una lista (app de la tienda, driver, dispositivo). El layout lo ponen las utilidades
    (`row-between`, `stack-1`…); dentro de una `.modal-list` se separa del fondo con `--surface`. */
 .item-row {
@@ -899,15 +909,19 @@ button.badge {
 .wrap { flex-wrap: wrap; }
 .gap-2 { gap: var(--space-2); }
 .gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
 .grow { flex: 1; min-width: 0; }
 /* Columna o campo que crece pero no baja de 240px antes de pasar a otra línea (buscadores, título de una fila). */
 .grow-wide { flex: 1; min-width: 240px; }
 .min-w-0 { min-width: 0; }
 .mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mr-2 { margin-right: var(--space-2); }
 .ml-5 { margin-left: var(--space-5); }
 .mb-1 { margin-bottom: var(--space-1); }
 .mb-2 { margin-bottom: var(--space-2); }
 .clickable { cursor: pointer; }
+.break-all { word-break: break-all; }
 .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pre-wrap { white-space: pre-wrap; }
 .break-all { word-break: break-all; }
@@ -968,4 +982,67 @@ button.badge {
     .btn[aria-pressed="true"] {
         outline: 2px solid Highlight;
     }
+}
+
+/* TE-02: componentes de las vistas que estaban como `style:` en Rust. */
+.card-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+}
+
+.card-warning {
+    border: 1px solid var(--warning);
+    background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+
+.heading-flat {
+    margin: 0;
+    font-size: var(--font-size-md);
+    color: var(--text);
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: var(--space-3);
+}
+
+.tile {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: var(--space-3);
+}
+
+.kv-row {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    font-size: var(--font-size-xs);
+    padding: var(--space-1) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.kv-value {
+    color: var(--text);
+    text-align: right;
+    font-weight: 500;
+}
+
+.info-box {
+    background: var(--bg);
+    padding: var(--space-3);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.code-box {
+    font-size: var(--font-size-xs);
+    background: var(--bg);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    word-break: break-all;
 }

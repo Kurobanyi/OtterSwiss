@@ -10,7 +10,9 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource};
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
-use crate::ui::components::{AppIconBadge, Card, Modal, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{
+    AppIconBadge, Card, EmptyState, Modal, ProgressBar, StatusBanner, Tone,
+};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::installer::{
@@ -212,8 +214,7 @@ pub fn ToolsView() -> Element {
 
             if state.is_working {
                 div {
-                    class: "card",
-                    style: "border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface));",
+                    class: "card card-warning",
                     div { class: "stack-2",
                         strong { class: "text-warning",
                             if en { "Installing — Please keep OtterSwiss open until finished." } else { "Instalando — No cierres OtterSwiss hasta que finalice." }
@@ -254,7 +255,7 @@ pub fn ToolsView() -> Element {
                 Card {
                     title: ctx_title,
                     subtitle: ctx_sub,
-                    div { style: "display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);",
+                    div { class: "row-between gap-3",
                         span {
                             class: if *context_menu_active.read() { "badge badge-success" } else { "badge badge-warning" },
                             if *context_menu_active.read() {
@@ -467,6 +468,13 @@ pub fn BatchAppStoreCard() -> Element {
 
                     if let Some(msg) = state.summary_msg.as_ref().map(|m| m.text(en)) {
                         span { class: "badge badge-info", "{msg}" }
+                    }
+                }
+
+                if filtered_catalog.is_empty() {
+                    EmptyState {
+                        title: strings(en).store_empty.to_string(),
+                        description: strings(en).store_empty_hint.to_string(),
                     }
                 }
 

@@ -299,7 +299,7 @@ pub fn DashboardView() -> Element {
                 Card {
                     title: overview_title,
                     subtitle: overview_sub,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--font-size-sm);",
+                    div { class: "stack-2 text-sm",
                         p { strong { "CPU: " } "{hw.cpu_name} ({hw.logical_cores}T)" }
                         p { strong { if en { "Board: " } else { "Placa: " } } "{hw.motherboard}" }
                         p { strong { "RAM: " } "{hw.total_ram_mb} MB" }
@@ -326,7 +326,7 @@ pub fn DashboardView() -> Element {
                     title: power_title,
                     subtitle: power_sub,
                     div { class: "stack-2",
-                        code { style: "font-size: var(--font-size-xs); background: var(--bg); padding: var(--space-2); border-radius: var(--radius-sm); word-break: break-all;",
+                        code { class: "code-box",
                             "{active_scheme.read()}"
                         }
                         p { class: "text-xs text-muted",
@@ -396,7 +396,7 @@ pub fn DashboardView() -> Element {
                         Card {
                             title: title.to_string(),
                             subtitle: Some(backup_note.to_string()),
-                            div { style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
+                            div { class: "flex gap-3 wrap",
                                 span { class: "badge badge-success", if en { "Registry: {rb.restored_registry}" } else { "Registro: {rb.restored_registry}" } }
                                 span { class: "badge badge-success", if en { "Services: {rb.restored_services}" } else { "Servicios: {rb.restored_services}" } }
                                 span { class: "badge badge-success", if en { "Power: {rb.restored_power}" } else { "Energía: {rb.restored_power}" } }

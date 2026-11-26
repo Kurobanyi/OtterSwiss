@@ -58,10 +58,9 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
     rsx! {
         div { class: "content-body",
             div {
-                class: "card",
-                style: "display: flex; justify-content: space-between; align-items: center; padding: var(--space-3) var(--space-4); flex-wrap: wrap; gap: var(--space-3);",
+                class: "card card-bar",
                 div {
-                    h3 { style: "margin: 0; font-size: var(--font-size-md); color: var(--text);",
+                    h3 { class: "heading-flat",
                         if en { "Hardware Specifications" } else { "Especificaciones del sistema" }
                     }
                     span { class: "text-xs text-muted",
@@ -70,7 +69,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                 }
                 div { class: "row",
                     if let Some(msg) = status_msg().map(|m| m.text(en)) {
-                        span { style: "font-size: var(--font-size-xs); color: var(--accent-text); margin-right: var(--space-2);", "{msg}" }
+                        span { class: "text-xs text-accent mr-2", "{msg}" }
                     }
                     button {
                         class: "btn btn-secondary",
@@ -206,11 +205,11 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                         "{ram_gb:.1} GB {specs.memory.memory_type} @ {specs.memory.effective_speed_mts} MT/s ({specs.memory.populated_slots}/{specs.memory.total_slots})"
                     }
                 }
-                div { style: "display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: var(--space-3);",
+                div { class: "card-grid",
                     for module in &specs.memory.modules {
                         div {
                             key: "{module.slot}",
-                            style: "border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-3);",
+                            class: "tile",
                             div { class: "text-xs fw-bold mb-1", "{module.slot}" }
                             if module.populated {
                                 div { class: "text-sm", "{capacity_mb(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
@@ -229,9 +228,9 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
 #[component]
 fn SpecRow(label: String, value: String) -> Element {
     rsx! {
-        div { style: "display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--font-size-xs); padding: var(--space-1) 0; border-bottom: 1px solid var(--border);",
-            span { style: "color: var(--text-muted);", "{label}" }
-            span { style: "color: var(--text); text-align: right; font-weight: 500;", "{value}" }
+        div { class: "kv-row",
+            span { class: "text-muted", "{label}" }
+            span { class: "kv-value", "{value}" }
         }
     }
 }

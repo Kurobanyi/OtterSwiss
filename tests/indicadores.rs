@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 const INDICADORES: &[(&str, usize, &str)] = &[
     (
         "style:",
-        45,
-        "estilos inline: usar clases de assets/main.css (TE-02, TE-25)",
+        2,
+        "estilos inline: usar clases de assets/main.css; quedan solo los anchos calculados de las barras (TE-02, TE-25)",
     ),
     (
         "if en",

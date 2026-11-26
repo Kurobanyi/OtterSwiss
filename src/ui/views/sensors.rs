@@ -106,7 +106,7 @@ pub fn SensorsView() -> Element {
             Card {
                 title: thermal_title,
                 subtitle: thermal_sub,
-                div { style: "display: flex; justify-content: flex-end; gap: var(--space-2);",
+                div { class: "row-end",
                     button {
                         class: "btn btn-secondary",
                         onclick: move |_| peaks.write().clear(),
@@ -139,7 +139,7 @@ pub fn SensorsView() -> Element {
                 Card {
                     title: diagnostics_title,
                     subtitle: None,
-                    div { style: "display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--font-size-xs); color: var(--text-muted);",
+                    div { class: "stack-1 text-xs text-muted",
                         for note in snap.backend_notes.iter() {
                             p { key: "{note}", "• {note}" }
                         }
@@ -171,16 +171,16 @@ fn render_sensor_section(
                         subtitle: Some(reading.sensor_type.clone()),
                         div { class: "stack-2",
                             h2 {
-                                style: if reading.current_celsius >= 80.0 {
-                                    "color: var(--danger-text); font-size: var(--font-size-xl);"
+                                class: if reading.current_celsius >= 80.0 {
+                                    "text-xl text-danger"
                                 } else if reading.current_celsius >= 65.0 {
-                                    "color: var(--warning-text); font-size: var(--font-size-xl);"
+                                    "text-xl text-warning"
                                 } else {
-                                    "color: var(--success-text); font-size: var(--font-size-xl);"
+                                    "text-xl text-success"
                                 },
                                 "{reading.current_celsius:.1} °C"
                             }
-                            div { style: "display: flex; gap: var(--space-3); font-size: var(--font-size-xs); color: var(--text-muted);",
+                            div { class: "flex gap-3 text-xs text-muted",
                                 if let Some(pk) = peaks.get(&reading.name) {
                                     span { if en { "Peak: {pk:.1} °C" } else { "Pico: {pk:.1} °C" } }
                                 }

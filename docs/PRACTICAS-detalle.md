@@ -523,7 +523,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 
 <a id="te-02"></a>
 ### TE-02 · 185 estilos inline: el CSS no tiene clases de layout ni de componente
-- **Prioridad**: P1 · **Esfuerzo**: M/L · **Evidencia**: confirmado (185 `style:`) · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M/L · **Evidencia**: confirmado (185 `style:`) · **Estado**: Hecha
 - **Qué pasa**: `flex column gap-2` 19 veces, `xs muted` 19, fila con `border-bottom` 9, botón chico 9, inputs con estilo completo
   3. UI-10 pasó los valores a tokens pero los dejó inline: un cambio de diseño toca de 7 a 19 sitios, las copias ya divergen y el
   inline no admite `:hover`, `:disabled`, `:focus-visible` ni media queries. `AGENTS.md:10` dice que `main.css` concentra los
@@ -532,6 +532,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
   componentes (`.progress`, `.list-row`, `.input`, `.btn-sm`, `.card-kicker`, `.select-row`); migrar vista por vista junto con
   `CL-11`.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): 110 de 161 estilos inline pasaron a clases; quedan 51, sobre todo valores calculados o únicos. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `style:` en `src/` baja de 45 a 2: los dos anchos calculados de las barras de progreso (`ProgressBar` y el archivador), que son valores en tiempo de ejecución. Clases nuevas en `assets/main.css`: `.list-row.dense|.padded`, `.card-bar`, `.card-warning`, `.heading-flat`, `.card-grid`, `.tile`, `.kv-row`, `.kv-value`, `.info-box`, `.code-box`, `.mt-2`, `.mr-2`, `.gap-4`, `.break-all`; el resto usa las utilidades existentes (`stack-*`, `row-between`, `text-*`, `item-row`, `btn-sm`). El techo de `style:` en `tests/indicadores.rs` baja de 45 a 2. Verificado: `cargo test` (78 + 4, con `tests/temas.rs` sobre clases usadas y tokens), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="te-03"></a>
 ### TE-03 · No hay opción «según el sistema» y el selector de tema es un ciclo de seis
@@ -1089,12 +1090,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-21"></a>
 ### CL-21 · Funciones largas y bloques copiados (`DriversView` de 825 líneas)
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `DriversView` 825 líneas con 30 `let x = if en {…}` seguidos y 6 copias del bloque de tarea; `BatchAppStoreCard` 235;
   en core, `install_driver_updates` 179, `install_catalog_driver` 154 y cinco más de 80 a 130; apertura de sesión WUA copiada.
 - **Dónde**: `src/ui/views/drivers.rs:61-885`; `src/ui/views/tools.rs:425-660`; `src/core/drivers.rs`.
 - **Propuesta**: subcomponentes (`DriverToolbar`, `VendorUpdatesCard`, `CatalogCard`, `WuaCard`, `DeviceList`), `open_wua_searcher()`,
   y separar descarga, extracción e instalación.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `DriversView` pasa de 825 a 303 líneas (casi todo son los manejadores de escaneo, instalación y respaldo): `InstallConfirm`, `VendorUpdatesCard`, `HistoryCard`, `CatalogCard`, `WuaCard`, `DeviceListCard` y `DeviceRow` son componentes con sus señales como props; el filtro de dispositivos es `device_matches` (una lista de campos en vez de siete `contains` copiados) y la búsqueda en el Catálogo es `search_catalog`. Los filtros y la búsqueda viven en `DeviceListCard`. En core, `AR-29` y `CL-20` ya habían dejado `run_blocking` y la apertura de sesión WUA común. Verificado: `cargo test` (78 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="cl-22"></a>
 ### CL-22 · Lógica pura nueva sin tests
@@ -1130,11 +1132,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-25"></a>
 ### CL-25 · Componentes y clases que ya existen no se usan
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: instalar drivers, firmware o un .cab sin `ConfirmDialog` (`SEC-37`); escaneo sin `LoadingState`; filtros sin resultados
   sin `EmptyState`; la fila con checkbox rehecha 5 veces; los buscadores reimplementan `.input` inline.
 - **Dónde**: `src/ui/views/drivers.rs:537-880`; `src/ui/views/tools.rs:516-655`.
 - **Propuesta**: `ConfirmDialog`, `LoadingState`, `EmptyState`, un `CheckRow` y `class: "input grow"`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `CheckRow` (`ui/components/check_row.rs`) reemplaza la fila con casilla rehecha en Drivers (respaldo y Windows Update), Limpiador y Debloater; `EmptyState` cuando el filtro de dispositivos o de la tienda no deja resultados y `LoadingState` mientras se leen los dispositivos por primera vez; el buscador del desinstalador usa `input grow-wide`. Los tres caminos de instalación de drivers ya pasaban por `ConfirmDialog` (`SEC-37`). Verificado: `cargo test` (78 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="te-25"></a>
 ### TE-25 · 45 estilos inline nuevos; la tienda revierte clases utilitarias a inline

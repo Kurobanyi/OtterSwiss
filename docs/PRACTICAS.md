@@ -37,11 +37,9 @@ dependencias directas se usan.
 
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
-| [`TE-02`](PRACTICAS-detalle.md#te-02) | 185 estilos inline: el CSS no tiene clases de layout ni de componente | M/L | Parcial |
 | [`CL-05`](PRACTICAS-detalle.md#cl-05) | Funciones de unas 400 líneas | M | Parcial |
 | [`AR-02`](PRACTICAS-detalle.md#ar-02) | Dos pilas de respaldo de registro y tres almacenes JSON casi iguales | M | Parcial |
 | [`AR-26`](PRACTICAS-detalle.md#ar-26) | Core arma textos y la UI los vuelve a leer como datos | M | Parcial |
-| [`CL-21`](PRACTICAS-detalle.md#cl-21) | Funciones largas y bloques copiados (`DriversView` de 825 líneas) | M | Pendiente |
 
 ## P2
 
@@ -56,7 +54,6 @@ dependencias directas se usan.
 | [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Parcial |
 | [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Parcial |
 | [`CL-23`](PRACTICAS-detalle.md#cl-23) | Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID | S | Parcial |
-| [`CL-25`](PRACTICAS-detalle.md#cl-25) | Componentes y clases que ya existen no se usan | S | Pendiente |
 
 ## P3
 

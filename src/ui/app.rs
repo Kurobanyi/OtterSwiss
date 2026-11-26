@@ -351,7 +351,7 @@ pub fn App() -> Element {
                                 if *is_downloading_update.read() {
                                     div { class: "stack-2",
                                         ProgressBar { percent: *update_progress.read() }
-                                        div { class: "text-xs text-muted", style: "display: flex; justify-content: space-between;",
+                                        div { class: "row-between text-xs text-muted",
                                             span { "{update_progress.read()}%" }
                                             span { "{upd.asset_name}" }
                                         }

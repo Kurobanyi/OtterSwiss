@@ -145,7 +145,7 @@ pub fn ArchiverView() -> Element {
                     subtitle: Some(if prog.current_file.is_empty() { "…".to_string() } else { prog.current_file.clone() }),
                     on_close: move |_| {},
                         ProgressBar { percent: prog.percent }
-                        div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",
+                        div { class: "row-between text-xs text-muted",
                             span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
                             span { "{prog.speed_mbps:.1} MB/s • {strings(en).time_left} {eta_txt}" }
                         }
@@ -218,7 +218,7 @@ pub fn ArchiverView() -> Element {
                         }
 
                         if *mode.read() == ArchiveMode::Compress {
-                            div { style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1);",
+                            div { class: "row mt-1",
                                 span { class: "text-xs text-muted", if en { "Format:" } else { "Formato:" } }
                                 button {
                                     class: "btn btn-secondary",
@@ -244,7 +244,7 @@ pub fn ArchiverView() -> Element {
                             }
                         }
 
-                        div { style: "display: flex; gap: var(--space-2); margin-top: var(--space-2);",
+                        div { class: "flex gap-2 mt-2",
                             button {
                                 class: "btn btn-primary",
                                 disabled: *is_working.read() || src_path.read().trim().is_empty() || dest_path.read().trim().is_empty(),

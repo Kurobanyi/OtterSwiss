@@ -22,7 +22,7 @@ use crate::core::platform::process::{run_captured, system32_dir};
 use crate::core::security::acl::create_admin_only_dir;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InstalledDriverDevice {
     pub device_desc: Option<String>,
     pub friendly_name: Option<String>,

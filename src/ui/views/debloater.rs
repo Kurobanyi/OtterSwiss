@@ -8,7 +8,7 @@ use crate::core::debloat::{
     DEBLOAT_REG_TWEAKS, DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult,
     DebloaterManager, DetectedBloatApp,
 };
-use crate::ui::components::{Card, ConfirmDialog, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{Card, CheckRow, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
@@ -281,7 +281,7 @@ pub fn DebloaterView() -> Element {
                 title: debloat_title,
                 subtitle: debloat_sub,
                 div { class: "row-between gap-3 wrap",
-                    div { style: "display: flex; gap: var(--space-2); flex-wrap: wrap;",
+                    div { class: "flex gap-2 wrap",
                         button {
                             class: "btn btn-danger",
                             disabled: busy || total_selected == 0,
@@ -375,7 +375,7 @@ pub fn DebloaterView() -> Element {
                         for item in rep.outcomes.iter() {
                             div {
                                 key: "{item.label}",
-                                style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); font-size: var(--font-size-xs);",
+                                class: "list-row dense text-xs",
                                 div {
                                     div { class: "fw-semibold", "{tr(&item.label, en)}" }
                                     if !item.message.is_empty() {
@@ -401,18 +401,15 @@ pub fn DebloaterView() -> Element {
                             let tid = spec.id;
                             let checked = selected_regs.read().contains(tid);
                             rsx! {
-                                label {
+                                CheckRow {
                                     key: "{tid}",
-                                    style: "display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;",
-                                    input {
-                                        r#type: "checkbox",
-                                        checked: checked,
-                                        disabled: busy,
-                                        onchange: move |evt| {
-                                            let mut s = selected_regs.write();
-                                            if evt.checked() { s.insert(tid); } else { s.remove(tid); }
-                                        },
-                                    }
+                                    class: "item-row gap-3",
+                                    checked,
+                                    disabled: busy,
+                                    on_change: move |on| {
+                                        let mut s = selected_regs.write();
+                                        if on { s.insert(tid); } else { s.remove(tid); }
+                                    },
                                     div {
                                         div { class: "text-sm fw-semibold", "{tr(&spec.label, en)}" }
                                         div { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
@@ -445,24 +442,19 @@ pub fn DebloaterView() -> Element {
                                         let app_id = app.id;
                                         let checked = app.installed && selected_apps.read().contains(app_id);
                                         rsx! {
-                                            label {
+                                            CheckRow {
                                                 key: "{app_id}",
-                                                style: "display: flex; justify-content: space-between; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;",
-                                                div { class: "row gap-3",
-                                                    input {
-                                                        r#type: "checkbox",
-                                                        checked: checked,
-                                                        disabled: busy || !app.installed,
-                                                        onchange: move |evt| {
-                                                            let mut s = selected_apps.write();
-                                                            if evt.checked() { s.insert(app_id); } else { s.remove(app_id); }
-                                                        },
-                                                    }
-                                                    div {
-                                                        span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
-                                                        span { class: "text-xs text-muted", "({app.package_name})" }
-                                                        div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
-                                                    }
+                                                class: "item-row gap-3",
+                                                checked,
+                                                disabled: busy || !app.installed,
+                                                on_change: move |on| {
+                                                    let mut s = selected_apps.write();
+                                                    if on { s.insert(app_id); } else { s.remove(app_id); }
+                                                },
+                                                div { class: "grow",
+                                                    span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
+                                                    span { class: "text-xs text-muted", "({app.package_name})" }
+                                                    div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
                                                 }
                                                 span {
                                                     class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
