@@ -6,7 +6,7 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-25
 
-**Rama:** `auditoria/buenas-practicas`, unos 130 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
+**Rama:** `auditoria/buenas-practicas`, unos 137 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
 `origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
 viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro y se puede borrar. Árbol limpio.
 
@@ -34,18 +34,25 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
 - Sesión del 25/11 (cierre): tienda por `winget install` dentro del Job (`SEC-35`; `store/winget.rs`, `InstallSource`), catálogos de
   core traducidos en la UI (`ui/i18n/core_text.rs`, test `catalogos_de_core_traducidos`), `AR-28`, `OR-07` (`AppIconBadge`),
   `TE-26`, `CL-24` (`read_wmi<T>`), `AR-29` (`run_blocking` en drivers), `CL-20`, `IN-09` e `IN-10`.
-- **Último resultado:** `cargo test` 78 + 4 de integración (`indicadores`, `temas`; más 3 ignorados y 7 de VM),
-  `clippy --all-targets -- -D warnings` y `fmt --check` en verde. **Sin recorrer en la app**: la Tienda nueva sí; los catálogos
-  traducidos en inglés (Inicio, Debloater, Limpiador, restos) no, porque otra ventana tapaba la pantalla.
+- Sesión del 25/11 (refactors): `CL-21` (`DriversView` en subcomponentes), `CL-25` (`CheckRow`, `EmptyState`, `LoadingState`),
+  `TE-02` (`style:` 45 → 2), `IN-02` parcial (un módulo de textos por vista en `ui/i18n/`, `if en` 216 → 20), `OR-04` (29
+  archivos reordenados con script, excepciones en `AGENTS.md`), `AR-06` parcial (`source: None` 115 → 95; `Registry` y `Service`
+  guardan `BoxedSource`), `CL-11`, `CL-23`, `AR-25` (`NumericVersion`) y `AR-27` (`problem: Option<u32>`). Techos de
+  `tests/indicadores.rs` bajados: `style:` 2, `if en` 20, `source: None` 95.
+- **Último resultado:** `cargo test` 92 + 4 de integración (más 3 ignorados y 7 de VM), `clippy --all-targets -- -D warnings` y
+  `fmt --check` en verde. **Sin recorrer en la app** lo de esta sesión (`CL-21`, `CL-25`, `TE-02`, `IN-02`, `CL-11`): la pantalla
+  estaba bloqueada y la app abierta corría como administrador. Tampoco en inglés los catálogos de `core_text.rs`.
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- Recorrer en inglés Inicio (plan y resultado), Debloater, Limpiador y los restos del Desinstalador (catálogos de `core_text.rs`).
+- Recorrer en la copia sin elevar (ver «Cómo verificar»), en oscuro y claro, español e inglés: Drivers (filtros, tarjetas, diálogo
+  de confirmación), Limpiador y Debloater (casillas `CheckRow`), Dashboard (aviso de administrador con `actions`), Hardware,
+  Sensores, DNS, Desinstalador (filas de restos, orden), Tienda (sin resultados) y los textos de `core_text.rs` en inglés.
 - En una VM de Hyper-V (Windows Sandbox no trae winget): instalar una app de la tienda para el equipo y una por usuario, cancelar una
   a mitad, «Buscar actualización» con una app al día; `tests/vm_sistema.rs`; instalar y quitar un driver de cada camino; quitar una
   app Appx; descargas detrás de un proxy de máquina (`netsh winhttp set proxy`).
-- Refactors grandes, de a un archivo y sin cambiar comportamiento: `CL-21` (partir `DriversView`), `CL-25`, `TE-02` (45 `style:`),
-  `IN-02` (216 `if en`), `OR-04`, `AR-06` (116 `source: None`), `CL-05`, `AR-02`, `CL-11`, `CL-23`, `AR-18`, `AR-25`, `AR-27`, y el
-  resto de `AR-17`/`AR-26`/`UI-11` (detalles con datos del motor). Al bajar un indicador, bajar su techo en `tests/indicadores.rs`.
+- Refactors que quedan: `CL-05` (vistas largas), `AR-06` (variantes por causa), `IN-02` (`main.rs`, `startup.rs`,
+  `AppCategory::label`), `AR-02` (snapshot del Debloater), `AR-18` y el resto de `AR-17`/`AR-26`/`UI-11`. Al bajar un indicador,
+  bajar su techo en `tests/indicadores.rs`.
 - Decisiones del autor: `AR-19`, `UX-02`, `UX-03`, `SEC-17` (con `SYS-24`).
 - Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32`, de que LibreWolf, Rufus e Intel
   salieron, de la tienda por winget y del cambio de paletas.
@@ -72,7 +79,7 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 78
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 92
 tests + 4 de integración y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
 Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila

@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **97 hechas, 13 parciales, 3 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **105 hechas, 7 parciales, 1 pendiente y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -60,8 +60,11 @@ dependencias directas se usan.
 ## Siguiente
 
 1. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
-2. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-3. `AR-17`/`UI-11`: catálogos traducidos en la UI (`core_text.rs`); falta recorrerlo en inglés. Decisión del autor: `AR-19`.
+2. `CL-05`: partir `UninstallerView`, `DashboardView`, `DebloaterView`, `DnsView`, `App` y `ToolsView`. `AR-06`: variantes por causa
+   (`NotFound`, `AccessDenied`, `ExitCode`) para los 95 `source: None` que quedan. `IN-02`: los diálogos de `main.rs`/`startup.rs`
+   y `AppCategory::label`. `AR-02`: el snapshot del Debloater sobre `registry`. `AR-17`/`AR-26`: detalles con datos del motor.
+3. Recorrer en la app, en español e inglés y en los dos temas, lo hecho el 25/11 (`CL-21`, `CL-25`, `TE-02`, `IN-02`, `CL-11`).
+   Decisión del autor: `AR-19`.
 
 ## Lo que hay que conservar
 
