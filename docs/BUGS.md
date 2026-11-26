@@ -62,7 +62,8 @@ Conservan su expediente; se retoman por decisión del autor.
 
 ## Siguiente
 
-1. `UI-11`: avisos y títulos de error ya se traducen; faltan los catálogos de core (ajustes, Debloater, limpiador, restos).
+1. `UI-11`: avisos, títulos de error y catálogos de core ya se traducen; falta recorrerlo en la app en inglés y los
+   detalles con datos del motor.
 2. En una VM: instalar dos apps de la tienda (una para el equipo y una por usuario), instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
 3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
 4. Mejoras de `docs/PRACTICAS.md`.

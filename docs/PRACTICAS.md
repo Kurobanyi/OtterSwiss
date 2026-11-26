@@ -77,8 +77,7 @@ dependencias directas se usan.
 
 1. Con una VM desechable: correr `tests/vm_sistema.rs` sobre el motor y la búsqueda de restos ya partidos (`CL-05`).
 2. De a un archivo y sin cambiar comportamiento: `AR-06`/`CL-20`, `TE-02`, `IN-02` y `OR-04`.
-3. Decidido el 25/11, a medias: los catálogos con texto en core (`AR-17`, `AR-26`, `UI-11`): que sus informes y su progreso lleven
-   el ID y la UI ponga el texto. Decisión del autor: `AR-19`.
+3. `AR-17`/`UI-11`: catálogos traducidos en la UI (`core_text.rs`); falta recorrerlo en inglés. Decisión del autor: `AR-19`.
 
 ## Lo que hay que conservar
 
