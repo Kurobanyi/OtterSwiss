@@ -3,16 +3,17 @@
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use winreg::RegValue;
-use winreg::enums::{KEY_READ, KEY_WRITE};
+use winreg::enums::KEY_WRITE;
 
 use super::{DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS, DebloatRegEntry, DebloaterManager};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
-use crate::core::platform::registry::{RegHive, RegLocation};
-use crate::core::platform::registry::{reg_type_to_u32, u32_to_reg_type};
+use crate::core::platform::registry::{
+    RegHive, RegLocation, delete_value_if_present, is_storable_value, read_raw_value,
+    reg_type_to_u32, write_raw_value,
+};
 use crate::core::platform::safe_fs::delete_verified_file;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
@@ -56,7 +57,7 @@ impl DebloatRegSnapshot {
             return self.previous_raw.is_none();
         }
         match (&self.previous_raw, self.previous_type, self.previous_dword) {
-            (Some(raw), Some(t), _) => raw.len() <= 1024 && [1, 2, 3, 4, 11].contains(&t),
+            (Some(raw), Some(t), _) => is_storable_value(t, raw.len()),
             (None, None, Some(_)) => true,
             _ => false,
         }
@@ -106,31 +107,11 @@ impl DebloaterManager {
                 continue;
             }
 
-            let root = RegLocation::native(entry.hive).root();
-            let flags = RegLocation::native(entry.hive).flags(KEY_READ);
-
-            // Distinguir «no existe» de un error real: un error no puede guardarse como «no existía».
-            let prev = match root.open_subkey_with_flags(entry.subkey, flags) {
-                Ok(key) => match key.get_raw_value(entry.value_name) {
-                    Ok(raw) => Some(raw),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => {
-                        return Err(CoreError::Registry {
-                            path: format!("{}\\{}", entry.subkey, entry.value_name),
-                            message: format!("No se pudo leer el valor original: {}", e),
-                            source: Some(Box::new(e)),
-                        });
-                    }
-                },
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                Err(e) => {
-                    return Err(CoreError::Registry {
-                        path: entry.subkey.to_string(),
-                        message: format!("No se pudo abrir la clave original: {}", e),
-                        source: Some(Box::new(e)),
-                    });
-                }
-            };
+            let prev = read_raw_value(
+                RegLocation::native(entry.hive),
+                entry.subkey,
+                entry.value_name,
+            )?;
 
             doc.entries.push(DebloatRegSnapshot {
                 hive: entry.hive,
@@ -207,37 +188,27 @@ impl DebloaterManager {
         let entry = snap.catalog_entry().ok_or_else(|| {
             CoreError::Validation("Entrada fuera del catálogo del Debloater".into())
         })?;
-        let root = RegLocation::native(entry.hive).root();
-        let flags = RegLocation::native(entry.hive).flags(KEY_READ | KEY_WRITE);
+        let location = RegLocation::native(entry.hive);
 
         if snap.existed {
-            let (key, _) = root.create_subkey_with_flags(entry.subkey, flags)?;
             match (&snap.previous_raw, snap.previous_type, snap.previous_dword) {
-                (Some(raw), Some(t), _) => key.set_raw_value(
-                    entry.value_name,
-                    &RegValue {
-                        bytes: raw.as_slice().into(),
-                        vtype: u32_to_reg_type(t),
-                    },
-                )?,
-                (None, None, Some(dword)) => key.set_value(entry.value_name, &dword)?,
-                _ => {
-                    return Err(CoreError::Validation(
-                        "Snapshot inconsistente: existía sin valor guardado".into(),
-                    ));
+                (Some(raw), Some(t), _) => {
+                    write_raw_value(location, entry.subkey, entry.value_name, t, raw)
                 }
+                // Formato antiguo (solo DWORD), de respaldos de versiones previas.
+                (None, None, Some(dword)) => write_raw_value(
+                    location,
+                    entry.subkey,
+                    entry.value_name,
+                    4,
+                    &dword.to_le_bytes(),
+                ),
+                _ => Err(CoreError::Validation(
+                    "Snapshot inconsistente: existía sin valor guardado".into(),
+                )),
             }
-            Ok(())
         } else {
-            match root.open_subkey_with_flags(entry.subkey, flags) {
-                Ok(key) => match key.delete_value(entry.value_name) {
-                    Ok(()) => Ok(()),
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    Err(e) => Err(e.into()),
-                },
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                Err(e) => Err(e.into()),
-            }
+            delete_value_if_present(location, entry.subkey, entry.value_name)
         }
     }
 }

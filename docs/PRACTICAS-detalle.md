@@ -84,7 +84,7 @@ Leyenda:
 
 <a id="ar-02"></a>
 ### AR-02 · Dos pilas de respaldo de registro y tres almacenes JSON casi iguales
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: el Debloater tiene su propio `DebloatRegHive`, `DebloatRegSnapshot`, captura, aplicación y restauración, que duplican
   `RegHive`, `RegistrySnapshot` y `registry::capture/apply/restore`. La validación está copiada con números mágicos
   (`[1, 2, 3, 4, 11]` y `1024` en los dos lados) y ya divergen: el snapshot del Debloater no tiene `key_created` ni `applied_bytes`.
@@ -95,6 +95,7 @@ Leyenda:
 - **Propuesta**: `JsonStore<T>` con `load_or(default, max, validate)` y `save`; el Debloater expresa sus entradas como
   `RegistryTweakSpec` y usa `registry` y un `BackupManager` parametrizado; un lector del formato viejo solo para migrar.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): RegHive/RegLocation comunes y platform/json_file.rs (read_backup, write_backup) para los tres respaldos. El snapshot del Debloater conserva su formato propio por compatibilidad con respaldos existentes. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre final** (2026-11-25): el Debloater ya no tiene su propia pila de registro. `platform/registry.rs` tiene la regla de qué se puede guardar en un respaldo (`is_storable_value`, `ALLOWED_SNAPSHOT_TYPES`, `MAX_SNAPSHOT_VALUE_BYTES`, antes copiadas con números mágicos) y las operaciones `read_raw_value`, `write_raw_value` y `delete_value_if_present`; las usan el respaldo del Debloater (captura y reversión) y la validación del perfil. El snapshot del Debloater conserva su formato en disco (`previous_type`/`previous_raw`, más el `previous_dword` antiguo que sigue leyéndose) para no invalidar respaldos ya guardados; expresar sus entradas como `RegistryTweakSpec` se descartó porque sus ajustes tienen tablas distintas (varias entradas por ajuste, solo DWORD). Prueba: `solo_se_guardan_tipos_conocidos_y_valores_cortos`. Verificado: `cargo test`, `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-03"></a>
 ### AR-03 · Todo es `pub`: hay atajos que saltan las validaciones y el compilador no ve el código muerto
@@ -289,7 +290,7 @@ Leyenda:
 
 <a id="ar-18"></a>
 ### AR-18 · Tres versiones del crate `windows` y dependencias duplicadas
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: confirmado (`Cargo.lock`) · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: confirmado (`Cargo.lock`) · **Estado**: Hecha
 - **Qué pasa**: `windows` 0.57 (por `sysinfo` 0.31), 0.58 (propia) y 0.61 (Dioxus y `webview2-com`); `windows-sys` en cuatro
   versiones; `thiserror` 1 y 2; `dirs` 5 y 6. `sysinfo` solo cuenta núcleos, RAM y marca del CPU, que `specs` ya lee. Más tiempo de
   compilación, binario más grande y tres juegos de bindings.
@@ -297,6 +298,7 @@ Leyenda:
 - **Propuesta**: quitar `sysinfo` (con `AR-04`); subir `windows` a 0.61, `thiserror` a 2 y `dirs` a 6, revisando los cambios de API.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Fuera sysinfo (y windows 0.57); thiserror 2 y dirs 6. Queda alinear windows 0.58 con 0.61, que cambia la API. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): windows 0.58 → 0.61 hecho en la rama `tmp/windows-061` (commit `db8c18c`): un solo crate `windows` en el árbol, clippy, tests y build release en verde. Falta unirla a esta rama. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre final** (2026-11-25): la rama temporal `tmp/windows-061` ya estaba integrada (commit `10a585b`) y se borró. `cargo tree -d` ya no muestra `windows`, `thiserror` ni `dirs` duplicados; lo que queda (`windows-sys`, `windows-link`, `raw-window-handle`, `syn`…) lo traen Dioxus, `tao` y otras dependencias y no se controla desde `Cargo.toml`.
 
 <a id="ar-19"></a>
 ### AR-19 · Tres estilos de API en core

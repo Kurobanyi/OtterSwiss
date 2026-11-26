@@ -7,14 +7,12 @@ use crate::core::optimize::tweaks_catalog::{
 };
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
+use crate::core::platform::registry::{MAX_SNAPSHOT_VALUE_BYTES, is_storable_value};
 use crate::core::platform::safe_fs::delete_verified_file;
 
 const BACKUP_SCHEMA_VERSION: u32 = 2;
 const MAX_BACKUP_BYTES: u64 = 2 * 1024 * 1024;
 const BACKUP_MUTEX_NAME: &str = r"Global\OtterSwiss_Backup_Lock";
-/// REG_SZ, REG_EXPAND_SZ, REG_BINARY, REG_DWORD, REG_QWORD.
-const ALLOWED_SNAPSHOT_TYPES: [u32; 5] = [1, 2, 3, 4, 11];
-const MAX_SNAPSHOT_VALUE_BYTES: usize = 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistrySnapshot {
@@ -39,9 +37,7 @@ impl RegistrySnapshot {
             return false;
         }
         match (self.existed, self.value_type, &self.raw_bytes) {
-            (true, Some(t), Some(raw)) => {
-                ALLOWED_SNAPSHOT_TYPES.contains(&t) && raw.len() <= MAX_SNAPSHOT_VALUE_BYTES
-            }
+            (true, Some(t), Some(raw)) => is_storable_value(t, raw.len()),
             (false, None, None) => true,
             _ => false,
         }

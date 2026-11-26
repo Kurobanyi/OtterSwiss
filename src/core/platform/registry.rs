@@ -1,8 +1,14 @@
 //! Registro de Windows: colmena, vista de 32 o 64 bits y tipos de valor. Sin reglas de la app.
 
+use std::io;
+
 use serde::{Deserialize, Serialize};
-use winreg::RegKey;
-use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
+use winreg::enums::{
+    HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY, KEY_WRITE,
+};
+use winreg::{RegKey, RegValue};
+
+use crate::core::error::{CoreError, CoreResult};
 
 /// Colmena del registro que la app puede tocar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -116,6 +122,117 @@ pub(crate) fn u32_to_reg_type(v: u32) -> winreg::enums::RegType {
     }
 }
 
+/// REG_SZ, REG_EXPAND_SZ, REG_BINARY, REG_DWORD y REG_QWORD: los únicos tipos que guardan los respaldos de registro
+/// (el del perfil y el del Debloater). Otro tipo solo puede venir de un respaldo manipulado.
+pub const ALLOWED_SNAPSHOT_TYPES: [u32; 5] = [1, 2, 3, 4, 11];
+
+/// Tamaño máximo de un valor guardado en un respaldo: los ajustes son DWORD, QWORD o cadenas cortas.
+pub const MAX_SNAPSHOT_VALUE_BYTES: usize = 1024;
+
+/// ¿Un valor de un respaldo tiene un tipo y un tamaño que la app pudo haber guardado? (AR-02: una sola regla.)
+pub fn is_storable_value(vtype: u32, len: usize) -> bool {
+    ALLOWED_SNAPSHOT_TYPES.contains(&vtype) && len <= MAX_SNAPSHOT_VALUE_BYTES
+}
+
+fn registry_error(path: String, what: &str, e: io::Error) -> CoreError {
+    CoreError::Registry {
+        path,
+        message: format!("{what}: {e}"),
+        source: Some(Box::new(e)),
+    }
+}
+
+/// Lee el valor tal como está (tipo y bytes). `None` si la clave o el valor no existen; cualquier otro error se
+/// propaga, porque un error no puede guardarse como «no existía».
+pub fn read_raw_value(
+    location: RegLocation,
+    subkey: &str,
+    value_name: &str,
+) -> CoreResult<Option<RegValue<'static>>> {
+    let key = match location
+        .root()
+        .open_subkey_with_flags(subkey, location.flags(KEY_READ))
+    {
+        Ok(key) => key,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(registry_error(
+                subkey.to_string(),
+                "No se pudo abrir la clave original",
+                e,
+            ));
+        }
+    };
+    match key.get_raw_value(value_name) {
+        Ok(raw) => Ok(Some(raw)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(registry_error(
+            format!("{subkey}\\{value_name}"),
+            "No se pudo leer el valor original",
+            e,
+        )),
+    }
+}
+
+/// Escribe un valor con su tipo y bytes exactos, creando la clave si falta.
+pub fn write_raw_value(
+    location: RegLocation,
+    subkey: &str,
+    value_name: &str,
+    vtype: u32,
+    bytes: &[u8],
+) -> CoreResult<()> {
+    let (key, _) = location
+        .root()
+        .create_subkey_with_flags(subkey, location.flags(KEY_READ | KEY_WRITE))
+        .map_err(|e| registry_error(subkey.to_string(), "No se pudo abrir la clave", e))?;
+    key.set_raw_value(
+        value_name,
+        &RegValue {
+            bytes: bytes.into(),
+            vtype: u32_to_reg_type(vtype),
+        },
+    )
+    .map_err(|e| {
+        registry_error(
+            format!("{subkey}\\{value_name}"),
+            "No se pudo restaurar el valor",
+            e,
+        )
+    })
+}
+
+/// Borra un valor; que la clave o el valor ya no existan no es un error.
+pub fn delete_value_if_present(
+    location: RegLocation,
+    subkey: &str,
+    value_name: &str,
+) -> CoreResult<()> {
+    let key = match location
+        .root()
+        .open_subkey_with_flags(subkey, location.flags(KEY_READ | KEY_WRITE))
+    {
+        Ok(key) => key,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(registry_error(
+                subkey.to_string(),
+                "No se pudo abrir la clave",
+                e,
+            ));
+        }
+    };
+    match key.delete_value(value_name) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(registry_error(
+            format!("{subkey}\\{value_name}"),
+            "No se pudo borrar el valor creado por OtterSwiss",
+            e,
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +257,14 @@ mod tests {
         let hklm = RegLocation::native(RegHive::Hklm);
         assert_eq!(hklm.flags(KEY_READ), KEY_READ | KEY_WOW64_64KEY);
         assert_eq!(hklm.reg_exe_view_arg(), Some("/reg:64"));
+    }
+
+    /// AR-02: una sola regla para los dos respaldos de registro: tipos conocidos y valores cortos.
+    #[test]
+    fn solo_se_guardan_tipos_conocidos_y_valores_cortos() {
+        assert!(is_storable_value(4, 4));
+        assert!(is_storable_value(1, MAX_SNAPSHOT_VALUE_BYTES));
+        assert!(!is_storable_value(1, MAX_SNAPSHOT_VALUE_BYTES + 1));
+        assert!(!is_storable_value(7, 4)); // REG_MULTI_SZ
     }
 }
