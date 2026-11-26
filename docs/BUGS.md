@@ -54,11 +54,11 @@ expediente conserva el motivo del enfoque elegido y lo descartado.
 
 ## Siguiente
 
-1. En una VM: descargas detrás de un proxy de máquina (`netsh winhttp set proxy`) y `SYS-24` con dos cuentas.
-2. Drivers en un equipo real: instalar y quitar uno de cada camino (la VM no tiene hardware de fabricante).
-3. `UI-11`: los detalles técnicos de core que no están en el catálogo siguen en español con la app en inglés (los títulos, las
+1. Drivers en un equipo real: instalar y quitar uno de cada camino (la VM no tiene hardware de fabricante). Proxy de máquina
+   (`SEC-32`) y otra cuenta (`SYS-24`) ya se probaron en una VM el 26/11.
+2. `UI-11`: los detalles técnicos de core que no están en el catálogo siguen en español con la app en inglés (los títulos, las
    operaciones de administrador y las notas de Sensores ya se traducen).
-4. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
+3. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
 
 ## Patrones
 

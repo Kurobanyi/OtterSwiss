@@ -530,19 +530,13 @@ fn tienda(c: &mut Checks, _data: &Path) {
 /// SEC-32: las descargas usan el proxy de WinHTTP de la máquina. Con un proxy que no existe la consulta de
 /// actualizaciones falla; al quitarlo vuelve a funcionar. Necesita red.
 fn proxy(c: &mut Checks, _data: &Path) {
-    println!(
-        "
-== Proxy de máquina (netsh winhttp)"
-    );
+    println!("\n== Proxy de máquina (netsh winhttp)");
     let netsh = |args: &[&str]| {
-        Command::new(
-            r"C:\Windows\System32
-etsh.exe",
-        )
-        .args(args)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        Command::new(r"C:\Windows\System32\netsh.exe")
+            .args(args)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
     };
     c.check(
         updater::check_for_updates().is_ok(),
@@ -568,10 +562,7 @@ etsh.exe",
 /// SYS-24: corriendo con otra cuenta que la dueña del escritorio, los ajustes de HKCU no se aplican (irían al perfil
 /// equivocado). Solo tiene sentido lanzado así (`OTTER_OTRA_CUENTA=1`); si no, se omite.
 fn otra_cuenta(c: &mut Checks, _data: &Path) {
-    println!(
-        "
-== Otra cuenta que la del escritorio (SYS-24)"
-    );
+    println!("\n== Otra cuenta que la del escritorio (SYS-24)");
     if std::env::var("OTTER_OTRA_CUENTA").as_deref() != Ok("1") {
         c.note("no se lanzó con otra cuenta; se omite");
         return;

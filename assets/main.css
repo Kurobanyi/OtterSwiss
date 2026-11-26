@@ -64,9 +64,6 @@
     --overlay: rgb(0 0 0 / 0.5);
     /* Rojo estándar del botón de cerrar de Windows, en todos los temas. */
     --win-close: #c42b1c;
-    /* Baldosas de los logos de marca de la tienda: fijas para que cada marca se vea igual en todos los temas. */
-    --logo-tile-light: #f7f7f8;
-    --logo-tile-dark: #26272b;
     --on-win-close: #ffffff;
 }
 
@@ -1169,14 +1166,14 @@ button.badge {
 }
 
 /* Logo de marca de una app de la tienda: el trazado de la marca en su color, sobre un fondo tenue del mismo color. */
+/* Pedido del autor: el logo completo, sin baldosa ni borde. */
 .app-logo {
-    background: var(--brand-tile);
-    border: 1px solid var(--stroke);
+    background: none;
 }
 
 .app-logo svg {
-    width: 18px;
-    height: 18px;
+    width: 28px;
+    height: 28px;
     fill: var(--brand);
     stroke: none;
 }
@@ -1184,34 +1181,44 @@ button.badge {
 /* Apps de Microsoft: glifo de Windows en el color de acento. */
 .app-glyph {
     color: var(--accent-text);
-    font-size: 16px;
+    font-size: 24px;
 }
 
-/* Colores de marca de los logos de la tienda (Simple Icons). Cada logo va sobre una baldosa clara, salvo las marcas
-   muy claras, que van sobre una oscura: así el logo se ve igual en todos los temas. */
-.brand-steam { --brand: #000000; --brand-tile: var(--logo-tile-light); }
-.brand-epic_games { --brand: #313131; --brand-tile: var(--logo-tile-light); }
-.brand-gog_galaxy { --brand: #86328A; --brand-tile: var(--logo-tile-light); }
-.brand-ea_app { --brand: #000000; --brand-tile: var(--logo-tile-light); }
-.brand-ubisoft_connect { --brand: #000000; --brand-tile: var(--logo-tile-light); }
-.brand-battlenet { --brand: #4381C3; --brand-tile: var(--logo-tile-light); }
-.brand-discord { --brand: #5865F2; --brand-tile: var(--logo-tile-light); }
-.brand-telegram { --brand: #26A5E4; --brand-tile: var(--logo-tile-light); }
-.brand-obs { --brand: #302E31; --brand-tile: var(--logo-tile-light); }
-.brand-vlc { --brand: #FF8800; --brand-tile: var(--logo-tile-dark); }
-.brand-spotify { --brand: #1ED760; --brand-tile: var(--logo-tile-dark); }
-.brand-firefox { --brand: #FF7139; --brand-tile: var(--logo-tile-light); }
-.brand-chrome { --brand: #4285F4; --brand-tile: var(--logo-tile-light); }
-.brand-brave { --brand: #FB542B; --brand-tile: var(--logo-tile-light); }
-.brand-7zip { --brand: #000000; --brand-tile: var(--logo-tile-light); }
-.brand-qbittorrent { --brand: #2F67BA; --brand-tile: var(--logo-tile-light); }
-.brand-sharex { --brand: #2885F1; --brand-tile: var(--logo-tile-light); }
-.brand-vscodium { --brand: #2F80ED; --brand-tile: var(--logo-tile-light); }
-.brand-sublime_text { --brand: #FF9800; --brand-tile: var(--logo-tile-dark); }
-.brand-git { --brand: #F03C2E; --brand-tile: var(--logo-tile-light); }
-.brand-notepadplusplus { --brand: #90E59A; --brand-tile: var(--logo-tile-dark); }
-.brand-nodejs_lts { --brand: #5FA04E; --brand-tile: var(--logo-tile-light); }
-.brand-python { --brand: #3776AB; --brand-tile: var(--logo-tile-light); }
+/* En la lista de la tienda ningún icono lleva fondo, para que los logos y los iconos genéricos se vean parejos. */
+.tl-row .app-icon {
+    background: none;
+}
+
+.tl-row .app-icon:not(.app-logo) svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* Colores de marca de los logos de la tienda (Simple Icons). Las marcas muy oscuras (negro, gris, morado oscuro) usan
+   el color de texto del tema para verse también en los temas oscuros. */
+.brand-steam { --brand: var(--text); }
+.brand-epic_games { --brand: var(--text); }
+.brand-gog_galaxy { --brand: var(--text); }
+.brand-ea_app { --brand: var(--text); }
+.brand-ubisoft_connect { --brand: var(--text); }
+.brand-battlenet { --brand: #4381C3; }
+.brand-discord { --brand: #5865F2; }
+.brand-telegram { --brand: #26A5E4; }
+.brand-obs { --brand: var(--text); }
+.brand-vlc { --brand: #FF8800; }
+.brand-spotify { --brand: #1ED760; }
+.brand-firefox { --brand: #FF7139; }
+.brand-chrome { --brand: #4285F4; }
+.brand-brave { --brand: #FB542B; }
+.brand-7zip { --brand: var(--text); }
+.brand-qbittorrent { --brand: #2F67BA; }
+.brand-sharex { --brand: #2885F1; }
+.brand-vscodium { --brand: #2F80ED; }
+.brand-sublime_text { --brand: #FF9800; }
+.brand-git { --brand: #F03C2E; }
+.brand-notepadplusplus { --brand: #90E59A; }
+.brand-nodejs_lts { --brand: #5FA04E; }
+.brand-python { --brand: #3776AB; }
 
 /* Barra de progreso (ProgressBar): pista fina y relleno de acento, como el ProgressBar de Fluent. */
 .progress {

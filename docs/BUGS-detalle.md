@@ -575,7 +575,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): se aplicó la mitad de «avisar» de la propuesta y se descartó «aplicar HKCU con el token del shell», que exige el auxiliar elevado descartado en `SEC-17`. `elevation::shell_user_differs` compara la cuenta del proceso con la del dueño de la ventana del escritorio (`GetShellWindow`) y `RegLocation::ensure_writable` rechaza toda escritura en HKCU (ajustes del perfil, restauración, Debloater, respaldos) si difieren, con un texto que pide abrir la app con la propia cuenta de administrador; sin poder saberlo, no bloquea. Test: en la sesión normal ambas cuentas coinciden (si diera lo contrario, se bloquearían todos los ajustes de usuario). No verificado: el caso «otra cuenta» (UAC con las credenciales de un administrador distinto) no se probó; va a la VM con dos cuentas si se prepara.
 
 # Expedientes · Manejo de errores y procesos (`ERR-`)
-
+- **Verificación final** (2026-11-26): en una VM de Hyper-V, con el escritorio de `otter` y OtterSwiss elevado como `otter2` (`paso_9b_otra_cuenta` de `tests/vm_sistema.rs`): el ajuste de HKCU del Debloater se rechaza con el aviso de otra cuenta y HKCU queda igual.
 
 <a id="err-01"></a>
 ### ERR-01 · El Debloater puede bloquearse si PowerShell escribe mucha salida
@@ -1014,6 +1014,7 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
   motor que use solo las raíces de LocalMachine.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): la firma de todo ejecutable se vuelve a encadenar con el motor de la máquina (`HCCE_LOCAL_MACHINE`): una raíz agregada en HKCU ya no sirve para falsificar un CN (test con `msedge.exe`). Queda el transporte: WinInet sigue usando el proxy del usuario, así que los datos (JSON, HTML del Catálogo) se pueden manipular; solo deciden URLs que pasan por listas de hosts y firma, salvo el CAB del Catálogo (`SEC-33`). Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 - **Cierre final** (2026-11-25): por decisión del autor, el cliente HTTPS común (`security/http.rs`) ya no abre WinInet con `INTERNET_OPEN_TYPE_PRECONFIG` (el proxy de HKCU): usa el proxy WinHTTP de la máquina (`WinHttpGetDefaultProxyConfiguration`, HKLM, lo fija un admin con `netsh winhttp set proxy`) o la conexión directa, con `<local>` como exclusión para no leer la del usuario. Costo aceptado: en una red con proxy obligatorio configurado solo por usuario, las descargas fallan hasta que un admin fije el proxy de máquina. Verificado: test `proxy_de_la_maquina_o_directo`, `catalogo_en_vivo` (GET y POST reales) en verde sin proxy WinHTTP, `cargo test` (72 + 2), `clippy --all-targets -- -D warnings` y `fmt --check`; sin probar detrás de un proxy real.
+- **Verificación final** (2026-11-26): en una VM (`paso_9_proxy`): con `netsh winhttp set proxy 127.0.0.1:9` la consulta de actualizaciones falla (la app usa el proxy de la máquina) y al quitarlo vuelve a responder.
 
 <a id="sec-33"></a>
 ### SEC-33 · El CAB del Catálogo se baja sin hash ni lista blanca y su nombre en disco sale de la URL
