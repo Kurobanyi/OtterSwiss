@@ -168,9 +168,12 @@ pub fn execute_debloat(
             if !is_valid_package_ident(prov_name) {
                 continue;
             }
+            // En Windows 11 25H2 Remove-AppxPackage -AllUsers ya desaprovisiona el paquete; llamar
+            // a Remove-AppxProvisionedPackage después falla con 0x80070003 aunque la app ya se fue
+            // (hallado en la VM de pruebas). Solo se desaprovisiona si el paquete sigue en la imagen.
             let cmd = format!(
-                "Remove-AppxProvisionedPackage -Online -PackageName '{}' -ErrorAction Stop | Out-Null",
-                prov_name
+                "if (Get-AppxProvisionedPackage -Online | Where-Object {{ $_.PackageName -eq '{}' }}) {{ Remove-AppxProvisionedPackage -Online -PackageName '{}' -ErrorAction Stop | Out-Null }}",
+                prov_name, prov_name
             );
             if let Err(e) = run_ps(&ps_path, &cmd, 90_000) {
                 app_ok = false;

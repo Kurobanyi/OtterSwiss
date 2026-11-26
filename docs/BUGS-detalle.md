@@ -1272,3 +1272,10 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de los códigos de winget, de las invariantes del catálogo y de la cadena Authenticode. Faltan los parsers de drivers y el sensor. Verificado: `cargo test` (60) y `clippy --all-targets -- -D warnings` en verde en Windows; sin probar instalando en una VM.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): tests de IDs de hardware, versiones, versión de NVIDIA, GUID y enlace del CAB, sensores de LHM, códigos de winget, invariantes del catálogo, cadena Authenticode y detección de Python; prueba en vivo del Catálogo. Falta `collect_intel_matches` (`SYS-27`, formato desconocido). Verificado: `cargo test` (67) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre final** (2026-11-25): lo que faltaba era `collect_intel_matches`, que se quitó con la fuente Intel (`ERR-25`).
+
+<a id="err-26"></a>
+### ERR-26 · El Debloater reporta fallo al quitar una app que sí se quitó
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: prueba `vm_sistema` en la VM de Hyper-V (26/11) · **Evidencia**: confirmado · **Estado**: Resuelto
+- **Qué pasa**: en Windows 11 25H2, `Remove-AppxPackage -AllUsers` ya desaprovisiona el paquete; la llamada siguiente a `Remove-AppxProvisionedPackage` falla con 0x80070003 («The system cannot find the path specified»). La app desaparecía pero el informe decía «fallo» y el contador de errores subía.
+- **Dónde**: `src/core/debloat/mod.rs` (bucle de `provisioned_names`).
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): el desaprovisionado solo corre si `Get-AppxProvisionedPackage -Online` aún lista el paquete exacto. Verificado en la VM: `paso_2_debloater` quita `Microsoft.BingWeather` con «Eliminada para todos los usuarios y desaprovisionada» y las 7 pruebas de `vm_sistema` pasan; `cargo fmt --check` y `clippy --all-targets -- -D warnings` en verde.
