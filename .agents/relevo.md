@@ -40,13 +40,11 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   guardan `BoxedSource`), `CL-11`, `CL-23`, `AR-25` (`NumericVersion`) y `AR-27` (`problem: Option<u32>`). Techos de
   `tests/indicadores.rs` bajados: `style:` 2, `if en` 20, `source: None` 95.
 - **Último resultado:** `cargo test` 92 + 4 de integración (más 3 ignorados y 7 de VM), `clippy --all-targets -- -D warnings` y
-  `fmt --check` en verde. **Sin recorrer en la app** lo de esta sesión (`CL-21`, `CL-25`, `TE-02`, `IN-02`, `CL-11`): la pantalla
-  estaba bloqueada y la app abierta corría como administrador. Tampoco en inglés los catálogos de `core_text.rs`.
+  `fmt --check` en verde. Recorrido en la app sin elevar hecho (2026-11-25, oscuro y claro, español e inglés, todas las pestañas; sin diferencias salvo que el detalle de errores de core sigue en español: `AR-06`). Antes la pantalla
+  estaba bloqueada. No se probaron el diálogo de confirmación de Drivers ni la lista con errores (no hay dispositivos con error).
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- Recorrer en la copia sin elevar (ver «Cómo verificar»), en oscuro y claro, español e inglés: Drivers (filtros, tarjetas, diálogo
-  de confirmación), Limpiador y Debloater (casillas `CheckRow`), Dashboard (aviso de administrador con `actions`), Hardware,
-  Sensores, DNS, Desinstalador (filas de restos, orden), Tienda (sin resultados) y los textos de `core_text.rs` en inglés.
+- Recorrer lo que faltó en la copia sin elevar: el diálogo de confirmación de Drivers y la lista con errores (hace falta un dispositivo con problema).
 - En una VM de Hyper-V (Windows Sandbox no trae winget): instalar una app de la tienda para el equipo y una por usuario, cancelar una
   a mitad, «Buscar actualización» con una app al día; `tests/vm_sistema.rs`; instalar y quitar un driver de cada camino; quitar una
   app Appx; descargas detrás de un proxy de máquina (`netsh winhttp set proxy`).
