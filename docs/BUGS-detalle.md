@@ -238,7 +238,7 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
   `SEC-13`, `SEC-16`, `SEC-19` y `SEC-20`.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): separar un auxiliar elevado es un rediseño para una versión siguiente.
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`, decisión del autor: se resuelve): manifiesto `asInvoker`. La app arranca con los permisos del usuario; los ajustes que cambian el sistema ya llamaban a `require_elevated` (optimizar, Debloater, DNS, tienda, runtimes, menú contextual, revertir) y se sumó a los de drivers (instalar de Windows Update, Catálogo y fabricante, quitar, exportar el Driver Store). Mientras no haya elevación, un aviso («Modo estándar») en todas las pestañas dice qué pide administrador y ofrece «Reabrir como administrador» (UAC, y cierra la ventana sin elevar). Así, «Extraer aquí» del menú contextual y los visores (hardware, sensores, archivador, lista de apps) ya no corren como administrador ni abren UAC. Descartado: un proceso auxiliar elevado con canal propio (tubería con nombre y protocolo de peticiones): añade una superficie nueva de escalada, y reabrir con UAC cumple lo que `SEC-08`, `SEC-13`, `SEC-16`, `SEC-19` y `SEC-20` pedían sin ella (el código que escribe en el sistema solo corre en el proceso que el usuario elevó). Verificado: `cargo test` (98 + 6), `clippy` y `fmt` en verde; el `.exe` compilado trae `asInvoker` y no `requireAdministrator`, y arranca sin elevar. No verificado aún: el aviso en pantalla y la reapertura elevada (UAC no se puede aceptar desde la sesión de pruebas).
-
+- **Verificación final** (2026-11-26): «Reabrir como administrador» probado en la app: el usuario aceptó el UAC, abrió la copia elevada (sin el aviso de modo estándar) y la ventana sin elevar se cerró; quedó un solo proceso.
 
 <a id="sec-18"></a>
 ### SEC-18 · La tienda instala versiones fijadas con vulnerabilidades conocidas
@@ -961,12 +961,14 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="tst-01"></a>
 ### TST-01 · El repositorio no tiene ni un test
-- **Afecta**: Desarrollador · **Severidad**: Alta · **Origen**: code-auditor (las dos áreas) · **Evidencia**: observado (`#[test]` y `cfg(test)` en `src/`: 0; no existe `tests/`) · **Estado**: Parcial
+- **Afecta**: Desarrollador · **Severidad**: Alta · **Origen**: code-auditor (las dos áreas) · **Evidencia**: observado (`#[test]` y `cfg(test)` en `src/`: 0; no existe `tests/`) · **Estado**: Resuelto
 - **Qué pasa**: toda la lógica de respaldo, restauración, saneo de rutas y heurística de restos está sin red.
 - **Propuesta**: empezar por funciones puras: `sanitize_archive_rel_path`, `validate_path_components`, `build_app_tokens`/`matches_any_token`,
   `parse_cmd_exe_and_args`, `is_safe_registry_subkey_to_delete`, `find_newer_curated_version`, `parse_version_tuple`, `parse_smbios_type17`;
   luego los de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12` y el de `SEC-01`.
 - **Cierre parcial** (2026-11-24, rama `fix/auditoria`): 36 tests en 14 archivos (funciones puras de la lista, `SEC-01`, `SYS-01`, `SEC-03/10`, `SYS-02/20`, `UI-02/14/15/16`, `ERR-12`), en verde con `cargo test` en Windows. Se comprobó que protegen: al romper la validación de raíz de `SEC-01` y el destino libre de `SYS-01`, sus tests fallan. `build.rs` aplica el manifiesto de administrador solo al ejecutable (`compile_for`) y el binario tiene `test = false`, para que `cargo test` corra sin elevación. Pendiente: tests de `SYS-06/07/10/12`, que necesitan registro y respaldos.
+- **Cierre final** (2026-11-26, rama `auditoria/buenas-practicas`): tests de `SYS-06` (respaldo dañado del motor, DNS y Debloater: error y el archivo intacto), `SYS-07` (`restore_dns_with`: restaurar escribe IPv4 e IPv6 aunque estén vacíos; IPv6 deshabilitado no es error), `SYS-10` (`restore_all`: un fallo es error y el respaldo se conserva) y `SYS-12` (`rollback_can_delete_backup`). Se comprobó que protegen: con cada regla rota a propósito los seis fallan; restauradas, `cargo test` da 107 en verde.
+
 
 ## Auditoría del código de v4.2.0 (25/11/2026)
 

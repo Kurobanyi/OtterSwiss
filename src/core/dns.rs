@@ -624,13 +624,27 @@ fn validate_ipv6_dns(s: &str) -> CoreResult<()> {
 /// Fija IPv4 e IPv6 de forma explícita, aunque estén vacíos (= volver a automático).
 /// Si IPv6 está deshabilitado en el adaptador (87 / 1168), se omite.
 fn restore_interface_dns(interface_guid: GUID, ipv4_csv: &str, ipv6_csv: &str) -> CoreResult<()> {
-    set_family_dns(interface_guid, ipv4_csv, false).map_err(|code| {
+    restore_dns_with(
+        |csv, ipv6| set_family_dns(interface_guid, csv, ipv6),
+        ipv4_csv,
+        ipv6_csv,
+    )
+}
+
+/// SYS-07: las dos familias se escriben siempre, también vacías (vacío = volver a automático por DHCP). `set` es la
+/// llamada a Windows; aparte para poder probar la decisión sin tocar un adaptador.
+fn restore_dns_with(
+    mut set: impl FnMut(&str, bool) -> Result<(), u32>,
+    ipv4_csv: &str,
+    ipv6_csv: &str,
+) -> CoreResult<()> {
+    set(ipv4_csv, false).map_err(|code| {
         CoreError::dns_msg(format!(
             "SetInterfaceDnsSettings(IPv4) falló (código {})",
             code
         ))
     })?;
-    match set_family_dns(interface_guid, ipv6_csv, true) {
+    match set(ipv6_csv, true) {
         Ok(()) | Err(87) | Err(1168) => Ok(()),
         Err(code) => Err(CoreError::dns_msg(format!(
             "SetInterfaceDnsSettings(IPv6) falló (código {})",
@@ -721,6 +735,40 @@ fn flush_dns_cache() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SYS-07: restaurar un adaptador que estaba en automático escribe IPv4 e IPv6 vacíos; IPv6 deshabilitado (87, 1168)
+    /// no es un error, pero un fallo de IPv4 sí.
+    #[test]
+    fn restaurar_escribe_las_dos_familias() {
+        let mut calls: Vec<(String, bool)> = Vec::new();
+        restore_dns_with(
+            |csv, ipv6| {
+                calls.push((csv.to_string(), ipv6));
+                Ok(())
+            },
+            "",
+            "",
+        )
+        .expect("restaurar");
+        assert_eq!(calls, vec![(String::new(), false), (String::new(), true)]);
+
+        assert!(restore_dns_with(|_, ipv6| if ipv6 { Err(1168) } else { Ok(()) }, "", "").is_ok());
+        assert!(restore_dns_with(|_, ipv6| if ipv6 { Err(5) } else { Ok(()) }, "", "").is_err());
+        assert!(restore_dns_with(|_, ipv6| if ipv6 { Ok(()) } else { Err(87) }, "", "").is_err());
+    }
+
+    /// SYS-06: un respaldo de DNS dañado es un error y el archivo queda como estaba.
+    #[test]
+    fn respaldo_de_dns_danado_no_se_reinicia() {
+        let dir = crate::core::test_util::TempDir::new("dns-roto");
+        let manager = DnsManager::new(&dir.join(""));
+        std::fs::write(&manager.dns_backup_path, b"{ roto").expect("escribir");
+        assert!(manager.load_doc_unlocked().is_err());
+        assert_eq!(
+            std::fs::read(&manager.dns_backup_path).expect("leer"),
+            b"{ roto"
+        );
+    }
 
     #[test]
     fn presets_son_validos() {

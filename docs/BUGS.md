@@ -33,8 +33,8 @@ VM de Hyper-V (Windows 11 Enterprise 25H2): 7 de 7, con una app Appx real quitad
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
 | Interfaz (`UI-`) | 25 | 1 | 0 | 0 | 24 |
 | Diseño y producto (`UX-`) | 4 | 0 | 0 | 0 | 4 |
-| Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **131** | **1** | **0** | **0** | **130** |
+| Pruebas (`TST-`) | 2 | 0 | 0 | 0 | 2 |
+| **Total** | **131** | **0** | **0** | **0** | **131** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; todos están resueltos: `ERR-24` se cerró probando la tienda en la VM y `ERR-25` (Intel) quitando esa fuente.
 
@@ -45,7 +45,6 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 
 | ID | Título | Afecta | Sev. | Estado |
 |---|---|---|---|---|
-| [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
 | [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Resuelto |
 
 ## Diferidos y pendientes de decisión
@@ -55,9 +54,10 @@ expediente conserva el motivo del enfoque elegido y lo descartado.
 
 ## Siguiente
 
-1. Pendiente solo lo que no se pudo probar: instalar y quitar un driver de cada camino (hace falta hardware real) y la reapertura elevada con UAC (`SEC-17`), que acepta el usuario.
-2. `UI-11` en inglés con detalles del motor: los textos de errores de core (p. ej. la nota de Sensores) siguen en español con la app en inglés.
-3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. `SYS-24`: el caso «otra cuenta» solo se reproduce con una cuenta estándar que pide credenciales de administrador (UAC); no se probó.
+1. En una VM: descargas detrás de un proxy de máquina (`netsh winhttp set proxy`) y `SYS-24` con dos cuentas.
+2. Drivers en un equipo real: instalar y quitar uno de cada camino (la VM no tiene hardware de fabricante).
+3. `UI-11`: los detalles técnicos de core que no están en el catálogo siguen en español con la app en inglés (los títulos, las
+   operaciones de administrador y las notas de Sensores ya se traducen).
 4. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
 
 ## Patrones

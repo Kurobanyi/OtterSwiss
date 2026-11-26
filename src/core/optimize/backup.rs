@@ -266,6 +266,20 @@ mod tests {
     use super::*;
     use crate::core::optimize::tweaks_catalog::REGISTRY_TWEAKS;
 
+    /// SYS-06: si el respaldo existe y está dañado, no se empieza uno vacío (guardaría como «original» lo ya
+    /// optimizado) y el archivo no se toca.
+    #[test]
+    fn respaldo_danado_no_se_reinicia() {
+        let dir = crate::core::test_util::TempDir::new("motor-roto");
+        let manager = BackupManager::new(&dir.join(""));
+        std::fs::write(manager.path(), b"{ roto").expect("escribir");
+        assert!(manager.load_or_init_unlocked("Perfil").is_err());
+        assert_eq!(std::fs::read(manager.path()).expect("leer"), b"{ roto");
+        // Sin archivo sí se empieza uno nuevo.
+        std::fs::remove_file(manager.path()).expect("borrar");
+        assert!(manager.load_or_init_unlocked("Perfil").is_ok());
+    }
+
     fn snapshot() -> RegistrySnapshot {
         let spec = &REGISTRY_TWEAKS[0];
         RegistrySnapshot {

@@ -529,13 +529,13 @@ impl OptimizationEngine {
             }
         }
 
-        // Con ítems omitidos el respaldo se conserva: el usuario aún puede forzar su restauración.
-        let backup_deleted = if failed_items.is_empty() && skipped_user_modified == 0 {
-            self.backup_mgr.delete_if_clean()?;
-            true
-        } else {
-            false
-        };
+        let backup_deleted =
+            if rollback_can_delete_backup(failed_items.len(), skipped_user_modified) {
+                self.backup_mgr.delete_if_clean()?;
+                true
+            } else {
+                false
+            };
 
         push_rb(total_steps, "Reversión completada");
 
@@ -694,6 +694,12 @@ impl<'a> StepRecorder<'a> {
 
 /// Decide si un ajuste entra en el perfil para el nivel de hardware efectivo (una sola regla para el
 /// plan que se muestra y para lo que se aplica).
+/// SYS-12: el respaldo solo se borra si se restauró todo. Con fallos o con ítems omitidos (cambiados después por el
+/// usuario) se conserva: el usuario todavía puede reintentar o forzar su restauración.
+fn rollback_can_delete_backup(failed: usize, skipped_user_modified: usize) -> bool {
+    failed == 0 && skipped_user_modified == 0
+}
+
 pub fn tweak_is_eligible(
     tier: HardwareTier,
     min_tier: HardwareTier,
@@ -709,6 +715,15 @@ pub fn tweak_is_eligible(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// SYS-12: un rollback con fallos o con ítems omitidos no borra el respaldo.
+    #[test]
+    fn rollback_conserva_el_respaldo_si_no_restauro_todo() {
+        assert!(rollback_can_delete_backup(0, 0));
+        assert!(!rollback_can_delete_backup(0, 1));
+        assert!(!rollback_can_delete_backup(1, 0));
+        assert!(!rollback_can_delete_backup(2, 3));
+    }
 
     #[test]
     fn elegibilidad_por_nivel() {

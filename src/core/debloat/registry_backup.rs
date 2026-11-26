@@ -161,27 +161,35 @@ pub fn revert_registry_debloat() -> CoreResult<usize> {
     }
 
     let doc = load_backup_doc(&backup_file)?;
+    let restored = restore_all(&doc.entries, restore_snapshot)?;
+    delete_verified_file(&backup_file)?;
+    Ok(restored)
+}
 
+/// SYS-10: restaura cada entrada (de la última a la primera) y cuenta solo las que se restauraron de verdad. Si alguna
+/// falla devuelve error, y quien llama no borra el respaldo: se puede reintentar.
+fn restore_all(
+    entries: &[DebloatRegSnapshot],
+    restore: impl Fn(&DebloatRegSnapshot) -> CoreResult<()>,
+) -> CoreResult<usize> {
     let mut restored = 0usize;
     let mut failures: Vec<String> = Vec::new();
-    for snap in doc.entries.iter().rev() {
-        match restore_snapshot(snap) {
+    for snap in entries.iter().rev() {
+        match restore(snap) {
             Ok(()) => restored += 1,
             Err(e) => failures.push(format!("{}\\{}: {}", snap.subkey, snap.value_name, e)),
         }
     }
-
-    if !failures.is_empty() {
-        return Err(CoreError::backup_msg(format!(
+    if failures.is_empty() {
+        Ok(restored)
+    } else {
+        Err(CoreError::backup_msg(format!(
             "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
             restored,
             failures.len(),
             failures.join("; ")
-        )));
+        )))
     }
-
-    delete_verified_file(&backup_file)?;
-    Ok(restored)
 }
 
 pub(super) fn restore_snapshot(snap: &DebloatRegSnapshot) -> CoreResult<()> {
@@ -231,6 +239,36 @@ mod tests {
             previous_type: Some(4),
             previous_raw: Some(vec![1, 0, 0, 0]),
         }
+    }
+
+    /// SYS-10: un fallo al restaurar se informa (no se cuenta como restaurado) y es error, para conservar el respaldo.
+    #[test]
+    fn revertir_con_un_fallo_es_error() {
+        let entries = vec![snapshot(), snapshot()];
+        assert_eq!(restore_all(&entries, |_| Ok(())).expect("todo bien"), 2);
+
+        let calls = std::cell::Cell::new(0);
+        let err = restore_all(&entries, |_| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                Err(CoreError::backup_msg("acceso denegado"))
+            } else {
+                Ok(())
+            }
+        })
+        .expect_err("un fallo");
+        assert_eq!(calls.get(), 2, "intenta todas aunque una falle");
+        assert!(err.to_string().contains("se conserva"));
+    }
+
+    /// SYS-06: un respaldo del Debloater dañado es un error, no un respaldo vacío.
+    #[test]
+    fn respaldo_del_debloater_danado_falla() {
+        let dir = crate::core::test_util::TempDir::new("debloat-roto");
+        let path = dir.join("debloat_backup.json");
+        std::fs::write(&path, b"{ roto").expect("escribir");
+        assert!(load_backup_doc(&path).is_err());
+        assert_eq!(std::fs::read(&path).expect("leer"), b"{ roto");
     }
 
     /// SEC-03 / SYS-11: solo se revierte lo del catálogo, con el tipo exacto o el formato viejo.
