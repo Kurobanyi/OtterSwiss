@@ -9,9 +9,10 @@ mod modal;
 mod progress;
 mod state;
 mod status;
+mod store_logo;
 mod tone;
 
-pub use app_icon::AppIconBadge;
+pub use app_icon::StoreAppIcon;
 pub use card::Card;
 pub use card_header::CardHeader;
 pub use check_row::CheckRow;

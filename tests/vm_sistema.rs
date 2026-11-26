@@ -31,6 +31,7 @@ use otter_swiss::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, RegHive, SERV
 use otter_swiss::core::security::data_dir::ensure_admin_only_data_dir;
 use otter_swiss::core::store::app_store;
 use otter_swiss::core::uninstall::{self, LeftoverKind};
+use otter_swiss::core::updater;
 use winreg::RegKey;
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_64KEY,
@@ -526,6 +527,102 @@ fn tienda(c: &mut Checks, _data: &Path) {
     }
 }
 
+/// SEC-32: las descargas usan el proxy de WinHTTP de la máquina. Con un proxy que no existe la consulta de
+/// actualizaciones falla; al quitarlo vuelve a funcionar. Necesita red.
+fn proxy(c: &mut Checks, _data: &Path) {
+    println!(
+        "
+== Proxy de máquina (netsh winhttp)"
+    );
+    let netsh = |args: &[&str]| {
+        Command::new(
+            r"C:\Windows\System32
+etsh.exe",
+        )
+        .args(args)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    };
+    c.check(
+        updater::check_for_updates().is_ok(),
+        "sin proxy, la consulta de actualizaciones responde",
+    );
+    c.check(
+        netsh(&["winhttp", "set", "proxy", "127.0.0.1:9"]),
+        "fijar un proxy de máquina que no responde",
+    );
+    let with_proxy = updater::check_for_updates();
+    c.note(&format!("con el proxy: {with_proxy:?}"));
+    c.check(
+        with_proxy.is_err(),
+        "con ese proxy la descarga falla (lo usa)",
+    );
+    c.check(netsh(&["winhttp", "reset", "proxy"]), "quitar el proxy");
+    c.check(
+        updater::check_for_updates().is_ok(),
+        "sin proxy otra vez, responde",
+    );
+}
+
+/// SYS-24: corriendo con otra cuenta que la dueña del escritorio, los ajustes de HKCU no se aplican (irían al perfil
+/// equivocado). Solo tiene sentido lanzado así (`OTTER_OTRA_CUENTA=1`); si no, se omite.
+fn otra_cuenta(c: &mut Checks, _data: &Path) {
+    println!(
+        "
+== Otra cuenta que la del escritorio (SYS-24)"
+    );
+    if std::env::var("OTTER_OTRA_CUENTA").as_deref() != Ok("1") {
+        c.note("no se lanzó con otra cuenta; se omite");
+        return;
+    }
+    let Some(tweak) = DEBLOAT_REG_TWEAKS
+        .iter()
+        .find(|t| t.entries.iter().any(|e| e.hive == RegHive::Hkcu))
+    else {
+        c.check(false, "hay un ajuste de HKCU en el catálogo");
+        return;
+    };
+    let hkcu: Vec<_> = tweak
+        .entries
+        .iter()
+        .filter(|e| e.hive == RegHive::Hkcu)
+        .collect();
+    let before: Vec<_> = hkcu
+        .iter()
+        .map(|e| raw_value(false, e.subkey, e.value_name))
+        .collect();
+    let cancel = AtomicBool::new(false);
+    match debloat::execute_debloat(&[], &[tweak.id], &cancel, None) {
+        Ok(r) => {
+            let msg = r
+                .outcomes
+                .iter()
+                .map(|o| o.message.clone())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            c.note(&format!("resultado: {msg}"));
+            c.check(r.failed_count > 0, "el ajuste de HKCU se rechaza");
+            c.check(
+                msg.contains("otra cuenta"),
+                "el aviso explica que es otra cuenta",
+            );
+        }
+        Err(e) => c.check(
+            e.to_string().contains("otra cuenta"),
+            &format!("rechazo: {e}"),
+        ),
+    }
+    let after: Vec<_> = hkcu
+        .iter()
+        .map(|e| raw_value(false, e.subkey, e.value_name))
+        .collect();
+    c.check(before == after, "HKCU quedó igual");
+    if debloat::has_registry_backup() {
+        let _ = debloat::revert_registry_debloat();
+    }
+}
+
 /// Corre un área con su propia lista de comprobaciones y falla si alguna falló.
 fn run_area(name: &str, area: impl FnOnce(&mut Checks, &Path)) {
     let mut c = Checks::new();
@@ -584,4 +681,16 @@ fn paso_7_revertir_todo() {
 #[ignore = "cambia el sistema: solo en una VM desechable, como administrador y con red"]
 fn paso_8_tienda() {
     run_area("tienda", tienda);
+}
+
+#[test]
+#[ignore = "cambia el proxy de la máquina: solo en una VM desechable, como administrador y con red"]
+fn paso_9_proxy() {
+    run_area("proxy", proxy);
+}
+
+#[test]
+#[ignore = "solo en una VM, lanzado como administrador con otra cuenta que la del escritorio"]
+fn paso_9b_otra_cuenta() {
+    run_area("otra cuenta", otra_cuenta);
 }

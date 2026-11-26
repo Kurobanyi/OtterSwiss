@@ -2,6 +2,7 @@
 
 use dioxus::prelude::*;
 
+use super::store_logo::{StoreLogo, store_logo};
 use crate::core::store::app_store::AppIcon;
 
 #[component]
@@ -18,6 +19,25 @@ pub fn AppIconBadge(icon: AppIcon) -> Element {
                 }
             }
         }
+    }
+}
+
+/// Icono de una app de la tienda: su logo de marca si está en `store_logo`, un glifo de Windows para las apps de
+/// Microsoft, o el icono genérico de su categoría.
+#[component]
+pub fn StoreAppIcon(id: &'static str, icon: AppIcon) -> Element {
+    match store_logo(id) {
+        Some(StoreLogo::Brand(path)) => rsx! {
+            div { class: "app-icon app-logo brand-{id}", "aria-hidden": "true",
+                svg { view_box: "0 0 24 24", path { d: "{path}" } }
+            }
+        },
+        Some(StoreLogo::Glyph(glyph)) => rsx! {
+            div { class: "app-icon app-glyph", "aria-hidden": "true",
+                span { class: "fluent-icon", "{glyph}" }
+            }
+        },
+        None => rsx! { AppIconBadge { icon } },
     }
 }
 

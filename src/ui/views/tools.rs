@@ -10,7 +10,7 @@ use crate::core::platform::elevation;
 use crate::core::store::app_store::{self, AppCategory, CuratedPackage, InstallSource};
 use crate::core::store::dependencies;
 use crate::ui::components::{
-    AppIconBadge, ConfirmDialog, EmptyState, ProgressBar, StatusBanner, Tone,
+    ConfirmDialog, EmptyState, ProgressBar, StatusBanner, StoreAppIcon, Tone,
 };
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, pick, strings};
@@ -452,7 +452,7 @@ fn StoreRow(pkg: &'static CuratedPackage, selected: Signal<HashSet<&'static str>
                         }
                     },
                 }
-                AppIconBadge { icon: pkg.icon }
+                StoreAppIcon { id: pkg.id, icon: pkg.icon }
                 div { class: "grow",
                     div { class: "fw-semibold", "{tr(pkg.name, en)}" }
                     div { class: "text-xs text-muted", "{desc}" }
