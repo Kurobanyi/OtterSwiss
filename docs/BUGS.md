@@ -54,8 +54,10 @@ expediente conserva el motivo del enfoque elegido y lo descartado.
 
 ## Siguiente
 
-1. Drivers en un equipo real: instalar y quitar uno de cada camino (la VM no tiene hardware de fabricante). Proxy de máquina
-   (`SEC-32`) y otra cuenta (`SYS-24`) ya se probaron en una VM el 26/11.
+1. Drivers en un equipo real: instalar y quitar uno de cada camino. El 26/11 `tests/drivers_reales.rs` (`buscar`, como
+   administrador) no encontró nada que instalar en el equipo del autor (245 dispositivos; Windows Update, NVIDIA y el Catálogo
+   en 0), así que falta un equipo con un driver pendiente para correr `instalar_y_quitar`. Proxy de máquina (`SEC-32`) y otra
+   cuenta (`SYS-24`) ya se probaron en una VM el 26/11.
 2. `UI-11`: los detalles técnicos de core que no están en el catálogo siguen en español con la app en inglés (los títulos, las
    operaciones de administrador y las notas de Sensores ya se traducen).
 3. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
