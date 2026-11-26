@@ -5,6 +5,7 @@ mod nvidia;
 
 use crate::core::error::{CoreError, CoreResult};
 
+pub(in crate::core::drivers) use nvidia::check_nvidia_updates;
 use nvidia::{NVIDIA_DOWNLOAD_HOSTS, NVIDIA_SIGNER};
 
 /// SEC-30: hosts permitidos y firmante Authenticode de cada fabricante.

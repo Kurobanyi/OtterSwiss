@@ -10,8 +10,8 @@ use dioxus::prelude::*;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
 use crate::core::error::CoreError;
-use crate::core::store::app_store::AppStoreManager;
-use crate::core::store::dependencies::DependencyManager;
+use crate::core::store::app_store;
+use crate::core::store::dependencies;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InstallStatus {
@@ -50,11 +50,11 @@ pub struct InstallerDispatcher {
 pub fn refresh_tools_inventory(mut tools_state: Signal<ToolsSharedState>) {
     spawn(async move {
         let (deps, apps) = tokio::task::spawn_blocking(|| {
-            let d = DependencyManager::get_catalog()
+            let d = dependencies::get_catalog()
                 .iter()
-                .map(|dep| (dep.id, DependencyManager::is_installed(dep.id)))
+                .map(|dep| (dep.id, dependencies::is_installed(dep.id)))
                 .collect::<HashMap<_, _>>();
-            let a = AppStoreManager::detect_installed_ids();
+            let a = app_store::detect_installed_ids();
             (d, a)
         })
         .await
@@ -87,21 +87,20 @@ pub(super) fn run_installer_worker(
                         ));
                     }
 
-                    let res = tokio::task::spawn_blocking(move || {
-                        DependencyManager::install_runtime(dep_id)
-                    })
-                    .await
-                    .unwrap_or_else(|e| {
-                        Err(CoreError::SystemTool {
-                            message: e.to_string(),
-                            source: Some(Box::new(e)),
-                        })
-                    });
+                    let res =
+                        tokio::task::spawn_blocking(move || dependencies::install_runtime(dep_id))
+                            .await
+                            .unwrap_or_else(|e| {
+                                Err(CoreError::SystemTool {
+                                    message: e.to_string(),
+                                    source: Some(Box::new(e)),
+                                })
+                            });
 
                     let updated_deps = tokio::task::spawn_blocking(|| {
-                        DependencyManager::get_catalog()
+                        dependencies::get_catalog()
                             .iter()
-                            .map(|d| (d.id, DependencyManager::is_installed(d.id)))
+                            .map(|d| (d.id, dependencies::is_installed(d.id)))
                             .collect::<HashMap<_, _>>()
                     })
                     .await
@@ -164,7 +163,7 @@ pub(super) fn run_installer_worker(
 
                         let flag_clone = Arc::clone(&cancel_worker);
                         let res = tokio::task::spawn_blocking(move || {
-                            AppStoreManager::install_package_cancellable(pkg_id, &flag_clone)
+                            app_store::install_package_cancellable(pkg_id, &flag_clone)
                         })
                         .await
                         .unwrap_or_else(|e| {
@@ -197,7 +196,7 @@ pub(super) fn run_installer_worker(
                     }
 
                     let refreshed_apps =
-                        tokio::task::spawn_blocking(AppStoreManager::detect_installed_ids)
+                        tokio::task::spawn_blocking(app_store::detect_installed_ids)
                             .await
                             .unwrap_or_default();
 

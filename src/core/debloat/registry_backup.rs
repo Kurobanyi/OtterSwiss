@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use winreg::enums::KEY_WRITE;
 
-use super::{DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS, DebloatRegEntry, DebloaterManager};
+use super::{DEBLOAT_MUTEX, DEBLOAT_REG_TWEAKS, DebloatRegEntry};
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::platform::registry::{
@@ -70,146 +70,144 @@ pub(super) struct DebloatBackupDoc {
     entries: Vec<DebloatRegSnapshot>,
 }
 
-impl DebloaterManager {
-    /// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
-    /// entradas que no son del catálogo, falla: el archivo fue manipulado.
-    pub(super) fn load_backup_doc(path: &Path) -> CoreResult<DebloatBackupDoc> {
-        let doc: DebloatBackupDoc = read_backup(
-            path,
-            MAX_DEBLOAT_BACKUP_BYTES,
-            "no se tocará el registro para no perder el estado original",
-        )?
-        .unwrap_or(DebloatBackupDoc {
-            version: 2,
-            entries: Vec::new(),
+/// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
+/// entradas que no son del catálogo, falla: el archivo fue manipulado.
+pub(super) fn load_backup_doc(path: &Path) -> CoreResult<DebloatBackupDoc> {
+    let doc: DebloatBackupDoc = read_backup(
+        path,
+        MAX_DEBLOAT_BACKUP_BYTES,
+        "no se tocará el registro para no perder el estado original",
+    )?
+    .unwrap_or(DebloatBackupDoc {
+        version: 2,
+        entries: Vec::new(),
+    });
+    if let Some(bad) = doc.entries.iter().find(|e| !e.is_valid()) {
+        return Err(CoreError::backup_msg(format!(
+            "debloat_backup.json contiene una entrada que no es del catálogo ({:?}\\{}\\{}); posible manipulación",
+            bad.hive, bad.subkey, bad.value_name
+        )));
+    }
+    Ok(doc)
+}
+
+pub(super) fn backup_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
+    let backup_file = debloat_backup_path()?;
+    let mut doc = load_backup_doc(&backup_file)?;
+    doc.version = 2;
+
+    for entry in entries {
+        let already = doc.entries.iter().any(|s| {
+            s.hive == entry.hive
+                && s.subkey.eq_ignore_ascii_case(entry.subkey)
+                && s.value_name.eq_ignore_ascii_case(entry.value_name)
         });
-        if let Some(bad) = doc.entries.iter().find(|e| !e.is_valid()) {
-            return Err(CoreError::backup_msg(format!(
-                "debloat_backup.json contiene una entrada que no es del catálogo ({:?}\\{}\\{}); posible manipulación",
-                bad.hive, bad.subkey, bad.value_name
-            )));
+        if already {
+            continue;
         }
-        Ok(doc)
+
+        let prev = read_raw_value(
+            RegLocation::native(entry.hive),
+            entry.subkey,
+            entry.value_name,
+        )?;
+
+        doc.entries.push(DebloatRegSnapshot {
+            hive: entry.hive,
+            subkey: entry.subkey.to_string(),
+            value_name: entry.value_name.to_string(),
+            existed: prev.is_some(),
+            previous_dword: None,
+            previous_type: prev.as_ref().map(|r| reg_type_to_u32(&r.vtype)),
+            previous_raw: prev.map(|r| r.bytes.into_owned()),
+        });
     }
 
-    pub(super) fn backup_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
-        let backup_file = debloat_backup_path()?;
-        let mut doc = Self::load_backup_doc(&backup_file)?;
-        doc.version = 2;
+    write_backup(&backup_file, &doc)
+}
 
-        for entry in entries {
-            let already = doc.entries.iter().any(|s| {
-                s.hive == entry.hive
-                    && s.subkey.eq_ignore_ascii_case(entry.subkey)
-                    && s.value_name.eq_ignore_ascii_case(entry.value_name)
-            });
-            if already {
-                continue;
+pub(super) fn apply_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
+    for entry in entries {
+        let root = RegLocation::native(entry.hive).root();
+        let flags = RegLocation::native(entry.hive).flags(KEY_WRITE);
+        let (key, _) = root
+            .create_subkey_with_flags(entry.subkey, flags)
+            .map_err(|e| CoreError::Registry {
+                path: entry.subkey.to_string(),
+                message: format!("Error creando clave debloat: {}", e),
+                source: Some(Box::new(e)),
+            })?;
+        key.set_value(entry.value_name, &entry.target_dword)?;
+    }
+    Ok(())
+}
+
+/// `true` si hay ajustes de registro del Debloater pendientes de revertir.
+pub fn has_registry_backup() -> bool {
+    debloat_backup_path().map(|p| p.exists()).unwrap_or(false)
+}
+
+/// Revierte los ajustes de registro del Debloater. Solo toca claves del catálogo, propaga cada error
+/// y conserva el respaldo si algo no se pudo revertir, para poder reintentar.
+pub fn revert_registry_debloat() -> CoreResult<usize> {
+    elevation::require_elevated("Revertir ajustes de registro del Debloater")?;
+    let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
+    let backup_file = debloat_backup_path()?;
+    if !backup_file.exists() {
+        return Err(CoreError::backup_msg(
+            "No existe respaldo de ajustes del Debloater",
+        ));
+    }
+
+    let doc = load_backup_doc(&backup_file)?;
+
+    let mut restored = 0usize;
+    let mut failures: Vec<String> = Vec::new();
+    for snap in doc.entries.iter().rev() {
+        match restore_snapshot(snap) {
+            Ok(()) => restored += 1,
+            Err(e) => failures.push(format!("{}\\{}: {}", snap.subkey, snap.value_name, e)),
+        }
+    }
+
+    if !failures.is_empty() {
+        return Err(CoreError::backup_msg(format!(
+            "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
+            restored,
+            failures.len(),
+            failures.join("; ")
+        )));
+    }
+
+    delete_verified_file(&backup_file)?;
+    Ok(restored)
+}
+
+pub(super) fn restore_snapshot(snap: &DebloatRegSnapshot) -> CoreResult<()> {
+    let entry = snap
+        .catalog_entry()
+        .ok_or_else(|| CoreError::Validation("Entrada fuera del catálogo del Debloater".into()))?;
+    let location = RegLocation::native(entry.hive);
+
+    if snap.existed {
+        match (&snap.previous_raw, snap.previous_type, snap.previous_dword) {
+            (Some(raw), Some(t), _) => {
+                write_raw_value(location, entry.subkey, entry.value_name, t, raw)
             }
-
-            let prev = read_raw_value(
-                RegLocation::native(entry.hive),
+            // Formato antiguo (solo DWORD), de respaldos de versiones previas.
+            (None, None, Some(dword)) => write_raw_value(
+                location,
                 entry.subkey,
                 entry.value_name,
-            )?;
-
-            doc.entries.push(DebloatRegSnapshot {
-                hive: entry.hive,
-                subkey: entry.subkey.to_string(),
-                value_name: entry.value_name.to_string(),
-                existed: prev.is_some(),
-                previous_dword: None,
-                previous_type: prev.as_ref().map(|r| reg_type_to_u32(&r.vtype)),
-                previous_raw: prev.map(|r| r.bytes.into_owned()),
-            });
+                4,
+                &dword.to_le_bytes(),
+            ),
+            _ => Err(CoreError::Validation(
+                "Snapshot inconsistente: existía sin valor guardado".into(),
+            )),
         }
-
-        write_backup(&backup_file, &doc)
-    }
-
-    pub(super) fn apply_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
-        for entry in entries {
-            let root = RegLocation::native(entry.hive).root();
-            let flags = RegLocation::native(entry.hive).flags(KEY_WRITE);
-            let (key, _) = root
-                .create_subkey_with_flags(entry.subkey, flags)
-                .map_err(|e| CoreError::Registry {
-                    path: entry.subkey.to_string(),
-                    message: format!("Error creando clave debloat: {}", e),
-                    source: Some(Box::new(e)),
-                })?;
-            key.set_value(entry.value_name, &entry.target_dword)?;
-        }
-        Ok(())
-    }
-
-    /// `true` si hay ajustes de registro del Debloater pendientes de revertir.
-    pub fn has_registry_backup() -> bool {
-        debloat_backup_path().map(|p| p.exists()).unwrap_or(false)
-    }
-
-    /// Revierte los ajustes de registro del Debloater. Solo toca claves del catálogo, propaga cada error
-    /// y conserva el respaldo si algo no se pudo revertir, para poder reintentar.
-    pub fn revert_registry_debloat() -> CoreResult<usize> {
-        ElevationManager::require_elevated("Revertir ajustes de registro del Debloater")?;
-        let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
-        let backup_file = debloat_backup_path()?;
-        if !backup_file.exists() {
-            return Err(CoreError::backup_msg(
-                "No existe respaldo de ajustes del Debloater",
-            ));
-        }
-
-        let doc = Self::load_backup_doc(&backup_file)?;
-
-        let mut restored = 0usize;
-        let mut failures: Vec<String> = Vec::new();
-        for snap in doc.entries.iter().rev() {
-            match Self::restore_snapshot(snap) {
-                Ok(()) => restored += 1,
-                Err(e) => failures.push(format!("{}\\{}: {}", snap.subkey, snap.value_name, e)),
-            }
-        }
-
-        if !failures.is_empty() {
-            return Err(CoreError::backup_msg(format!(
-                "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
-                restored,
-                failures.len(),
-                failures.join("; ")
-            )));
-        }
-
-        delete_verified_file(&backup_file)?;
-        Ok(restored)
-    }
-
-    pub(super) fn restore_snapshot(snap: &DebloatRegSnapshot) -> CoreResult<()> {
-        let entry = snap.catalog_entry().ok_or_else(|| {
-            CoreError::Validation("Entrada fuera del catálogo del Debloater".into())
-        })?;
-        let location = RegLocation::native(entry.hive);
-
-        if snap.existed {
-            match (&snap.previous_raw, snap.previous_type, snap.previous_dword) {
-                (Some(raw), Some(t), _) => {
-                    write_raw_value(location, entry.subkey, entry.value_name, t, raw)
-                }
-                // Formato antiguo (solo DWORD), de respaldos de versiones previas.
-                (None, None, Some(dword)) => write_raw_value(
-                    location,
-                    entry.subkey,
-                    entry.value_name,
-                    4,
-                    &dword.to_le_bytes(),
-                ),
-                _ => Err(CoreError::Validation(
-                    "Snapshot inconsistente: existía sin valor guardado".into(),
-                )),
-            }
-        } else {
-            delete_value_if_present(location, entry.subkey, entry.value_name)
-        }
+    } else {
+        delete_value_if_present(location, entry.subkey, entry.value_name)
     }
 }
 

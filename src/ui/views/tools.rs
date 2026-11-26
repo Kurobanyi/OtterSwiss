@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::context_menu::ContextMenuManager;
+use crate::core::context_menu;
 use crate::core::error::CoreError;
-use crate::core::platform::elevation::ElevationManager;
-use crate::core::store::app_store::{AppCategory, AppStoreManager, CuratedPackage, InstallSource};
-use crate::core::store::dependencies::DependencyManager;
+use crate::core::platform::elevation;
+use crate::core::store::app_store::{self, AppCategory, CuratedPackage, InstallSource};
+use crate::core::store::dependencies;
 use crate::ui::components::{AppIconBadge, Card, EmptyState, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, pick, strings};
@@ -24,9 +24,9 @@ async fn toggle_context_menu(
 ) {
     let res = tokio::task::spawn_blocking(move || {
         if currently_active {
-            ContextMenuManager::uninstall()
+            context_menu::uninstall()
         } else {
-            ContextMenuManager::install()
+            context_menu::install()
         }
     })
     .await
@@ -60,11 +60,10 @@ async fn toggle_context_menu(
             } else {
                 crate::core::cli::INSTALL_CONTEXT_MENU
             };
-            if ElevationManager::relaunch_as_admin(&[flag]).is_ok() {
+            if elevation::relaunch_as_admin(&[flag]).is_ok() {
                 for _ in 0..8 {
                     tokio::time::sleep(Duration::from_millis(250)).await;
-                    let installed_now =
-                        ContextMenuManager::is_installed().unwrap_or(currently_active);
+                    let installed_now = context_menu::is_installed().unwrap_or(currently_active);
                     if installed_now != currently_active {
                         *active.write() = installed_now;
                         break;
@@ -80,7 +79,7 @@ async fn toggle_context_menu(
 
 /// Paquetes del catálogo que se ven con la búsqueda `query` (en minúsculas) y la categoría `cat`.
 fn filter_catalog(query: &str, cat: Option<AppCategory>) -> Vec<&'static CuratedPackage> {
-    AppStoreManager::get_catalog()
+    app_store::get_catalog()
         .iter()
         .filter(|p| cat.is_none_or(|c| p.category == c))
         .filter(|p| {
@@ -145,7 +144,7 @@ fn ContextMenuCard(any_busy: bool, local_working: Signal<bool>) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     let txt = strings(en).tools;
     let tools_state = use_context::<Signal<ToolsSharedState>>();
-    let active = use_signal(|| ContextMenuManager::is_installed().unwrap_or(false));
+    let active = use_signal(|| context_menu::is_installed().unwrap_or(false));
     let mut working = local_working;
 
     let on_toggle = move |_| {
@@ -196,7 +195,7 @@ fn RuntimesCard(any_busy: bool) -> Element {
             title: txt.gaming_runtimes.to_string(),
             subtitle: Some(txt.essential_official_windows_libraries.to_string()),
             div { class: "stack-2",
-                for dep in DependencyManager::get_catalog() {
+                for dep in dependencies::get_catalog() {
                     {
                         let installed = state.dep_states.get(dep.id).copied().unwrap_or(false);
                         let dep_id = dep.id;

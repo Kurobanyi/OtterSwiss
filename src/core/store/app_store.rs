@@ -8,7 +8,7 @@ use winreg::enums::{
 };
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::process::{
     Launch, duplicate_desktop_shell_primary_token, run_in_job, system32_dir,
 };
@@ -848,105 +848,101 @@ pub struct CuratedPackage {
     pub uninstall_display_prefix: &'static str,
 }
 
-pub struct AppStoreManager;
+pub fn get_catalog() -> &'static [CuratedPackage] {
+    CURATED_CATALOG
+}
 
-impl AppStoreManager {
-    pub fn get_catalog() -> &'static [CuratedPackage] {
-        CURATED_CATALOG
-    }
+pub fn find_package(package_id: &str) -> Option<&'static CuratedPackage> {
+    CURATED_CATALOG
+        .iter()
+        .find(|p| p.id.eq_ignore_ascii_case(package_id))
+}
 
-    pub fn find_package(package_id: &str) -> Option<&'static CuratedPackage> {
-        CURATED_CATALOG
-            .iter()
-            .find(|p| p.id.eq_ignore_ascii_case(package_id))
-    }
+/// App del catálogo instalable por winget que corresponde a una entrada de «Programas instalados». `winget install`
+/// sobre una app ya instalada la actualiza, o termina con «ya está al día».
+pub fn winget_package_for(display_name: &str) -> Option<&'static CuratedPackage> {
+    CURATED_CATALOG.iter().find(|p| {
+        matches!(p.source, InstallSource::Winget { .. })
+            && display_name_matches(display_name, p.uninstall_display_prefix)
+    })
+}
 
-    /// App del catálogo instalable por winget que corresponde a una entrada de «Programas instalados». `winget install`
-    /// sobre una app ya instalada la actualiza, o termina con «ya está al día».
-    pub fn winget_package_for(display_name: &str) -> Option<&'static CuratedPackage> {
-        CURATED_CATALOG.iter().find(|p| {
-            matches!(p.source, InstallSource::Winget { .. })
-                && display_name_matches(display_name, p.uninstall_display_prefix)
-        })
-    }
+pub fn detect_installed_ids() -> HashSet<&'static str> {
+    let mut display_names = Vec::<String>::new();
+    let hives = [
+        (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_64KEY),
+        (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_32KEY),
+        (HKEY_CURRENT_USER, KEY_READ),
+    ];
 
-    pub fn detect_installed_ids() -> HashSet<&'static str> {
-        let mut display_names = Vec::<String>::new();
-        let hives = [
-            (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_64KEY),
-            (HKEY_LOCAL_MACHINE, KEY_READ | KEY_WOW64_32KEY),
-            (HKEY_CURRENT_USER, KEY_READ),
-        ];
-
-        for (hive, flags) in hives {
-            let root = RegKey::predef(hive);
-            if let Ok(uninst) = root.open_subkey_with_flags(
-                r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-                flags,
-            ) {
-                for sub_name in uninst.enum_keys().flatten() {
-                    if let Ok(app_key) = uninst.open_subkey_with_flags(&sub_name, flags)
-                        && let Ok(dn) = app_key.get_value::<String, _>("DisplayName")
-                    {
-                        let trimmed = dn.trim().to_string();
-                        if !trimmed.is_empty() {
-                            display_names.push(trimmed);
-                        }
+    for (hive, flags) in hives {
+        let root = RegKey::predef(hive);
+        if let Ok(uninst) = root.open_subkey_with_flags(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            flags,
+        ) {
+            for sub_name in uninst.enum_keys().flatten() {
+                if let Ok(app_key) = uninst.open_subkey_with_flags(&sub_name, flags)
+                    && let Ok(dn) = app_key.get_value::<String, _>("DisplayName")
+                {
+                    let trimmed = dn.trim().to_string();
+                    if !trimmed.is_empty() {
+                        display_names.push(trimmed);
                     }
                 }
             }
         }
-
-        let store_packages = installed_store_packages();
-        let mut installed = HashSet::new();
-        for pkg in CURATED_CATALOG {
-            let found = if matches!(pkg.source, InstallSource::Store { .. }) {
-                let wanted = format!("{}_", pkg.uninstall_display_prefix.to_ascii_lowercase());
-                store_packages.iter().any(|full| full.starts_with(&wanted))
-            } else {
-                display_names
-                    .iter()
-                    .any(|name| display_name_matches(name, pkg.uninstall_display_prefix))
-            };
-            if found {
-                installed.insert(pkg.id);
-            }
-        }
-
-        if check_spotify_presence_on_disk() {
-            installed.insert("spotify");
-        }
-
-        installed
     }
 
-    pub fn install_package_cancellable(package_id: &str, cancel: &AtomicBool) -> CoreResult<()> {
-        if cancel.load(Ordering::Acquire) {
-            return Err(CoreError::Cancelled);
-        }
-
-        ElevationManager::require_elevated("Instalar paquetes curados de software")?;
-
-        let pkg = Self::find_package(package_id).ok_or_else(|| {
-            CoreError::Validation(format!(
-                "Paquete '{}' no encontrado en el catálogo",
-                package_id
-            ))
-        })?;
-
-        let (args, scope) = match pkg.source {
-            InstallSource::Store { id } => (store_install_args(id), WingetScope::User),
-            InstallSource::Winget { id, id_es, scope } => {
-                let id = if windows_ui_is_spanish() {
-                    id_es.unwrap_or(id)
-                } else {
-                    id
-                };
-                (repository_install_args(id, scope), scope)
-            }
+    let store_packages = installed_store_packages();
+    let mut installed = HashSet::new();
+    for pkg in CURATED_CATALOG {
+        let found = if matches!(pkg.source, InstallSource::Store { .. }) {
+            let wanted = format!("{}_", pkg.uninstall_display_prefix.to_ascii_lowercase());
+            store_packages.iter().any(|full| full.starts_with(&wanted))
+        } else {
+            display_names
+                .iter()
+                .any(|name| display_name_matches(name, pkg.uninstall_display_prefix))
         };
-        run_winget(&args, scope, pkg.name, cancel)
+        if found {
+            installed.insert(pkg.id);
+        }
     }
+
+    if check_spotify_presence_on_disk() {
+        installed.insert("spotify");
+    }
+
+    installed
+}
+
+pub fn install_package_cancellable(package_id: &str, cancel: &AtomicBool) -> CoreResult<()> {
+    if cancel.load(Ordering::Acquire) {
+        return Err(CoreError::Cancelled);
+    }
+
+    elevation::require_elevated("Instalar paquetes curados de software")?;
+
+    let pkg = find_package(package_id).ok_or_else(|| {
+        CoreError::Validation(format!(
+            "Paquete '{}' no encontrado en el catálogo",
+            package_id
+        ))
+    })?;
+
+    let (args, scope) = match pkg.source {
+        InstallSource::Store { id } => (store_install_args(id), WingetScope::User),
+        InstallSource::Winget { id, id_es, scope } => {
+            let id = if windows_ui_is_spanish() {
+                id_es.unwrap_or(id)
+            } else {
+                id
+            };
+            (repository_install_args(id, scope), scope)
+        }
+    };
+    run_winget(&args, scope, pkg.name, cancel)
 }
 
 /// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá

@@ -307,7 +307,7 @@ mod tests {
     use super::*;
     use crate::core::debloat::{DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS, DebloatCategory};
     use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
-    use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource};
+    use crate::core::store::app_store::{self, AppCategory, InstallSource};
 
     /// Nombres de marca: se escriben igual en los dos idiomas.
     const BRAND_NAMES: &[&str] = &[
@@ -360,7 +360,7 @@ mod tests {
         ] {
             check(c.label());
         }
-        for p in AppStoreManager::get_catalog() {
+        for p in app_store::get_catalog() {
             if matches!(p.source, InstallSource::Store { .. }) && !BRAND_NAMES.contains(&p.name) {
                 check(p.name);
             }

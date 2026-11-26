@@ -1,10 +1,10 @@
 //! Revertir todo lo que OtterSwiss cambió en el sistema (lo que hace `--rollback` al desinstalar la app).
 
-use crate::core::debloat::DebloaterManager;
+use crate::core::debloat;
 use crate::core::dns::DnsManager;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::optimize::engine::{OptimizationEngine, RollbackReport};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::safe_fs::delete_tree_verified;
 use crate::core::security::data_dir::ensure_admin_only_data_dir;
 
@@ -33,7 +33,7 @@ impl FullRevertReport {
 /// Lo usa `--rollback`, que llama el desinstalador. La carpeta de datos solo se borra si todo se
 /// revirtió y no queda ningún respaldo pendiente; si algo falla, los respaldos se conservan.
 pub fn revert_all_changes() -> CoreResult<FullRevertReport> {
-    ElevationManager::require_elevated("Revertir todos los cambios de OtterSwiss")?;
+    elevation::require_elevated("Revertir todos los cambios de OtterSwiss")?;
     let data_dir = ensure_admin_only_data_dir()?;
     let mut report = FullRevertReport::default();
 
@@ -60,15 +60,14 @@ pub fn revert_all_changes() -> CoreResult<FullRevertReport> {
         }
     }
 
-    if DebloaterManager::has_registry_backup() {
-        match DebloaterManager::revert_registry_debloat() {
+    if debloat::has_registry_backup() {
+        match debloat::revert_registry_debloat() {
             Ok(n) => report.debloat_restored = n,
             Err(e) => report.failures.push(format!("[Debloater] {}", e)),
         }
     }
 
-    let pending_backups =
-        engine.has_backup() || dns.has_backup() || DebloaterManager::has_registry_backup();
+    let pending_backups = engine.has_backup() || dns.has_backup() || debloat::has_registry_backup();
     if report.failures.is_empty() && !pending_backups {
         let parent = data_dir
             .parent()

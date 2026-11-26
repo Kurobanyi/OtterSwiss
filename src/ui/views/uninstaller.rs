@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::core::store::app_store::AppStoreManager;
+use crate::core::store::app_store;
 use crate::core::uninstall::{
-    InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallOutcome, UninstallerManager,
+    self, InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallOutcome,
 };
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
@@ -54,11 +54,10 @@ fn spawn_fill_missing_sizes(
     mut extra_sizes: Signal<HashMap<String, u64>>,
 ) {
     spawn(async move {
-        let computed = tokio::task::spawn_blocking(move || {
-            UninstallerManager::estimate_missing_sizes(apps_list)
-        })
-        .await
-        .unwrap_or_default();
+        let computed =
+            tokio::task::spawn_blocking(move || uninstall::estimate_missing_sizes(apps_list))
+                .await
+                .unwrap_or_default();
         if !computed.is_empty() {
             extra_sizes.set(computed);
         }
@@ -83,7 +82,7 @@ fn start_scan(app: InstalledApp, sig: UninstallerSignals) {
     spawn(async move {
         let name = app.display_name.clone();
         let app_clone = app.clone();
-        let res = run_blocking(move || UninstallerManager::scan_leftovers(&app_clone)).await;
+        let res = run_blocking(move || uninstall::scan_leftovers(&app_clone)).await;
 
         match res {
             Err(err) => status_msg.set(Some((
@@ -95,7 +94,7 @@ fn start_scan(app: InstalledApp, sig: UninstallerSignals) {
                 Tone::Success,
             ))),
             Ok(found) => {
-                selected_leftovers.set(UninstallerManager::recommended_ids(&found));
+                selected_leftovers.set(uninstall::recommended_ids(&found));
                 let count = found.len();
                 status_msg.set(Some((
                     Msg::new(move |en| {
@@ -132,7 +131,7 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
 
     spawn(async move {
         let app_run = app.clone();
-        let res = run_blocking(move || UninstallerManager::uninstall_and_scan(&app_run)).await;
+        let res = run_blocking(move || uninstall::uninstall_and_scan(&app_run)).await;
 
         let name = app.display_name.clone();
         let (text, tone) = match res {
@@ -188,7 +187,7 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
                         Tone::Success,
                     ),
                     Ok(found) => {
-                        selected_leftovers.set(UninstallerManager::recommended_ids(&found));
+                        selected_leftovers.set(uninstall::recommended_ids(&found));
                         leftovers_modal.set(Some((app, found)));
                         (
                             Msg::new(move |en| {
@@ -216,7 +215,7 @@ async fn reload_apps(
     extra_sizes: Signal<HashMap<String, u64>>,
     tools_state: Signal<ToolsSharedState>,
 ) {
-    let refreshed = tokio::task::spawn_blocking(UninstallerManager::list_installed_apps)
+    let refreshed = tokio::task::spawn_blocking(uninstall::list_installed_apps)
         .await
         .ok()
         .and_then(|r| r.ok());
@@ -309,15 +308,14 @@ fn start_purge(sig: UninstallerSignals) {
     leftovers_modal.set(None);
 
     spawn(async move {
-        let report = tokio::task::spawn_blocking(move || {
-            UninstallerManager::purge_leftover_items(&to_delete)
-        })
-        .await
-        .unwrap_or_else(|e| PurgeReport {
-            failed_count: 1,
-            errors: vec![e.to_string()],
-            ..Default::default()
-        });
+        let report =
+            tokio::task::spawn_blocking(move || uninstall::purge_leftover_items(&to_delete))
+                .await
+                .unwrap_or_else(|e| PurgeReport {
+                    failed_count: 1,
+                    errors: vec![e.to_string()],
+                    ..Default::default()
+                });
 
         reload_apps(apps, extra_sizes, tools_state).await;
 
@@ -527,7 +525,7 @@ fn AppRow(
     let txt = strings(en).uninstaller;
     let dispatcher = use_context::<InstallerDispatcher>();
     let is_working = sig.is_working;
-    let update = AppStoreManager::winget_package_for(&app.display_name);
+    let update = app_store::winget_package_for(&app.display_name);
     let (app_for_scan, app_for_uninstall) = (app.clone(), app.clone());
     let mut confirm_uninstall = confirm_uninstall;
 
@@ -610,7 +608,7 @@ pub fn UninstallerView() -> Element {
     let mut load_apps = move || {
         is_working.set(true);
         spawn(async move {
-            let res = run_blocking(UninstallerManager::list_installed_apps).await;
+            let res = run_blocking(uninstall::list_installed_apps).await;
             match res {
                 Ok(list) => {
                     apps.set(list.clone());

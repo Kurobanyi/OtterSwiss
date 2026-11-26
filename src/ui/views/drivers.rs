@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use dioxus::prelude::*;
 
 use crate::core::drivers::{
-    CatalogDriverMatch, DriverManager, DriverUpdateCandidate, InstalledDriverDevice,
-    InstalledDriverRecord, VendorDriverUpdate,
+    self, CatalogDriverMatch, DriverUpdateCandidate, InstalledDriverDevice, InstalledDriverRecord,
+    VendorDriverUpdate,
 };
 use crate::ui::components::{
     Card, CheckRow, ConfirmDialog, EmptyState, LoadingState, StatusBanner, Tone,
@@ -65,17 +65,15 @@ fn install_message(ok: usize, failed: usize, history_warning: Option<String>) ->
 /// falla, no se instala nada.
 fn execute_install(pending: PendingInstall, backup: bool) -> Result<InstallOutcome, Msg> {
     if backup {
-        DriverManager::export_driver_store_backup().map_err(|e| {
+        drivers::export_driver_store_backup().map_err(|e| {
             let err = Msg::from(e);
             Msg::new(move |en| (strings(en).drivers.backup_failed)(&err.text(en)))
         })?;
     }
     let report = match pending {
-        PendingInstall::Wua(ids) => DriverManager::install_driver_updates(&ids),
-        PendingInstall::Vendor(upd) => DriverManager::install_vendor_update(&upd),
-        PendingInstall::Catalog { uid, title } => {
-            DriverManager::install_catalog_driver(&uid, &title)
-        }
+        PendingInstall::Wua(ids) => drivers::install_driver_updates(&ids),
+        PendingInstall::Vendor(upd) => drivers::install_vendor_update(&upd),
+        PendingInstall::Catalog { uid, title } => drivers::install_catalog_driver(&uid, &title),
     }
     .map_err(Msg::from)?;
     Ok(InstallOutcome {
@@ -92,7 +90,7 @@ fn execute_install(pending: PendingInstall, backup: bool) -> Result<InstallOutco
 /// SYS-26: relee el historial de drivers instalados desde OtterSwiss. Sin elevación o sin historial queda vacío.
 fn refresh_driver_history(mut history: Signal<Vec<InstalledDriverRecord>>) {
     spawn(async move {
-        if let Ok(list) = run_blocking(DriverManager::driver_install_history).await {
+        if let Ok(list) = run_blocking(drivers::driver_install_history).await {
             history.set(list);
         }
     });
@@ -107,7 +105,7 @@ fn trigger_device_scan(
     status_msg.set(Some((drv(|t| t.scanning_devices), Tone::Info)));
 
     spawn(async move {
-        let res = run_blocking(DriverManager::list_present_devices).await;
+        let res = run_blocking(drivers::list_present_devices).await;
         match res {
             Ok(list) => {
                 let count = list.len();
@@ -159,7 +157,7 @@ pub fn DriversView() -> Element {
         is_working.set(true);
         spawn(async move {
             let name = record.published_name.clone();
-            let res = run_blocking(move || DriverManager::revert_installed_driver(&name)).await;
+            let res = run_blocking(move || drivers::revert_installed_driver(&name)).await;
             match res {
                 Ok(rep) => {
                     if rep.reboot_required {
@@ -170,7 +168,7 @@ pub fn DriversView() -> Element {
                         Msg::new(move |en| (strings(en).drivers.removed)(&title, &file)),
                         Tone::Success,
                     )));
-                    if let Ok(refreshed) = run_blocking(DriverManager::list_present_devices).await {
+                    if let Ok(refreshed) = run_blocking(drivers::list_present_devices).await {
                         devices.set(refreshed);
                     }
                 }
@@ -195,7 +193,7 @@ pub fn DriversView() -> Element {
         spawn(async move {
             let worker_cancel = Arc::clone(&cancel);
             let res = tokio::task::spawn_blocking(move || {
-                DriverManager::run_full_scan(&current_devs, &worker_cancel)
+                drivers::run_full_scan(&current_devs, &worker_cancel)
             })
             .await;
             // Cancelada: la vista ya quedó libre y quizá haya otra tarea en curso; no se toca nada.
@@ -299,7 +297,7 @@ pub fn DriversView() -> Element {
                         wua_updates.write().clear();
                         selected_wua.write().clear();
                     }
-                    if let Ok(refreshed) = run_blocking(DriverManager::list_present_devices).await {
+                    if let Ok(refreshed) = run_blocking(drivers::list_present_devices).await {
                         devices.set(refreshed);
                     }
                     refresh_driver_history(install_history);
@@ -315,7 +313,7 @@ pub fn DriversView() -> Element {
         status_msg.set(Some((drv(|t| t.exporting_backup), Tone::Info)));
 
         spawn(async move {
-            let res = run_blocking(DriverManager::export_driver_store_backup).await;
+            let res = run_blocking(drivers::export_driver_store_backup).await;
             match res {
                 Ok(path) => {
                     let path = path.display().to_string();
@@ -738,7 +736,7 @@ fn search_catalog(
         Tone::Info,
     )));
     spawn(async move {
-        let res = run_blocking(move || DriverManager::search_microsoft_catalog(&hw_id)).await;
+        let res = run_blocking(move || drivers::search_microsoft_catalog(&hw_id)).await;
         match res {
             Ok(list) => {
                 let n = list.len();

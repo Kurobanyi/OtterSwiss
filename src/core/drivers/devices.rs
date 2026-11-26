@@ -12,8 +12,8 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
+use super::PNPUTIL_TIMEOUT;
 use super::hwid::{short_hw_id_of, ven_dev_of};
-use super::{DriverManager, PNPUTIL_TIMEOUT};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::hardware::pci::vendor_name_hex;
 use crate::core::platform::handles::DevInfoList;
@@ -116,115 +116,112 @@ impl InstalledDriverDevice {
     }
 }
 
-impl DriverManager {
-    pub fn list_present_devices() -> CoreResult<Vec<InstalledDriverDevice>> {
-        let list = DevInfoList::present_devices()?;
-        let h_dev_info = list.raw();
-        let mut devices = Vec::new();
-        let mut dev_data = SP_DEVINFO_DATA {
-            cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
-            ..Default::default()
+pub fn list_present_devices() -> CoreResult<Vec<InstalledDriverDevice>> {
+    let list = DevInfoList::present_devices()?;
+    let h_dev_info = list.raw();
+    let mut devices = Vec::new();
+    let mut dev_data = SP_DEVINFO_DATA {
+        cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
+        ..Default::default()
+    };
+
+    let mut member_idx = 0u32;
+    loop {
+        // SAFETY: `h_dev_info` sigue vivo (lo guarda `list`) y `dev_data` lleva su `cbSize`.
+        let ok = unsafe { SetupDiEnumDeviceInfo(h_dev_info, member_idx, &mut dev_data) };
+        if ok.is_err() {
+            break;
+        }
+        member_idx += 1;
+
+        let desc = get_device_property(h_dev_info, &mut dev_data, SPDRP_DEVICEDESC);
+        let friendly = get_device_property(h_dev_info, &mut dev_data, SPDRP_FRIENDLYNAME);
+        let mfg = get_device_property(h_dev_info, &mut dev_data, SPDRP_MFG);
+        let hw_id = get_device_property(h_dev_info, &mut dev_data, SPDRP_HARDWAREID);
+        let class_name = get_device_property(h_dev_info, &mut dev_data, SPDRP_CLASS);
+        let driver_key = get_device_property(h_dev_info, &mut dev_data, SPDRP_DRIVER);
+
+        if desc.is_none() && friendly.is_none() && hw_id.is_none() {
+            continue;
+        }
+
+        let (driver_version, driver_date, provider_name, inf_path) = match driver_key {
+            Some(ref key) => read_driver_class_metadata(key),
+            None => (None, None, None, None),
         };
 
-        let mut member_idx = 0u32;
-        loop {
-            // SAFETY: `h_dev_info` sigue vivo (lo guarda `list`) y `dev_data` lleva su `cbSize`.
-            let ok = unsafe { SetupDiEnumDeviceInfo(h_dev_info, member_idx, &mut dev_data) };
-            if ok.is_err() {
-                break;
-            }
-            member_idx += 1;
+        let mut status = CM_DEVNODE_STATUS_FLAGS::default();
+        let mut problem = CM_PROB::default();
+        // SAFETY: salidas locales y un `DevInst` que acaba de devolver SetupAPI.
+        let cr = unsafe { CM_Get_DevNode_Status(&mut status, &mut problem, dev_data.DevInst, 0) };
 
-            let desc = get_device_property(h_dev_info, &mut dev_data, SPDRP_DEVICEDESC);
-            let friendly = get_device_property(h_dev_info, &mut dev_data, SPDRP_FRIENDLYNAME);
-            let mfg = get_device_property(h_dev_info, &mut dev_data, SPDRP_MFG);
-            let hw_id = get_device_property(h_dev_info, &mut dev_data, SPDRP_HARDWAREID);
-            let class_name = get_device_property(h_dev_info, &mut dev_data, SPDRP_CLASS);
-            let driver_key = get_device_property(h_dev_info, &mut dev_data, SPDRP_DRIVER);
+        let (problem, needs_reboot) = if cr == CR_SUCCESS {
+            let has_problem = (status.0 & DN_HAS_PROBLEM.0) != 0;
+            let reboot_flag = (status.0 & DN_NEED_RESTART.0) != 0;
+            (has_problem.then_some(problem.0), reboot_flag)
+        } else {
+            (None, false)
+        };
 
-            if desc.is_none() && friendly.is_none() && hw_id.is_none() {
-                continue;
-            }
-
-            let (driver_version, driver_date, provider_name, inf_path) = match driver_key {
-                Some(ref key) => read_driver_class_metadata(key),
-                None => (None, None, None, None),
-            };
-
-            let mut status = CM_DEVNODE_STATUS_FLAGS::default();
-            let mut problem = CM_PROB::default();
-            // SAFETY: salidas locales y un `DevInst` que acaba de devolver SetupAPI.
-            let cr =
-                unsafe { CM_Get_DevNode_Status(&mut status, &mut problem, dev_data.DevInst, 0) };
-
-            let (problem, needs_reboot) = if cr == CR_SUCCESS {
-                let has_problem = (status.0 & DN_HAS_PROBLEM.0) != 0;
-                let reboot_flag = (status.0 & DN_NEED_RESTART.0) != 0;
-                (has_problem.then_some(problem.0), reboot_flag)
-            } else {
-                (None, false)
-            };
-
-            devices.push(InstalledDriverDevice {
-                device_desc: desc,
-                friendly_name: friendly,
-                manufacturer: mfg,
-                provider_name,
-                class_name,
-                hardware_id: hw_id,
-                driver_version,
-                driver_date,
-                inf_path,
-                dev_inst: dev_data.DevInst,
-                problem,
-                needs_reboot,
-            });
-        }
-
-        devices.sort_by(|a, b| {
-            b.has_problem()
-                .cmp(&a.has_problem())
-                .then_with(|| b.is_third_party_oem().cmp(&a.is_third_party_oem()))
-                .then_with(|| {
-                    a.display_title()
-                        .to_ascii_lowercase()
-                        .cmp(&b.display_title().to_ascii_lowercase())
-                })
+        devices.push(InstalledDriverDevice {
+            device_desc: desc,
+            friendly_name: friendly,
+            manufacturer: mfg,
+            provider_name,
+            class_name,
+            hardware_id: hw_id,
+            driver_version,
+            driver_date,
+            inf_path,
+            dev_inst: dev_data.DevInst,
+            problem,
+            needs_reboot,
         });
-
-        Ok(devices)
     }
 
-    pub fn export_driver_store_backup() -> CoreResult<PathBuf> {
-        let base_dir = ensure_admin_only_data_dir()?;
-        let backup_root = base_dir.join("DriverBackup");
-        create_admin_only_dir(&backup_root)?;
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let backup_dir = backup_root.join(format!("backup_{}", stamp));
-        create_admin_only_dir(&backup_dir)?;
+    devices.sort_by(|a, b| {
+        b.has_problem()
+            .cmp(&a.has_problem())
+            .then_with(|| b.is_third_party_oem().cmp(&a.is_third_party_oem()))
+            .then_with(|| {
+                a.display_title()
+                    .to_ascii_lowercase()
+                    .cmp(&b.display_title().to_ascii_lowercase())
+            })
+    });
 
-        let out = run_captured(
-            &system32_dir()?.join("pnputil.exe"),
-            &[
-                std::ffi::OsStr::new("/export-driver"),
-                std::ffi::OsStr::new("*"),
-                backup_dir.as_os_str(),
-            ],
-            PNPUTIL_TIMEOUT,
-        )?;
-        if !out.success {
-            return Err(CoreError::system_tool_msg(format!(
-                "pnputil falló al exportar drivers (código {}): {}",
-                out.code.unwrap_or(-1),
-                out.stdout.trim()
-            )));
-        }
+    Ok(devices)
+}
 
-        Ok(backup_dir)
+pub fn export_driver_store_backup() -> CoreResult<PathBuf> {
+    let base_dir = ensure_admin_only_data_dir()?;
+    let backup_root = base_dir.join("DriverBackup");
+    create_admin_only_dir(&backup_root)?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup_dir = backup_root.join(format!("backup_{}", stamp));
+    create_admin_only_dir(&backup_dir)?;
+
+    let out = run_captured(
+        &system32_dir()?.join("pnputil.exe"),
+        &[
+            std::ffi::OsStr::new("/export-driver"),
+            std::ffi::OsStr::new("*"),
+            backup_dir.as_os_str(),
+        ],
+        PNPUTIL_TIMEOUT,
+    )?;
+    if !out.success {
+        return Err(CoreError::system_tool_msg(format!(
+            "pnputil falló al exportar drivers (código {}): {}",
+            out.code.unwrap_or(-1),
+            out.stdout.trim()
+        )));
     }
+
+    Ok(backup_dir)
 }
 
 /// Lee una propiedad de texto de un dispositivo (SetupAPI). Pide primero el tamaño y luego el valor en un `AlignedBuf` de

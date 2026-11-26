@@ -6,9 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::vendor::vendor_policy;
-use super::{
-    DriverInstallReport, DriverManager, VendorDriverUpdate, ensure_driver_updates_allowed,
-};
+use super::{DriverInstallReport, VendorDriverUpdate, ensure_driver_updates_allowed};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::process::{Launch, run_in_job};
 use crate::core::platform::safe_fs::{create_verified_new_file, delete_tree_verified};
@@ -23,39 +21,37 @@ use crate::core::security::http;
 /// cortarlo, porque matar un instalador de drivers a mitad es peor que esperar.
 const VENDOR_INSTALLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
-impl DriverManager {
-    /// SEC-30: descarga e instala una actualización de fabricante. Hosts y firmante salen de [`vendor_policy`] (fijos en el
-    /// binario), nunca de `upd`, que viene del escaneo (de la red) y la vista devuelve tal cual. Todo ejecutable pasa por
-    /// Authenticode con el firmante del fabricante y corre dentro de un Job; los temporales se borran al terminar.
-    pub(super) fn install_vendor_update_inner(
-        upd: &VendorDriverUpdate,
-    ) -> CoreResult<DriverInstallReport> {
-        ensure_driver_updates_allowed()?;
-        let (hosts, signer) = vendor_policy(&upd.vendor)?;
-        validate_https_host(&upd.download_url, hosts)?;
-        let safe_id: String = upd
-            .id
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
+/// SEC-30: descarga e instala una actualización de fabricante. Hosts y firmante salen de [`vendor_policy`] (fijos en el
+/// binario), nunca de `upd`, que viene del escaneo (de la red) y la vista devuelve tal cual. Todo ejecutable pasa por
+/// Authenticode con el firmante del fabricante y corre dentro de un Job; los temporales se borran al terminar.
+pub(super) fn install_vendor_update_inner(
+    upd: &VendorDriverUpdate,
+) -> CoreResult<DriverInstallReport> {
+    ensure_driver_updates_allowed()?;
+    let (hosts, signer) = vendor_policy(&upd.vendor)?;
+    validate_https_host(&upd.download_url, hosts)?;
+    let safe_id: String = upd
+        .id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
 
-        let policy = DownloadPolicy {
-            url: &upd.download_url,
-            allowed_final_hosts: hosts,
-            expected_sha256_hex: None,
-            expected_cert_thumbprint_sha1: None,
-            expected_signer_cn: Some(signer),
-            max_bytes: 1600 * 1024 * 1024,
-        };
-        let installer = StagedDownload::download(&safe_id, "exe", &policy)?;
-        run_verified_vendor_installer(installer.path(), &policy, &upd.title)
-    }
+    let policy = DownloadPolicy {
+        url: &upd.download_url,
+        allowed_final_hosts: hosts,
+        expected_sha256_hex: None,
+        expected_cert_thumbprint_sha1: None,
+        expected_signer_cn: Some(signer),
+        max_bytes: 1600 * 1024 * 1024,
+    };
+    let installer = StagedDownload::download(&safe_id, "exe", &policy)?;
+    run_verified_vendor_installer(installer.path(), &policy, &upd.title)
 }
 
 /// Carpeta temporal solo-admin de un paquete de drivers (`DriverCache\<kind>\<stem>_<nonce>`): se borra al soltarse

@@ -14,9 +14,7 @@ use windows::core::{BSTR, Interface};
 use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
-use super::{
-    DriverInstallReport, DriverManager, DriverUpdateCandidate, ensure_driver_updates_allowed,
-};
+use super::{DriverInstallReport, DriverUpdateCandidate, ensure_driver_updates_allowed};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::ComGuard;
 
@@ -25,86 +23,82 @@ const WUA_SEARCH_TIMEOUT: Duration = Duration::from_secs(4 * 60);
 /// Cada cuánto se mira si el usuario canceló la búsqueda.
 const CANCEL_POLL: Duration = Duration::from_millis(250);
 
-impl DriverManager {
-    /// Drivers pendientes en Windows Update. `cancel` deja de esperar la búsqueda (`CoreError::Cancelled`).
-    pub(super) fn search_driver_updates(
-        cancel: &AtomicBool,
-    ) -> CoreResult<Vec<DriverUpdateCandidate>> {
-        if is_windows_update_service_disabled() {
-            return Err(CoreError::system_tool_msg(
-                "El servicio Windows Update (wuauserv) está deshabilitado.",
-            ));
-        }
+/// Drivers pendientes en Windows Update. `cancel` deja de esperar la búsqueda (`CoreError::Cancelled`).
+pub(super) fn search_driver_updates(cancel: &AtomicBool) -> CoreResult<Vec<DriverUpdateCandidate>> {
+    if is_windows_update_service_disabled() {
+        return Err(CoreError::system_tool_msg(
+            "El servicio Windows Update (wuauserv) está deshabilitado.",
+        ));
+    }
 
+    if cancel.load(Ordering::Acquire) {
+        return Err(CoreError::Cancelled);
+    }
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(search_driver_updates_on_this_thread());
+    });
+    // CON-03: Windows Update puede quedarse colgado (servicio ocupado, red). Pasado el plazo, o si el usuario cancela,
+    // se deja de esperar; la búsqueda solo lee, así que el hilo puede terminar solo después sin dejar nada a medias.
+    let deadline = Instant::now() + WUA_SEARCH_TIMEOUT;
+    loop {
         if cancel.load(Ordering::Acquire) {
             return Err(CoreError::Cancelled);
         }
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = tx.send(Self::search_driver_updates_on_this_thread());
-        });
-        // CON-03: Windows Update puede quedarse colgado (servicio ocupado, red). Pasado el plazo, o si el usuario cancela,
-        // se deja de esperar; la búsqueda solo lee, así que el hilo puede terminar solo después sin dejar nada a medias.
-        let deadline = Instant::now() + WUA_SEARCH_TIMEOUT;
-        loop {
-            if cancel.load(Ordering::Acquire) {
-                return Err(CoreError::Cancelled);
+        match rx.recv_timeout(CANCEL_POLL) {
+            Ok(result) => return result,
+            Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+            Err(RecvTimeoutError::Timeout) => {
+                return Err(CoreError::system_tool_msg(format!(
+                    "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
+                    WUA_SEARCH_TIMEOUT.as_secs() / 60
+                )));
             }
-            match rx.recv_timeout(CANCEL_POLL) {
-                Ok(result) => return result,
-                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
-                Err(RecvTimeoutError::Timeout) => {
-                    return Err(CoreError::system_tool_msg(format!(
-                        "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
-                        WUA_SEARCH_TIMEOUT.as_secs() / 60
-                    )));
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    return Err(CoreError::system_tool_msg(
-                        "Fallo inesperado en hilo COM de búsqueda de drivers",
-                    ));
-                }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(CoreError::system_tool_msg(
+                    "Fallo inesperado en hilo COM de búsqueda de drivers",
+                ));
             }
         }
     }
+}
 
-    /// Búsqueda de drivers en WUA en el hilo actual (que no tenga COM iniciado en otro modo).
-    fn search_driver_updates_on_this_thread() -> CoreResult<Vec<DriverUpdateCandidate>> {
-        let _com = ComGuard::init_sta()?;
-        let (_session, updates) = wua_pending_drivers()?;
-        // SAFETY: COM de WUA sobre una colección válida, en el hilo STA que la obtuvo.
-        let count = unsafe { updates.Count() }.unwrap_or(0);
-        Ok((0..count)
-            .filter_map(|idx| {
-                // SAFETY: igual que arriba; `idx` está dentro de `Count()`.
-                let update = unsafe { updates.get_Item(idx) }.ok()?;
-                Some(wua_candidate(&update, idx))
-            })
-            .collect())
+/// Búsqueda de drivers en WUA en el hilo actual (que no tenga COM iniciado en otro modo).
+fn search_driver_updates_on_this_thread() -> CoreResult<Vec<DriverUpdateCandidate>> {
+    let _com = ComGuard::init_sta()?;
+    let (_session, updates) = wua_pending_drivers()?;
+    // SAFETY: COM de WUA sobre una colección válida, en el hilo STA que la obtuvo.
+    let count = unsafe { updates.Count() }.unwrap_or(0);
+    Ok((0..count)
+        .filter_map(|idx| {
+            // SAFETY: igual que arriba; `idx` está dentro de `Count()`.
+            let update = unsafe { updates.get_Item(idx) }.ok()?;
+            Some(wua_candidate(&update, idx))
+        })
+        .collect())
+}
+
+pub(super) fn install_driver_updates_inner(
+    selected_ids: &[String],
+) -> CoreResult<DriverInstallReport> {
+    ensure_driver_updates_allowed()?;
+    if selected_ids.is_empty() {
+        return Err(CoreError::Validation(
+            "No hay actualizaciones seleccionadas para instalar".into(),
+        ));
     }
 
-    pub(super) fn install_driver_updates_inner(
-        selected_ids: &[String],
-    ) -> CoreResult<DriverInstallReport> {
-        ensure_driver_updates_allowed()?;
-        if selected_ids.is_empty() {
-            return Err(CoreError::Validation(
-                "No hay actualizaciones seleccionadas para instalar".into(),
-            ));
-        }
-
-        if is_windows_update_service_disabled() {
-            return Err(CoreError::system_tool_msg(
-                "El servicio Windows Update (wuauserv) está deshabilitado.",
-            ));
-        }
-
-        let target_ids = selected_ids.to_vec();
-        let handle = std::thread::spawn(move || wua_install_on_this_thread(&target_ids));
-        handle.join().map_err(|_| {
-            CoreError::system_tool_msg("Fallo inesperado en hilo COM de instalación de drivers")
-        })?
+    if is_windows_update_service_disabled() {
+        return Err(CoreError::system_tool_msg(
+            "El servicio Windows Update (wuauserv) está deshabilitado.",
+        ));
     }
+
+    let target_ids = selected_ids.to_vec();
+    let handle = std::thread::spawn(move || wua_install_on_this_thread(&target_ids));
+    handle.join().map_err(|_| {
+        CoreError::system_tool_msg("Fallo inesperado en hilo COM de instalación de drivers")
+    })?
 }
 
 fn is_windows_update_service_disabled() -> bool {

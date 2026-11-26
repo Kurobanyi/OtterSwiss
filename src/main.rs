@@ -5,7 +5,7 @@ mod startup;
 
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, icon_from_memory};
 use otter_swiss::core::cli::CliCommand;
-use otter_swiss::core::context_menu::ContextMenuManager;
+use otter_swiss::core::context_menu;
 use otter_swiss::core::rollback::revert_all_changes;
 use otter_swiss::ui::App;
 use otter_swiss::ui::document::document_head;
@@ -25,11 +25,11 @@ fn main() {
             std::process::exit(code);
         }
         CliCommand::InstallContextMenu => {
-            let _ = ContextMenuManager::install();
+            let _ = context_menu::install();
             return;
         }
         CliCommand::UninstallContextMenu => {
-            let _ = ContextMenuManager::uninstall();
+            let _ = context_menu::uninstall();
             return;
         }
         CliCommand::Extract(src) => Some(MiniArchiveJob::extract(src)),

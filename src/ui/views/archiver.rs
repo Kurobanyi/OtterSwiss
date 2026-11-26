@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use dioxus::prelude::*;
 
 use crate::core::archive::{
-    ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
+    self, ArchiveFormat, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
     resolve_extract_destination,
 };
 use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
@@ -60,7 +60,7 @@ pub fn ArchiverView() -> Element {
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
                 if current_mode == ArchiveMode::Extract {
-                    ArchiveManager::extract_archive_with_progress(
+                    archive::extract_archive_with_progress(
                         &src,
                         &dest,
                         DEFAULT_EXTRACT_QUOTA,
@@ -68,7 +68,7 @@ pub fn ArchiverView() -> Element {
                         Some(prog),
                     )
                 } else {
-                    ArchiveManager::compress_path_with_progress(
+                    archive::compress_path_with_progress(
                         &src,
                         &dest,
                         fmt,

@@ -7,9 +7,9 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use super::registry_backup::debloat_backup_path;
-use super::{DEBLOAT_APP_CATALOG, DebloatScanResult, DebloaterManager, DetectedBloatApp};
+use super::{DEBLOAT_APP_CATALOG, DebloatScanResult, DetectedBloatApp};
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::process::run_captured;
 
 /// Tope de cada consulta de PowerShell del escaneo (antes no tenía, AR-10).
@@ -27,87 +27,85 @@ struct PsAppxEntry {
     package_name: Option<String>,
 }
 
-impl DebloaterManager {
-    pub fn scan_system() -> CoreResult<DebloatScanResult> {
-        // ERR-05: sin elevación `Get-AppxPackage -AllUsers` falla con acceso denegado y, con
-        // `-ErrorAction SilentlyContinue`, el escaneo diría «nada instalado».
-        ElevationManager::require_elevated("Escanear las apps instaladas para todos los usuarios")?;
-        let ps_path = get_powershell_path()?;
+pub fn scan_system() -> CoreResult<DebloatScanResult> {
+    // ERR-05: sin elevación `Get-AppxPackage -AllUsers` falla con acceso denegado y, con
+    // `-ErrorAction SilentlyContinue`, el escaneo diría «nada instalado».
+    elevation::require_elevated("Escanear las apps instaladas para todos los usuarios")?;
+    let ps_path = get_powershell_path()?;
 
-        let ps_installed = run_ps(
-            &ps_path,
-            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object Name, PackageFullName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
-            SCAN_TIMEOUT_MS,
-        )?;
+    let ps_installed = run_ps(
+        &ps_path,
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Select-Object Name, PackageFullName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
+        SCAN_TIMEOUT_MS,
+    )?;
 
-        let mut full_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut full_map: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let entries = parse_ps_json(&ps_installed, "Get-AppxPackage")?;
         {
-            let entries = parse_ps_json(&ps_installed, "Get-AppxPackage")?;
-            {
-                for e in entries {
-                    if let (Some(n), Some(full)) = (e.name, e.package_full_name)
-                        && is_valid_package_ident(&full)
-                    {
-                        let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
-                        if !vec.contains(&full) {
-                            vec.push(full);
-                        }
+            for e in entries {
+                if let (Some(n), Some(full)) = (e.name, e.package_full_name)
+                    && is_valid_package_ident(&full)
+                {
+                    let vec = full_map.entry(n.to_ascii_lowercase()).or_default();
+                    if !vec.contains(&full) {
+                        vec.push(full);
                     }
                 }
             }
         }
-
-        let ps_prov = run_ps(
-            &ps_path,
-            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
-            SCAN_TIMEOUT_MS,
-        )?;
-
-        let mut prov_map: HashMap<String, Vec<String>> = HashMap::new();
-        {
-            let entries = parse_ps_json(&ps_prov, "Get-AppxProvisionedPackage")?;
-            {
-                for e in entries {
-                    if let (Some(dn), Some(pn)) = (e.display_name, e.package_name)
-                        && is_valid_package_ident(&pn)
-                    {
-                        let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
-                        if !vec.contains(&pn) {
-                            vec.push(pn);
-                        }
-                    }
-                }
-            }
-        }
-
-        let apps = DEBLOAT_APP_CATALOG
-            .iter()
-            .map(|spec| {
-                let key = spec.package_name.to_ascii_lowercase();
-                let full_names = full_map.get(&key).cloned().unwrap_or_default();
-                let provisioned_names = prov_map.get(&key).cloned().unwrap_or_default();
-                let installed = !full_names.is_empty() || !provisioned_names.is_empty();
-                DetectedBloatApp {
-                    id: spec.id,
-                    package_name: spec.package_name,
-                    display_name: spec.display_name,
-                    description: spec.description,
-                    category: spec.category,
-                    default_selected: spec.default_selected,
-                    installed,
-                    full_names,
-                    provisioned_names,
-                }
-            })
-            .collect();
-
-        let has_reg_backup = debloat_backup_path().map(|p| p.exists()).unwrap_or(false);
-
-        Ok(DebloatScanResult {
-            apps,
-            has_reg_backup,
-        })
     }
+
+    let ps_prov = run_ps(
+        &ps_path,
+        "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $p = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Select-Object DisplayName, PackageName); if ($p.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $p -Compress }",
+        SCAN_TIMEOUT_MS,
+    )?;
+
+    let mut prov_map: HashMap<String, Vec<String>> = HashMap::new();
+    {
+        let entries = parse_ps_json(&ps_prov, "Get-AppxProvisionedPackage")?;
+        {
+            for e in entries {
+                if let (Some(dn), Some(pn)) = (e.display_name, e.package_name)
+                    && is_valid_package_ident(&pn)
+                {
+                    let vec = prov_map.entry(dn.to_ascii_lowercase()).or_default();
+                    if !vec.contains(&pn) {
+                        vec.push(pn);
+                    }
+                }
+            }
+        }
+    }
+
+    let apps = DEBLOAT_APP_CATALOG
+        .iter()
+        .map(|spec| {
+            let key = spec.package_name.to_ascii_lowercase();
+            let full_names = full_map.get(&key).cloned().unwrap_or_default();
+            let provisioned_names = prov_map.get(&key).cloned().unwrap_or_default();
+            let installed = !full_names.is_empty() || !provisioned_names.is_empty();
+            DetectedBloatApp {
+                id: spec.id,
+                package_name: spec.package_name,
+                display_name: spec.display_name,
+                description: spec.description,
+                category: spec.category,
+                default_selected: spec.default_selected,
+                installed,
+                full_names,
+                provisioned_names,
+            }
+        })
+        .collect();
+
+    let has_reg_backup = debloat_backup_path().map(|p| p.exists()).unwrap_or(false);
+
+    Ok(DebloatScanResult {
+        apps,
+        has_reg_backup,
+    })
 }
 
 pub(super) fn get_powershell_path() -> CoreResult<PathBuf> {

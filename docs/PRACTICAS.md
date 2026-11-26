@@ -54,7 +54,7 @@ dependencias directas se usan.
 
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
-| [`AR-19`](PRACTICAS-detalle.md#ar-19) | Tres estilos de API en core | M | Pendiente |
+| [`AR-19`](PRACTICAS-detalle.md#ar-19) | Tres estilos de API en core | M | Hecha |
 | [`HE-11`](PRACTICAS-detalle.md#he-11) | rustfmt no formatea `rsx!` | S | Descartada |
 
 ## Siguiente

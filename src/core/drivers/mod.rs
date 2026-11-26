@@ -1,5 +1,4 @@
-//! Drivers: dispositivos presentes, búsqueda de actualizaciones (Windows Update, Catálogo de Microsoft y NVIDIA), instalación verificada e historial para revertir. Este módulo tiene los tipos públicos, la fachada
-//! [`DriverManager`] y lo que comparten los submódulos: la política del equipo (SYS-25) y las peticiones HTTPS.
+//! Drivers: dispositivos presentes, búsqueda de actualizaciones (Windows Update, Catálogo de Microsoft y NVIDIA), instalación verificada e historial para revertir. Este módulo tiene los tipos públicos, las funciones que reexporta de sus submódulos y lo que comparten: la política del equipo (SYS-25) y las peticiones HTTPS.
 
 mod catalog;
 mod devices;
@@ -8,6 +7,13 @@ mod hwid;
 mod install;
 mod vendor;
 mod wua;
+use catalog::install_catalog_driver_inner;
+pub use catalog::search_microsoft_catalog;
+pub use devices::{export_driver_store_backup, list_present_devices};
+pub use history::{driver_install_history, revert_installed_driver};
+use install::install_vendor_update_inner;
+use vendor::check_nvidia_updates;
+use wua::{install_driver_updates_inner, search_driver_updates};
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -102,100 +108,96 @@ pub struct FullDriverScanResult {
     pub notes: Vec<String>,
 }
 
-pub struct DriverManager;
+/// Instala los drivers de Windows Update elegidos y registra los paquetes que agregó (SYS-26).
+pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
+    with_driver_history("Windows Update", || {
+        install_driver_updates_inner(selected_ids)
+    })
+}
 
-impl DriverManager {
-    /// Instala los drivers de Windows Update elegidos y registra los paquetes que agregó (SYS-26).
-    pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
-        with_driver_history("Windows Update", || {
-            Self::install_driver_updates_inner(selected_ids)
-        })
-    }
+/// Instala un driver del Catálogo de Microsoft y registra los paquetes que agregó (SYS-26).
+pub fn install_catalog_driver(update_id: &str, title: &str) -> CoreResult<DriverInstallReport> {
+    with_driver_history(title, || install_catalog_driver_inner(update_id))
+}
 
-    /// Instala un driver del Catálogo de Microsoft y registra los paquetes que agregó (SYS-26).
-    pub fn install_catalog_driver(update_id: &str, title: &str) -> CoreResult<DriverInstallReport> {
-        with_driver_history(title, || Self::install_catalog_driver_inner(update_id))
-    }
+/// Instala una actualización de fabricante y registra los paquetes que agregó (SYS-26).
+pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
+    with_driver_history(&upd.title, || install_vendor_update_inner(upd))
+}
 
-    /// Instala una actualización de fabricante y registra los paquetes que agregó (SYS-26).
-    pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
-        with_driver_history(&upd.title, || Self::install_vendor_update_inner(upd))
-    }
-
-    /// Busca en todas las fuentes. Si `cancel` se marca, corta antes de la fuente siguiente y devuelve un resultado
-    /// vacío: la vista ya dejó de esperarlo (CON-03).
-    pub fn run_full_scan(
-        devices: &[InstalledDriverDevice],
-        cancel: &AtomicBool,
-    ) -> FullDriverScanResult {
-        let cancelled = || cancel.load(Ordering::Acquire);
-        let wua_policy_blocked = is_wu_driver_policy_blocked();
-        if wua_policy_blocked {
-            return FullDriverScanResult {
-                wua_policy_blocked,
-                ..Default::default()
-            };
-        }
-
-        let (wua_updates, wua_note) = match Self::search_driver_updates(cancel) {
-            Ok(wua) => (wua, None),
-            Err(e) => (Vec::new(), Some(e.to_string())),
+/// Busca en todas las fuentes. Si `cancel` se marca, corta antes de la fuente siguiente y devuelve un resultado
+/// vacío: la vista ya dejó de esperarlo (CON-03).
+pub fn run_full_scan(
+    devices: &[InstalledDriverDevice],
+    cancel: &AtomicBool,
+) -> FullDriverScanResult {
+    let cancelled = || cancel.load(Ordering::Acquire);
+    let wua_policy_blocked = is_wu_driver_policy_blocked();
+    if wua_policy_blocked {
+        return FullDriverScanResult {
+            wua_policy_blocked,
+            ..Default::default()
         };
+    }
+
+    let (wua_updates, wua_note) = match search_driver_updates(cancel) {
+        Ok(wua) => (wua, None),
+        Err(e) => (Vec::new(), Some(e.to_string())),
+    };
+    if cancelled() {
+        return FullDriverScanResult::default();
+    }
+
+    // ERR-20: lo que no se pudo consultar se informa en `notes`, no se confunde con «sin actualizaciones».
+    let mut notes = Vec::new();
+    let mut vendor_updates = Vec::new();
+    // ERR-25: Intel no publica un catálogo de drivers legible por máquina; sus drivers llegan por Windows Update.
+    if cancelled() {
+        return FullDriverScanResult::default();
+    }
+    match check_nvidia_updates(devices) {
+        Ok(found) => vendor_updates.extend(found),
+        Err(e) => notes.push(format!("NVIDIA: {e}")),
+    }
+
+    let mut catalog_matches = Vec::new();
+    let mut queried_hw_ids = HashSet::new();
+    for dev in devices
+        .iter()
+        .filter(|d| d.problem == Some(CM_PROB_FAILED_INSTALL))
+    {
         if cancelled() {
             return FullDriverScanResult::default();
         }
-
-        // ERR-20: lo que no se pudo consultar se informa en `notes`, no se confunde con «sin actualizaciones».
-        let mut notes = Vec::new();
-        let mut vendor_updates = Vec::new();
-        // ERR-25: Intel no publica un catálogo de drivers legible por máquina; sus drivers llegan por Windows Update.
-        if cancelled() {
-            return FullDriverScanResult::default();
+        let Some(short_id) = dev.short_hw_id() else {
+            continue;
+        };
+        if !queried_hw_ids.insert(short_id.clone()) {
+            continue;
         }
-        match Self::check_nvidia_updates(devices) {
-            Ok(found) => vendor_updates.extend(found),
-            Err(e) => notes.push(format!("NVIDIA: {e}")),
-        }
-
-        let mut catalog_matches = Vec::new();
-        let mut queried_hw_ids = HashSet::new();
-        for dev in devices
-            .iter()
-            .filter(|d| d.problem == Some(CM_PROB_FAILED_INSTALL))
-        {
-            if cancelled() {
-                return FullDriverScanResult::default();
-            }
-            let Some(short_id) = dev.short_hw_id() else {
-                continue;
-            };
-            if !queried_hw_ids.insert(short_id.clone()) {
-                continue;
-            }
-            match Self::search_microsoft_catalog(&short_id) {
-                Ok(mut found) => {
-                    if let Some(first) = found.drain(..).next() {
-                        catalog_matches.push(first);
-                    }
-                }
-                Err(e) => {
-                    notes.push(format!("Catálogo de Microsoft: {e}"));
-                    break;
+        match search_microsoft_catalog(&short_id) {
+            Ok(mut found) => {
+                if let Some(first) = found.drain(..).next() {
+                    catalog_matches.push(first);
                 }
             }
-            if catalog_matches.len() >= 10 {
+            Err(e) => {
+                notes.push(format!("Catálogo de Microsoft: {e}"));
                 break;
             }
         }
-
-        FullDriverScanResult {
-            wua_updates,
-            wua_policy_blocked,
-            wua_note,
-            vendor_updates,
-            catalog_matches,
-            notes,
+        if catalog_matches.len() >= 10 {
+            break;
         }
+    }
+
+    FullDriverScanResult {
+        wua_updates,
+        wua_policy_blocked,
+        wua_note,
+        vendor_updates,
+        catalog_matches,
+        notes,
     }
 }
 
@@ -280,7 +282,7 @@ mod tests {
     /// CON-03: con la búsqueda cancelada no se consulta ninguna fuente ni se informa un fallo.
     #[test]
     fn busqueda_cancelada_no_consulta_fuentes() {
-        let res = DriverManager::run_full_scan(&[], &AtomicBool::new(true));
+        let res = run_full_scan(&[], &AtomicBool::new(true));
         assert!(res.wua_updates.is_empty() && res.vendor_updates.is_empty());
         assert!(res.catalog_matches.is_empty());
         assert_eq!(res.wua_note, None);

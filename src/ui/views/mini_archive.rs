@@ -8,8 +8,8 @@ use dioxus::desktop::use_window;
 use dioxus::prelude::*;
 
 use crate::core::archive::{
-    ArchiveFormat, ArchiveManager, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
-    default_extract_dir, default_zip_path, resolve_extract_destination,
+    self, ArchiveFormat, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA, default_extract_dir,
+    default_zip_path, resolve_extract_destination,
 };
 use crate::core::sys_tools::open_folder_in_explorer;
 use crate::ui::components::{StatusBanner, Tone};
@@ -71,14 +71,14 @@ pub fn MiniArchiveView() -> Element {
         spawn(async move {
             let res = run_with_progress(progress, move |prog| {
                 match worker_job.mode {
-                    ArchiveMode::Extract => ArchiveManager::extract_archive_with_progress(
+                    ArchiveMode::Extract => archive::extract_archive_with_progress(
                         &worker_job.src,
                         &worker_job.dest,
                         DEFAULT_EXTRACT_QUOTA,
                         &cancel_worker,
                         Some(prog),
                     ),
-                    ArchiveMode::Compress => ArchiveManager::compress_path_with_progress(
+                    ArchiveMode::Compress => archive::compress_path_with_progress(
                         &worker_job.src,
                         &worker_job.dest,
                         ArchiveFormat::Zip,

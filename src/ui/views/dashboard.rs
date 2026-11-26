@@ -6,7 +6,7 @@ use crate::core::optimize::engine::{
     OptimizationStepStatus, PlannedOptimizationItem, RollbackReport,
 };
 use crate::core::optimize::power_plan::get_active_scheme_guid;
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
@@ -206,7 +206,7 @@ fn AdminNotice() -> Element {
                 button {
                     class: "btn btn-primary",
                     onclick: move |_| {
-                        let _ = ElevationManager::relaunch_as_admin(&[crate::core::cli::ELEVATED]);
+                        let _ = elevation::relaunch_as_admin(&[crate::core::cli::ELEVATED]);
                     },
                     "{txt.relaunch_as_admin}"
                 }
@@ -448,7 +448,7 @@ pub fn DashboardView() -> Element {
             }
         });
     });
-    let is_elevated = use_signal(|| ElevationManager::is_elevated().unwrap_or(false));
+    let is_elevated = use_signal(|| elevation::is_elevated().unwrap_or(false));
     let mut confirm_optimize = use_signal(|| false);
     let sig = DashboardSignals {
         is_running: use_signal(|| false),

@@ -4,6 +4,10 @@ mod inventory;
 mod leftovers;
 mod purge;
 mod runner;
+pub use inventory::{estimate_missing_sizes, list_installed_apps};
+pub use leftovers::{is_still_registered, scan_leftovers};
+pub use purge::{purge_leftover_items, purge_leftovers};
+pub use runner::{expand_environment_string, run_uninstaller};
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -61,8 +65,6 @@ pub struct PurgeReport {
     pub errors: Vec<String>,
 }
 
-pub struct UninstallerManager;
-
 /// AR-01: resultado completo de «desinstalar y buscar restos», para que la vista solo lo traduzca a texto.
 #[derive(Debug, Clone)]
 pub enum UninstallOutcome {
@@ -77,32 +79,30 @@ pub enum UninstallOutcome {
     },
 }
 
-impl UninstallerManager {
-    /// Ejecuta el desinstalador de `app` (con `INSTALLER_TIMEOUT`), comprueba que se haya ido y busca restos.
-    pub fn uninstall_and_scan(app: &InstalledApp) -> CoreResult<UninstallOutcome> {
-        let exit = Self::run_uninstaller(app, INSTALLER_TIMEOUT)?;
-        if !exit.is_success() {
-            return Ok(UninstallOutcome::Failed {
-                code: exit.code_display(),
-            });
-        }
-        if Self::is_still_registered(app) {
-            return Ok(UninstallOutcome::StillRegistered);
-        }
-        Ok(UninstallOutcome::Removed {
-            reboot_required: exit.exit_code != 0,
-            leftovers: Self::scan_leftovers(app).map_err(|e| e.to_string()),
-        })
+/// Ejecuta el desinstalador de `app` (con `INSTALLER_TIMEOUT`), comprueba que se haya ido y busca restos.
+pub fn uninstall_and_scan(app: &InstalledApp) -> CoreResult<UninstallOutcome> {
+    let exit = run_uninstaller(app, INSTALLER_TIMEOUT)?;
+    if !exit.is_success() {
+        return Ok(UninstallOutcome::Failed {
+            code: exit.code_display(),
+        });
     }
+    if is_still_registered(app) {
+        return Ok(UninstallOutcome::StillRegistered);
+    }
+    Ok(UninstallOutcome::Removed {
+        reboot_required: exit.exit_code != 0,
+        leftovers: scan_leftovers(app).map_err(|e| e.to_string()),
+    })
+}
 
-    /// Ids de los restos que vienen marcados por defecto (SYS-03: solo los seguros).
-    pub fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
-        items
-            .iter()
-            .filter(|i| i.recommended)
-            .map(|i| i.id.clone())
-            .collect()
-    }
+/// Ids de los restos que vienen marcados por defecto (SYS-03: solo los seguros).
+pub fn recommended_ids(items: &[LeftoverItem]) -> HashSet<String> {
+    items
+        .iter()
+        .filter(|i| i.recommended)
+        .map(|i| i.id.clone())
+        .collect()
 }
 
 #[cfg(test)]

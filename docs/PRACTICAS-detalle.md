@@ -303,12 +303,13 @@ Leyenda:
 
 <a id="ar-19"></a>
 ### AR-19 · Tres estilos de API en core
-- **Prioridad**: P3 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: structs unitarios con solo funciones asociadas (`SysTools`, `ArchiveManager`, `UninstallerManager`…), managers con
   estado (`DnsManager::new(dir)`) y funciones libres (`registry`, `services`, `power`). Cuesta descubrir la API y causa la diferencia
   de `AR-07`.
 - **Propuesta**: funciones libres para lo que no tiene estado; struct solo cuando hay estado (`DataDir`, mutex).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Decisión de diseño; no se tocó.
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): estaba diferida por ser decisión de diseño; se decidió la propuesta tal cual: función libre para lo que no tiene estado y struct solo cuando hay estado. Los nueve structs unitarios (`ElevationManager`, `ContextMenuManager`, `SystemCleaner`, `DependencyManager`, `AppStoreManager`, `ArchiveManager`, `DriverManager`, `DebloaterManager`, `UninstallerManager`; `SysTools` ya se había reducido en `UX-03`) pasaron a funciones del módulo (`elevation::is_elevated`, `archive::compress_to_zip`, `drivers::list_present_devices`…); los módulos con submódulos reexportan sus funciones desde `mod.rs`. `DnsManager` queda como struct porque guarda el directorio de datos. Motivo: un struct sin campos solo hace de espacio de nombres, y el módulo ya lo es; así se descubre la API con el nombre del módulo y se elimina la diferencia que causaba `AR-07`. Los textos históricos de este expediente conservan los nombres viejos. Verificado: `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (97 + 6) en verde.
 
 <a id="ar-20"></a>
 ### AR-20 · La persistencia de tema e idioma está duplicada

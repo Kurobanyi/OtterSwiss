@@ -48,9 +48,9 @@ fn native_message(title: &str, text: &str, ask_yes_no: bool, is_error: bool) -> 
 /// antes de abrir la ventana, así que se comprueba aquí y se ofrece instalarlo con el instalador verificado.
 /// Devuelve `false` si no se puede continuar.
 pub fn ensure_webview2(en: bool) -> bool {
-    use otter_swiss::core::store::dependencies::DependencyManager;
+    use otter_swiss::core::store::dependencies;
 
-    if DependencyManager::is_webview2_installed() {
+    if dependencies::is_webview2_installed() {
         return true;
     }
     let txt = strings(en).shell;
@@ -58,8 +58,8 @@ pub fn ensure_webview2(en: bool) -> bool {
     if !ask_yes_no(title, ask) {
         return false;
     }
-    match DependencyManager::install_runtime("webview2") {
-        Ok(()) if DependencyManager::is_webview2_installed() => true,
+    match dependencies::install_runtime("webview2") {
+        Ok(()) if dependencies::is_webview2_installed() => true,
         Ok(()) => {
             show_warning(title, txt.webview2_not_detected);
             false

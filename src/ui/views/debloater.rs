@@ -5,8 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use dioxus::prelude::*;
 
 use crate::core::debloat::{
-    DEBLOAT_REG_TWEAKS, DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult,
-    DebloaterManager, DetectedBloatApp,
+    self, DEBLOAT_REG_TWEAKS, DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult,
+    DetectedBloatApp,
 };
 use crate::ui::components::{Card, CheckRow, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
@@ -74,7 +74,7 @@ fn start_scan(sig: DebloaterSignals) {
     is_scanning.set(true);
     error_banner.set(None);
     spawn(async move {
-        match run_blocking(DebloaterManager::scan_system).await {
+        match run_blocking(debloat::scan_system).await {
             Ok(data) => {
                 sig.apply_recommended_defaults(&data);
                 scan_result.set(data);
@@ -131,7 +131,7 @@ fn start_execute(sig: DebloaterSignals, cancel: Arc<AtomicBool>, en: bool) {
 
     spawn(async move {
         let res = run_with_progress(progress_state, move |prog| {
-            DebloaterManager::execute_debloat(&apps_to_remove, &sel_reg_ids, &cancel, Some(prog))
+            debloat::execute_debloat(&apps_to_remove, &sel_reg_ids, &cancel, Some(prog))
                 .map_err(Msg::from)
         })
         .await
@@ -146,9 +146,7 @@ fn start_execute(sig: DebloaterSignals, cancel: Arc<AtomicBool>, en: bool) {
                     tone,
                 )));
                 last_report.set(Some(rep));
-                if let Ok(Ok(fresh)) =
-                    tokio::task::spawn_blocking(DebloaterManager::scan_system).await
-                {
+                if let Ok(Ok(fresh)) = tokio::task::spawn_blocking(debloat::scan_system).await {
                     sig.apply_recommended_defaults(&fresh);
                     scan_result.set(fresh);
                 }
@@ -171,15 +169,13 @@ fn start_revert_registry(sig: DebloaterSignals) {
     is_running.set(true);
     error_banner.set(None);
     spawn(async move {
-        match run_blocking(DebloaterManager::revert_registry_debloat).await {
+        match run_blocking(debloat::revert_registry_debloat).await {
             Ok(count) => {
                 status_banner.set(Some((
                     Msg::new(move |en| (strings(en).debloater.reverted_registry_values)(&count)),
                     Tone::Success,
                 )));
-                if let Ok(Ok(fresh)) =
-                    tokio::task::spawn_blocking(DebloaterManager::scan_system).await
-                {
+                if let Ok(Ok(fresh)) = tokio::task::spawn_blocking(debloat::scan_system).await {
                     scan_result.set(fresh);
                 }
             }

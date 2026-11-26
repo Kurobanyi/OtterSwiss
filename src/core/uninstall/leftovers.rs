@@ -1,5 +1,6 @@
 //! Búsqueda de restos después de desinstalar: carpetas, accesos directos y claves de registro con el nombre de la app.
 
+use super::list_installed_apps;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -8,7 +9,7 @@ use winreg::enums::KEY_READ;
 use windows::Win32::UI::Shell::{FOLDERID_LocalAppData, FOLDERID_Public};
 
 use super::inventory::dir_size_bounded;
-use super::{InstalledApp, LeftoverItem, LeftoverKind, UninstallerManager};
+use super::{InstalledApp, LeftoverItem, LeftoverKind};
 use crate::core::error::CoreResult;
 use crate::core::platform::folders::known_folder;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
@@ -73,24 +74,22 @@ pub(super) const GENERIC_FOLDER_TOKENS: &[&str] = &[
     "client",
 ];
 
-impl UninstallerManager {
-    pub fn scan_leftovers(app: &InstalledApp) -> CoreResult<Vec<LeftoverItem>> {
-        let mut scan = LeftoverScan::new(app);
-        scan.install_location();
-        scan.folders();
-        scan.shortcuts();
-        scan.software_keys();
-        scan.run_values();
-        Ok(scan.finish())
-    }
+pub fn scan_leftovers(app: &InstalledApp) -> CoreResult<Vec<LeftoverItem>> {
+    let mut scan = LeftoverScan::new(app);
+    scan.install_location();
+    scan.folders();
+    scan.shortcuts();
+    scan.software_keys();
+    scan.run_values();
+    Ok(scan.finish())
+}
 
-    /// `true` si la entrada Uninstall de la app sigue en el registro.
-    pub fn is_still_registered(app: &InstalledApp) -> bool {
-        let loc = reg_location(app.is_per_user, app.is_wow64);
-        loc.root()
-            .open_subkey_with_flags(&app.registry_subkey, loc.flags(KEY_READ))
-            .is_ok()
-    }
+/// `true` si la entrada Uninstall de la app sigue en el registro.
+pub fn is_still_registered(app: &InstalledApp) -> bool {
+    let loc = reg_location(app.is_per_user, app.is_wow64);
+    loc.root()
+        .open_subkey_with_flags(&app.registry_subkey, loc.flags(KEY_READ))
+        .is_ok()
 }
 
 /// CL-05: estado de una búsqueda de restos. Cada fuente (carpetas, accesos directos, claves `Software`, valores
@@ -116,14 +115,16 @@ impl<'a> LeftoverScan<'a> {
     fn new(app: &'a InstalledApp) -> Self {
         let (tokens, publisher_tok) = build_app_tokens(app);
         let other_apps_same_publisher = match publisher_tok {
-            Some(ref pub_name) => UninstallerManager::list_installed_apps()
-                .unwrap_or_default()
-                .into_iter()
-                .any(|other| {
-                    other.id != app.id
-                        && sanitize_token(&other.publisher)
-                            .is_some_and(|p| p.eq_ignore_ascii_case(pub_name))
-                }),
+            Some(ref pub_name) => {
+                list_installed_apps()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .any(|other| {
+                        other.id != app.id
+                            && sanitize_token(&other.publisher)
+                                .is_some_and(|p| p.eq_ignore_ascii_case(pub_name))
+                    })
+            }
             None => true,
         };
         Self {
@@ -131,7 +132,7 @@ impl<'a> LeftoverScan<'a> {
             tokens,
             publisher_tok,
             other_apps_same_publisher,
-            still_registered: UninstallerManager::is_still_registered(app),
+            still_registered: is_still_registered(app),
             user_scope_only: app.is_per_user,
             items: Vec::new(),
             seen_paths: HashSet::new(),

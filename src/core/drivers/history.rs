@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use super::{DriverInstallReport, DriverManager, PNPUTIL_TIMEOUT};
+use super::{DriverInstallReport, PNPUTIL_TIMEOUT};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::folders::windows_dir;
 use crate::core::platform::json_file::{read_backup, write_backup};
@@ -29,56 +29,54 @@ struct DriverHistory {
     entries: Vec<InstalledDriverRecord>,
 }
 
-impl DriverManager {
-    /// Paquetes de drivers que instaló OtterSwiss y todavía se pueden quitar, del más nuevo al más viejo.
-    pub fn driver_install_history() -> CoreResult<Vec<InstalledDriverRecord>> {
-        let mut entries = read_driver_history()?.entries;
-        entries.retain(|e| oem_inf_path(&e.published_name).is_some_and(|p| p.exists()));
-        entries.reverse();
-        Ok(entries)
-    }
+/// Paquetes de drivers que instaló OtterSwiss y todavía se pueden quitar, del más nuevo al más viejo.
+pub fn driver_install_history() -> CoreResult<Vec<InstalledDriverRecord>> {
+    let mut entries = read_driver_history()?.entries;
+    entries.retain(|e| oem_inf_path(&e.published_name).is_some_and(|p| p.exists()));
+    entries.reverse();
+    Ok(entries)
+}
 
-    /// SYS-26: quita del Driver Store un paquete que instaló OtterSwiss (`pnputil /delete-driver … /uninstall`). Los
-    /// dispositivos que lo usaban vuelven al mejor driver que quede. Solo acepta paquetes del historial propio.
-    pub fn revert_installed_driver(published_name: &str) -> CoreResult<DriverInstallReport> {
-        let mut history = read_driver_history()?;
-        let Some(pos) = history
-            .entries
-            .iter()
-            .position(|e| e.published_name.eq_ignore_ascii_case(published_name))
-        else {
-            return Err(CoreError::Validation(format!(
-                "'{published_name}' no lo instaló OtterSwiss"
-            )));
-        };
-        let record = history.entries[pos].clone();
-        if !is_oem_inf_name(&record.published_name) {
-            return Err(CoreError::Validation(
-                "Nombre de paquete de driver inválido".into(),
-            ));
-        }
-        let out = run_captured(
-            &system32_dir()?.join("pnputil.exe"),
-            &[
-                "/delete-driver",
-                record.published_name.as_str(),
-                "/uninstall",
-                "/force",
-            ],
-            PNPUTIL_TIMEOUT,
-        )?;
-        let code = out.code.unwrap_or(-1);
-        if !(out.success || code == 3010) {
-            return Err(CoreError::system_tool_msg(format!(
-                "pnputil no pudo quitar '{}' (código {code}): {}",
-                record.published_name,
-                out.stdout.trim()
-            )));
-        }
-        history.entries.remove(pos);
-        write_backup(&driver_history_path()?, &history)?;
-        Ok(DriverInstallReport::single(code == 3010))
+/// SYS-26: quita del Driver Store un paquete que instaló OtterSwiss (`pnputil /delete-driver … /uninstall`). Los
+/// dispositivos que lo usaban vuelven al mejor driver que quede. Solo acepta paquetes del historial propio.
+pub fn revert_installed_driver(published_name: &str) -> CoreResult<DriverInstallReport> {
+    let mut history = read_driver_history()?;
+    let Some(pos) = history
+        .entries
+        .iter()
+        .position(|e| e.published_name.eq_ignore_ascii_case(published_name))
+    else {
+        return Err(CoreError::Validation(format!(
+            "'{published_name}' no lo instaló OtterSwiss"
+        )));
+    };
+    let record = history.entries[pos].clone();
+    if !is_oem_inf_name(&record.published_name) {
+        return Err(CoreError::Validation(
+            "Nombre de paquete de driver inválido".into(),
+        ));
     }
+    let out = run_captured(
+        &system32_dir()?.join("pnputil.exe"),
+        &[
+            "/delete-driver",
+            record.published_name.as_str(),
+            "/uninstall",
+            "/force",
+        ],
+        PNPUTIL_TIMEOUT,
+    )?;
+    let code = out.code.unwrap_or(-1);
+    if !(out.success || code == 3010) {
+        return Err(CoreError::system_tool_msg(format!(
+            "pnputil no pudo quitar '{}' (código {code}): {}",
+            record.published_name,
+            out.stdout.trim()
+        )));
+    }
+    history.entries.remove(pos);
+    write_backup(&driver_history_path()?, &history)?;
+    Ok(DriverInstallReport::single(code == 3010))
 }
 
 fn driver_history_path() -> CoreResult<PathBuf> {

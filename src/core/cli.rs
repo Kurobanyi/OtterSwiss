@@ -1,5 +1,5 @@
 //! Línea de comandos de OtterSwiss. Los flags se escriben solo aquí: los usan `main.rs`, el relanzamiento elevado
-//! (`ElevationManager`), el menú contextual y la UI. Un flag permitido sin manejador ya no puede quedar suelto
+//! (`elevation`), el menú contextual y la UI. Un flag permitido sin manejador ya no puede quedar suelto
 //! (así nació SEC-29).
 
 use std::path::PathBuf;

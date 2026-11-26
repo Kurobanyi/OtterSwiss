@@ -22,14 +22,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
-use otter_swiss::core::archive::{ArchiveFormat, ArchiveManager, resolve_extract_destination};
-use otter_swiss::core::cleaner::SystemCleaner;
-use otter_swiss::core::debloat::{DEBLOAT_REG_TWEAKS, DebloaterManager};
+use otter_swiss::core::archive::{self, ArchiveFormat, resolve_extract_destination};
+use otter_swiss::core::cleaner;
+use otter_swiss::core::debloat::{self, DEBLOAT_REG_TWEAKS};
 use otter_swiss::core::dns::{DnsManager, list_active_adapters};
 use otter_swiss::core::optimize::engine::{OptimizationEngine, OptimizationProfile};
 use otter_swiss::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, RegHive, SERVICE_TWEAKS};
 use otter_swiss::core::security::data_dir::ensure_admin_only_data_dir;
-use otter_swiss::core::uninstall::{LeftoverKind, UninstallerManager};
+use otter_swiss::core::uninstall::{self, LeftoverKind};
 use winreg::RegKey;
 use winreg::enums::{
     HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_64KEY,
@@ -164,7 +164,7 @@ fn debloater(c: &mut Checks) {
     let before = debloat_snapshot();
     let ids: Vec<&'static str> = DEBLOAT_REG_TWEAKS.iter().map(|t| t.id).collect();
     let cancel = AtomicBool::new(false);
-    match DebloaterManager::execute_debloat(&[], &ids, &cancel, None) {
+    match debloat::execute_debloat(&[], &ids, &cancel, None) {
         Ok(r) => c.check(
             r.failed_count == 0,
             "aplicar ajustes del Debloater sin fallos",
@@ -179,7 +179,7 @@ fn debloater(c: &mut Checks) {
                 .is_some_and(|(_, b)| b == e.target_dword.to_le_bytes())
         });
     c.check(applied, "todos los valores quedaron en su objetivo");
-    match DebloaterManager::revert_registry_debloat() {
+    match debloat::revert_registry_debloat() {
         Ok(n) => c.note(&format!("revertidos {n}")),
         Err(e) => c.check(false, &format!("revertir Debloater: {e}")),
     }
@@ -188,12 +188,12 @@ fn debloater(c: &mut Checks) {
         "registro del Debloater igual que antes",
     );
     c.check(
-        !DebloaterManager::has_registry_backup(),
+        !debloat::has_registry_backup(),
         "el respaldo del Debloater se borró",
     );
 
     // Una app Appx del catálogo (la VM es desechable): debe desaparecer del escaneo.
-    let Ok(scan) = DebloaterManager::scan_system() else {
+    let Ok(scan) = debloat::scan_system() else {
         c.check(false, "escanear apps Appx");
         return;
     };
@@ -209,7 +209,7 @@ fn debloater(c: &mut Checks) {
         return;
     };
     c.note(&format!("eliminando {}", app.package_name));
-    match DebloaterManager::execute_debloat(std::slice::from_ref(app), &[], &cancel, None) {
+    match debloat::execute_debloat(std::slice::from_ref(app), &[], &cancel, None) {
         Ok(r) => {
             c.check(r.removed_apps == 1, "app Appx eliminada");
             for o in &r.outcomes {
@@ -218,7 +218,7 @@ fn debloater(c: &mut Checks) {
         }
         Err(e) => c.check(false, &format!("eliminar app: {e}")),
     }
-    let still = DebloaterManager::scan_system()
+    let still = debloat::scan_system()
         .map(|s| s.apps.iter().any(|a| a.id == app.id && a.installed))
         .unwrap_or(true);
     c.check(!still, "la app ya no aparece instalada");
@@ -282,7 +282,7 @@ fn limpiador(c: &mut Checks) {
     std::fs::write(&tmp_file, "temporal").ok();
 
     let cancel = AtomicBool::new(false);
-    let results = SystemCleaner::run_full_cleanup(0, false, &cancel);
+    let results = cleaner::run_full_cleanup(0, false, &cancel);
     for r in &results {
         c.note(&format!(
             "{}: {} archivos, {} bytes{}",
@@ -314,7 +314,7 @@ fn archivador(c: &mut Checks) {
     std::fs::write(src.join("sub").join("b.txt"), "dos").ok();
     let zip = base.join("proyecto.zip");
     let cancel = AtomicBool::new(false);
-    let res = ArchiveManager::compress_path(&src, &zip, ArchiveFormat::Zip, &cancel);
+    let res = archive::compress_path(&src, &zip, ArchiveFormat::Zip, &cancel);
     c.check(res.is_ok() && zip.is_file(), "comprimir a .zip");
     // Marca del archivo descargado, para comprobar que se propaga (SEC-15).
     let mut ads = zip.as_os_str().to_os_string();
@@ -325,7 +325,7 @@ fn archivador(c: &mut Checks) {
     std::fs::write(src.join("centinela.txt"), "no tocar").ok();
     let dest = resolve_extract_destination(&src);
     c.check(dest != src, &format!("destino libre: {}", dest.display()));
-    let res = ArchiveManager::extract_archive(&zip, &dest, 1 << 30, &cancel);
+    let res = archive::extract_archive(&zip, &dest, 1 << 30, &cancel);
     c.check(res.is_ok(), &format!("extraer {:?}", res.err()));
     c.check(
         src.join("centinela.txt").exists(),
@@ -377,7 +377,7 @@ fn desinstalador(c: &mut Checks) {
     sw.set_value("Ajuste", &1u32).ok();
     drop(sw);
 
-    let app = UninstallerManager::list_installed_apps()
+    let app = uninstall::list_installed_apps()
         .unwrap_or_default()
         .into_iter()
         .find(|a| a.display_name == "OtterFakeApp");
@@ -386,7 +386,7 @@ fn desinstalador(c: &mut Checks) {
         return;
     };
     // Mientras sigue registrada, su carpeta no es un rastro (SYS-04).
-    let early = UninstallerManager::scan_leftovers(&app).unwrap_or_default();
+    let early = uninstall::scan_leftovers(&app).unwrap_or_default();
     c.check(
         !early
             .iter()
@@ -394,17 +394,17 @@ fn desinstalador(c: &mut Checks) {
         "instalada: no se ofrece su carpeta",
     );
 
-    let code = UninstallerManager::run_uninstaller(&app, std::time::Duration::from_secs(60));
+    let code = uninstall::run_uninstaller(&app, std::time::Duration::from_secs(60));
     c.check(
         code.as_ref().is_ok_and(|e| e.exit_code == 0),
         &format!("desinstalador: {code:?}"),
     );
     c.check(
-        !UninstallerManager::is_still_registered(&app),
+        !uninstall::is_still_registered(&app),
         "la entrada Uninstall desapareció",
     );
 
-    let items = UninstallerManager::scan_leftovers(&app).unwrap_or_default();
+    let items = uninstall::scan_leftovers(&app).unwrap_or_default();
     for i in &items {
         c.note(&format!(
             "rastro [{}] {} ({})",
@@ -428,7 +428,7 @@ fn desinstalador(c: &mut Checks) {
         "otra app con nombre parecido no aparece (SYS-03)",
     );
     let chosen: Vec<_> = items.iter().filter(|i| i.recommended).cloned().collect();
-    let report = UninstallerManager::purge_leftover_items(&chosen);
+    let report = uninstall::purge_leftover_items(&chosen);
     c.check(
         report.failed_count == 0,
         &format!("purga sin fallos {:?}", report.errors),
@@ -456,7 +456,7 @@ fn revertir_todo(c: &mut Checks, data: &Path) {
     let engine = OptimizationEngine::new(data);
     let _ = engine.apply_profile(OptimizationProfile::HighEnd);
     let ids: Vec<&'static str> = DEBLOAT_REG_TWEAKS.iter().map(|t| t.id).collect();
-    let _ = DebloaterManager::execute_debloat(&[], &ids, &AtomicBool::new(false), None);
+    let _ = debloat::execute_debloat(&[], &ids, &AtomicBool::new(false), None);
     match otter_swiss::core::rollback::revert_all_changes() {
         Ok(r) => {
             c.check(r.is_complete(), "reversión completa");

@@ -21,7 +21,7 @@ use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::error::{CoreError, CoreResult};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::guid::parse_guid_strict;
 use crate::core::platform::handles::SafeLibrary;
 use crate::core::platform::json_file::{read_backup, write_backup};
@@ -164,7 +164,7 @@ impl DnsManager {
         ipv4_csv: &str,
         ipv6_csv: &str,
     ) -> CoreResult<usize> {
-        ElevationManager::require_elevated("Modificar servidores DNS de red")?;
+        elevation::require_elevated("Modificar servidores DNS de red")?;
         if selected_guids.is_empty() {
             return Err(CoreError::Validation(
                 "Debe seleccionar al menos un adaptador de red".into(),
@@ -212,7 +212,7 @@ impl DnsManager {
     /// Los adaptadores que ya no existen se omiten; si alguno falla, el respaldo conserva solo los
     /// pendientes y se devuelve el error.
     pub fn restore_dns(&self) -> CoreResult<usize> {
-        ElevationManager::require_elevated("Restaurar servidores DNS previos")?;
+        elevation::require_elevated("Restaurar servidores DNS previos")?;
         let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
 
         if !self.dns_backup_path.exists() {

@@ -3,6 +3,9 @@
 mod appx;
 mod catalog;
 mod registry_backup;
+pub use appx::scan_system;
+use registry_backup::{apply_reg_entries, backup_reg_entries};
+pub use registry_backup::{has_registry_backup, revert_registry_debloat};
 
 pub use catalog::{
     DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS, DebloatAppSpec, DebloatCategory, DebloatRegEntry,
@@ -13,7 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::core::error::CoreResult;
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::progress::{StepProgress, report_step};
 use appx::{get_powershell_path, is_valid_package_ident, run_ps};
@@ -97,155 +100,151 @@ pub struct DebloatReport {
     pub outcomes: Vec<DebloatItemOutcome>,
 }
 
-pub struct DebloaterManager;
+pub fn execute_debloat(
+    apps_to_remove: &[DetectedBloatApp],
+    reg_tweak_ids: &[&'static str],
+    cancel: &AtomicBool,
+    progress: Option<&Arc<Mutex<DebloatProgress>>>,
+) -> CoreResult<DebloatReport> {
+    elevation::require_elevated("Ejecutar Debloater de Windows")?;
+    let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
+    let ps_path = get_powershell_path()?;
 
-impl DebloaterManager {
-    pub fn execute_debloat(
-        apps_to_remove: &[DetectedBloatApp],
-        reg_tweak_ids: &[&'static str],
-        cancel: &AtomicBool,
-        progress: Option<&Arc<Mutex<DebloatProgress>>>,
-    ) -> CoreResult<DebloatReport> {
-        ElevationManager::require_elevated("Ejecutar Debloater de Windows")?;
-        let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
-        let ps_path = get_powershell_path()?;
+    let mut report = DebloatReport::default();
+    let total_steps = (apps_to_remove.len() + reg_tweak_ids.len()).max(1);
+    let mut step_idx = 0usize;
 
-        let mut report = DebloatReport::default();
-        let total_steps = (apps_to_remove.len() + reg_tweak_ids.len()).max(1);
-        let mut step_idx = 0usize;
+    let push_prog = |idx: usize, label: &str| report_step(progress, idx, total_steps, label);
 
-        let push_prog = |idx: usize, label: &str| report_step(progress, idx, total_steps, label);
+    for app in apps_to_remove {
+        if cancel.load(Ordering::Acquire) {
+            report.cancelled = true;
+            return Ok(report);
+        }
 
-        for app in apps_to_remove {
-            if cancel.load(Ordering::Acquire) {
-                report.cancelled = true;
-                return Ok(report);
-            }
+        step_idx += 1;
+        push_prog(
+            step_idx.saturating_sub(1),
+            &format!("Eliminando {}…", app.display_name),
+        );
 
-            step_idx += 1;
-            push_prog(
-                step_idx.saturating_sub(1),
-                &format!("Eliminando {}…", app.display_name),
-            );
+        if !DEBLOAT_APP_CATALOG
+            .iter()
+            .any(|s| s.id == app.id && s.package_name == app.package_name)
+        {
+            report.failed_count += 1;
+            report.outcomes.push(DebloatItemOutcome {
+                label: app.display_name.to_string(),
+                success: false,
+                message: "Rechazado: paquete fuera del catálogo autorizado".into(),
+            });
+            continue;
+        }
 
-            if !DEBLOAT_APP_CATALOG
-                .iter()
-                .any(|s| s.id == app.id && s.package_name == app.package_name)
-            {
-                report.failed_count += 1;
-                report.outcomes.push(DebloatItemOutcome {
-                    label: app.display_name.to_string(),
-                    success: false,
-                    message: "Rechazado: paquete fuera del catálogo autorizado".into(),
-                });
+        let mut app_ok = true;
+        let mut last_err = String::new();
+        let mut only_current_user = false;
+
+        for full_name in &app.full_names {
+            if !is_valid_package_ident(full_name) {
                 continue;
             }
-
-            let mut app_ok = true;
-            let mut last_err = String::new();
-            let mut only_current_user = false;
-
-            for full_name in &app.full_names {
-                if !is_valid_package_ident(full_name) {
-                    continue;
-                }
-                // Cada paquete se deja terminar: cancelar a mitad de Remove-AppxPackage puede dejarlo roto.
-                let cmd = format!(
-                    "try {{ Remove-AppxPackage -Package '{}' -AllUsers -ErrorAction Stop; 'SCOPE=ALL' }} catch {{ Remove-AppxPackage -Package '{}' -ErrorAction Stop; 'SCOPE=USER' }}",
-                    full_name, full_name
-                );
-                match run_ps(&ps_path, &cmd, 90_000) {
-                    Ok(out) if out.contains("SCOPE=USER") => only_current_user = true,
-                    Ok(_) => {}
-                    Err(e) => {
-                        app_ok = false;
-                        last_err = e.to_string();
-                    }
-                }
-            }
-
-            for prov_name in &app.provisioned_names {
-                if !is_valid_package_ident(prov_name) {
-                    continue;
-                }
-                let cmd = format!(
-                    "Remove-AppxProvisionedPackage -Online -PackageName '{}' -ErrorAction Stop | Out-Null",
-                    prov_name
-                );
-                if let Err(e) = run_ps(&ps_path, &cmd, 90_000) {
+            // Cada paquete se deja terminar: cancelar a mitad de Remove-AppxPackage puede dejarlo roto.
+            let cmd = format!(
+                "try {{ Remove-AppxPackage -Package '{}' -AllUsers -ErrorAction Stop; 'SCOPE=ALL' }} catch {{ Remove-AppxPackage -Package '{}' -ErrorAction Stop; 'SCOPE=USER' }}",
+                full_name, full_name
+            );
+            match run_ps(&ps_path, &cmd, 90_000) {
+                Ok(out) if out.contains("SCOPE=USER") => only_current_user = true,
+                Ok(_) => {}
+                Err(e) => {
                     app_ok = false;
                     last_err = e.to_string();
                 }
             }
-
-            if app_ok {
-                report.removed_apps += 1;
-                report.outcomes.push(DebloatItemOutcome {
-                    label: app.display_name.to_string(),
-                    success: true,
-                    message: if only_current_user {
-                        "Eliminada solo para el usuario actual (otros perfiles la conservan)".into()
-                    } else if app.provisioned_names.is_empty() {
-                        "Eliminada para todos los usuarios".into()
-                    } else {
-                        "Eliminada para todos los usuarios y desaprovisionada".into()
-                    },
-                });
-            } else {
-                report.failed_count += 1;
-                report.outcomes.push(DebloatItemOutcome {
-                    label: app.display_name.to_string(),
-                    success: false,
-                    message: last_err,
-                });
-            }
-            push_prog(step_idx, &format!("Procesado {}", app.display_name));
         }
 
-        for &tweak_id in reg_tweak_ids {
-            if cancel.load(Ordering::Acquire) {
-                report.cancelled = true;
-                return Ok(report);
-            }
-            step_idx += 1;
-
-            let Some(spec) = DEBLOAT_REG_TWEAKS.iter().find(|t| t.id == tweak_id) else {
+        for prov_name in &app.provisioned_names {
+            if !is_valid_package_ident(prov_name) {
                 continue;
-            };
-            push_prog(step_idx.saturating_sub(1), spec.label);
+            }
+            let cmd = format!(
+                "Remove-AppxProvisionedPackage -Online -PackageName '{}' -ErrorAction Stop | Out-Null",
+                prov_name
+            );
+            if let Err(e) = run_ps(&ps_path, &cmd, 90_000) {
+                app_ok = false;
+                last_err = e.to_string();
+            }
+        }
 
-            if let Err(e) = Self::backup_reg_entries(spec.entries) {
+        if app_ok {
+            report.removed_apps += 1;
+            report.outcomes.push(DebloatItemOutcome {
+                label: app.display_name.to_string(),
+                success: true,
+                message: if only_current_user {
+                    "Eliminada solo para el usuario actual (otros perfiles la conservan)".into()
+                } else if app.provisioned_names.is_empty() {
+                    "Eliminada para todos los usuarios".into()
+                } else {
+                    "Eliminada para todos los usuarios y desaprovisionada".into()
+                },
+            });
+        } else {
+            report.failed_count += 1;
+            report.outcomes.push(DebloatItemOutcome {
+                label: app.display_name.to_string(),
+                success: false,
+                message: last_err,
+            });
+        }
+        push_prog(step_idx, &format!("Procesado {}", app.display_name));
+    }
+
+    for &tweak_id in reg_tweak_ids {
+        if cancel.load(Ordering::Acquire) {
+            report.cancelled = true;
+            return Ok(report);
+        }
+        step_idx += 1;
+
+        let Some(spec) = DEBLOAT_REG_TWEAKS.iter().find(|t| t.id == tweak_id) else {
+            continue;
+        };
+        push_prog(step_idx.saturating_sub(1), spec.label);
+
+        if let Err(e) = backup_reg_entries(spec.entries) {
+            report.failed_count += 1;
+            report.outcomes.push(DebloatItemOutcome {
+                label: spec.label.to_string(),
+                success: false,
+                message: format!("Error guardando respaldo: {}", e),
+            });
+            continue;
+        }
+
+        match apply_reg_entries(spec.entries) {
+            Ok(()) => {
+                report.applied_reg_tweaks += 1;
+                report.outcomes.push(DebloatItemOutcome {
+                    label: spec.label.to_string(),
+                    success: true,
+                    message: "Aplicado en Registro con respaldo".into(),
+                });
+            }
+            Err(e) => {
                 report.failed_count += 1;
                 report.outcomes.push(DebloatItemOutcome {
                     label: spec.label.to_string(),
                     success: false,
-                    message: format!("Error guardando respaldo: {}", e),
+                    message: e.to_string(),
                 });
-                continue;
             }
-
-            match Self::apply_reg_entries(spec.entries) {
-                Ok(()) => {
-                    report.applied_reg_tweaks += 1;
-                    report.outcomes.push(DebloatItemOutcome {
-                        label: spec.label.to_string(),
-                        success: true,
-                        message: "Aplicado en Registro con respaldo".into(),
-                    });
-                }
-                Err(e) => {
-                    report.failed_count += 1;
-                    report.outcomes.push(DebloatItemOutcome {
-                        label: spec.label.to_string(),
-                        success: false,
-                        message: e.to_string(),
-                    });
-                }
-            }
-            push_prog(step_idx, spec.label);
         }
-
-        push_prog(total_steps, "Debloat finalizado");
-        Ok(report)
+        push_prog(step_idx, spec.label);
     }
+
+    push_prog(total_steps, "Debloat finalizado");
+    Ok(report)
 }

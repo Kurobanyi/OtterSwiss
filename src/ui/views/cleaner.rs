@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use dioxus::prelude::*;
 
-use crate::core::cleaner::{CategoryCleanResult, CleanProgress, SystemCleaner};
+use crate::core::cleaner::{self, CategoryCleanResult, CleanProgress};
 use crate::ui::components::{Card, CheckRow, ConfirmDialog, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::bytes_mb;
 use crate::ui::i18n::core_text::tr;
@@ -45,7 +45,7 @@ pub fn CleanerView() -> Element {
 
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
-                SystemCleaner::run_full_cleanup_with_progress(
+                cleaner::run_full_cleanup_with_progress(
                     min_age_hours,
                     recycle,
                     &cancel_worker,

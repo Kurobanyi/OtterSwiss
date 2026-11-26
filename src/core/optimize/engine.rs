@@ -19,7 +19,7 @@ use crate::core::optimize::service_tweaks::{
     ServiceOpOutcome, apply_service_tweak, capture_service_tweak, restore_service_snapshot,
 };
 use crate::core::optimize::tweaks_catalog::{profile_registry_tweaks, profile_service_tweaks};
-use crate::core::platform::elevation::ElevationManager;
+use crate::core::platform::elevation;
 use crate::core::platform::mutex::NamedMutex;
 use crate::core::progress::{StepProgress, report_step};
 
@@ -182,7 +182,7 @@ impl OptimizationEngine {
         requested: OptimizationProfile,
         progress: Option<&Arc<Mutex<EngineProgress>>>,
     ) -> CoreResult<EngineExecutionReport> {
-        ElevationManager::require_elevated("Aplicar optimizaciones del sistema")?;
+        elevation::require_elevated("Aplicar optimizaciones del sistema")?;
         let _guard = NamedMutex::acquire(ENGINE_MUTEX_NAME)?;
 
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -465,7 +465,7 @@ impl OptimizationEngine {
         force_overwrite_user_changes: bool,
         progress: Option<&Arc<Mutex<EngineProgress>>>,
     ) -> CoreResult<RollbackReport> {
-        ElevationManager::require_elevated("Revertir optimizaciones del sistema")?;
+        elevation::require_elevated("Revertir optimizaciones del sistema")?;
         let _guard = NamedMutex::acquire(ENGINE_MUTEX_NAME)?;
 
         let (backup_opt, load_warnings) = self.backup_mgr.load_tolerant()?;
