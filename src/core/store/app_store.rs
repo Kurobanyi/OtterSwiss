@@ -831,7 +831,7 @@ pub enum InstallSource {
     Store { id: &'static str },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CuratedPackage {
     pub id: &'static str,
     pub name: &'static str,
