@@ -1,4 +1,5 @@
-//! Ventana principal: barra superior (marca, pestañas, idioma, tema, botones de ventana), pestañas y actualizador.
+//! Ventana principal: barra de título (marca, idioma, tema, botones de ventana), panel de navegación lateral al estilo
+//! de Windows 11, encabezado de cada página, pestañas y actualizador.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -27,7 +28,7 @@ use crate::core::platform::elevation;
 use crate::core::updater::{
     UpdateReleaseInfo, check_for_updates, download_and_install_update, launch_installer_and_exit,
 };
-use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{InfoBar, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::installer::{
     InstallJobRequest, InstallerDispatcher, ToolsSharedState, refresh_tools_inventory,
@@ -74,6 +75,27 @@ impl ActiveTab {
         Self::Sensors,
     ];
 
+    /// Glifo de Segoe Fluent Icons (fuente del sistema en Windows 11; en Windows 10, Segoe MDL2 Assets).
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Dashboard => "\u{E80F}",
+            Self::Cleaner => "\u{E75C}",
+            Self::Debloater => "\u{E71C}",
+            Self::Dns => "\u{E774}",
+            Self::Drivers => "\u{E772}",
+            Self::Archiver => "\u{E7B8}",
+            Self::Tools => "\u{E90F}",
+            Self::Uninstaller => "\u{E74D}",
+            Self::Hardware => "\u{E7F8}",
+            Self::Sensors => "\u{E9CA}",
+        }
+    }
+
+    fn description(self, en: bool) -> &'static str {
+        let idx = Self::ALL.iter().position(|t| *t == self).unwrap_or(0);
+        strings(en).shell.page_descriptions[idx]
+    }
+
     fn label(self, en: bool) -> &'static str {
         match (self, en) {
             (Self::Dashboard, true) => "Home",
@@ -101,19 +123,23 @@ fn version_badge(pkg_ver: &str) -> String {
     format!("v{}", pkg_ver.strip_suffix(".0").unwrap_or(pkg_ver))
 }
 
-/// Barra superior: marca y aviso de actualización, pestañas, idioma, tema y botones de ventana.
+/// Barra de título: marca y aviso de actualización, idioma, tema y botones de ventana. La franja libre arrastra la
+/// ventana, como en una app nativa.
 #[component]
 fn TitleBar(
-    active_tab: Signal<ActiveTab>,
     update_info: Signal<Option<UpdateReleaseInfo>>,
     show_update_modal: Signal<bool>,
-    tools_state: Signal<ToolsSharedState>,
 ) -> Element {
     let mut current_theme = use_context::<Signal<Theme>>();
     let mut current_lang = use_context::<Signal<Lang>>();
     let window = use_window();
-    let (win_min, win_max, win_close, win_drag) =
-        (window.clone(), window.clone(), window.clone(), window);
+    let (win_min, win_max, win_close, win_drag, win_drag_strip) = (
+        window.clone(),
+        window.clone(),
+        window.clone(),
+        window.clone(),
+        window,
+    );
     let en = current_lang.read().is_en();
     let theme_val = *current_theme.read();
 
@@ -139,30 +165,18 @@ fn TitleBar(
                 }
                 span { class: "top-title", "OtterSwiss" }
                 span { class: "top-version", "{version_badge(env!(\"CARGO_PKG_VERSION\"))}" }
-                if let Some(upd) = update_info.read().as_ref() {
-                    button {
-                        class: "badge badge-warning",
-                        onclick: move |_| show_update_modal.set(true),
-                        "↑ v{upd.version}"
-                    }
+            }
+            if let Some(upd) = update_info.read().as_ref() {
+                button {
+                    class: "update-chip",
+                    onclick: move |_| show_update_modal.set(true),
+                    span { class: "fluent-icon", "aria-hidden": "true", "\u{E896}" }
+                    "v{upd.version}"
                 }
             }
-
-            nav { class: "top-nav",
-                for tab in ActiveTab::ALL {
-                    button {
-                        key: "{tab.label(false)}",
-                        class: "top-nav-item",
-                        "aria-current": if *active_tab.read() == tab { "page" } else { "false" },
-                        onclick: move |_| {
-                            active_tab.set(tab);
-                            if tab == ActiveTab::Tools {
-                                refresh_tools_inventory(tools_state);
-                            }
-                        },
-                        "{tab.label(en)}"
-                    }
-                }
+            div {
+                class: "titlebar-drag",
+                onmousedown: move |_| { win_drag_strip.drag(); },
             }
 
             div { class: "top-controls",
@@ -194,20 +208,50 @@ fn TitleBar(
                 button {
                     class: "win-btn",
                     title: strings(en).minimize,
+                    "aria-label": strings(en).minimize,
                     onclick: move |_| { win_min.set_minimized(true); },
-                    "─"
+                    "\u{E921}"
                 }
                 button {
                     class: "win-btn",
                     title: strings(en).maximize,
+                    "aria-label": strings(en).maximize,
                     onclick: move |_| { win_max.toggle_maximized(); },
-                    "□"
+                    "\u{E922}"
                 }
                 button {
                     class: "win-btn win-close-btn",
                     title: strings(en).close,
+                    "aria-label": strings(en).close,
                     onclick: move |_| { win_close.close(); },
-                    "✕"
+                    "\u{E8BB}"
+                }
+            }
+        }
+    }
+}
+
+/// Panel de navegación lateral (NavigationView de Windows 11). En ventanas estrechas queda solo con iconos y el
+/// nombre de cada sección pasa al `title`.
+#[component]
+fn NavPane(active_tab: Signal<ActiveTab>, tools_state: Signal<ToolsSharedState>) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    rsx! {
+        nav { class: "nav-pane", "aria-label": strings(en).shell.navigation,
+            for tab in ActiveTab::ALL {
+                button {
+                    key: "{tab.label(false)}",
+                    class: "nav-item",
+                    title: tab.label(en),
+                    "aria-current": if *active_tab.read() == tab { "page" } else { "false" },
+                    onclick: move |_| {
+                        active_tab.set(tab);
+                        if tab == ActiveTab::Tools {
+                            refresh_tools_inventory(tools_state);
+                        }
+                    },
+                    span { class: "nav-icon fluent-icon", "aria-hidden": "true", "{tab.icon()}" }
+                    span { class: "nav-label", "{tab.label(en)}" }
                 }
             }
         }
@@ -335,12 +379,13 @@ fn StandardModeBanner() -> Element {
     let txt = strings(en).shell;
     let window = use_window();
     rsx! {
-        Card {
+        InfoBar {
+            tone: Tone::Info,
             title: txt.standard_mode.to_string(),
-            subtitle: Some(txt.standard_mode_hint.to_string()),
-            actions: rsx! {
+            message: txt.standard_mode_hint.to_string(),
+            action: rsx! {
                 button {
-                    class: "btn btn-primary",
+                    class: "btn btn-sm",
                     onclick: move |_| {
                         if elevation::relaunch_as_admin(&[cli::ELEVATED]).is_ok() {
                             window.close();
@@ -366,6 +411,10 @@ fn TabViews(
     let is_elevated = use_hook(|| elevation::is_elevated().unwrap_or(false));
     rsx! {
         main { class: "main-content-full",
+            header { class: "page-header",
+                h1 { class: "page-title", "{active_tab.read().label(en)}" }
+                p { class: "page-desc", "{active_tab.read().description(en)}" }
+            }
             if !is_elevated {
                 StandardModeBanner {}
             }
@@ -463,11 +512,14 @@ pub fn App() -> Element {
         div {
             class: "app-root-frameless",
             "data-theme": "{current_theme.read().css_name()}",
-            TitleBar { active_tab, update_info, show_update_modal, tools_state }
+            TitleBar { update_info, show_update_modal }
             if *show_update_modal.read() {
                 UpdateModal { update_info, show_update_modal }
             }
-            TabViews { active_tab, visited_tabs, system_specs, specs_error }
+            div { class: "app-body",
+                NavPane { active_tab, tools_state }
+                TabViews { active_tab, visited_tabs, system_specs, specs_error }
+            }
         }
     }
 }

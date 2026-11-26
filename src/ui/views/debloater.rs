@@ -8,7 +8,9 @@ use crate::core::debloat::{
     self, DEBLOAT_REG_TWEAKS, DebloatCategory, DebloatProgress, DebloatReport, DebloatScanResult,
     DetectedBloatApp,
 };
-use crate::ui::components::{Card, CheckRow, ConfirmDialog, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{
+    Card, CheckRow, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone,
+};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
@@ -229,7 +231,7 @@ fn DebloatConfirm(
     }
 }
 
-/// Botones principales (aplicar, cancelar, recomendado, limpiar, volver a escanear, revertir) y el contador.
+/// Acción principal arriba (aplicar), selección rápida y contador de lo elegido.
 #[component]
 fn DebloatActions(
     sig: DebloaterSignals,
@@ -250,37 +252,32 @@ fn DebloatActions(
     let total_selected = sig.selected_count();
     let scan = scan_result.read();
     let installed_count = scan.apps.iter().filter(|a| a.installed).count();
+    let nothing = total_selected == 0 && !busy;
 
     rsx! {
-        Card {
-            title: txt.windows_debloater.to_string(),
-            subtitle: Some(txt.remove_preinstalled_apps_and_ads.to_string()),
-            div { class: "row-between gap-3 wrap",
-                div { class: "flex gap-2 wrap",
-                    button {
-                        class: "btn btn-danger",
-                        disabled: busy || total_selected == 0,
-                        onclick: move |_| on_apply.call(()),
-                        if *is_running.read() {
-                            "{strings(en).running}"
-                        } else { "{(txt.apply)(&total_selected)}" }
+        div { class: "card",
+            div { class: "row-between gap-4 wrap",
+                div { class: "grow-wide stack-1",
+                    div { class: "card-title", "{(txt.selected_count)(&total_selected)}" }
+                    div { class: "text-muted",
+                        if *is_scanning.read() {
+                            "{strings(en).scanning}"
+                        } else if nothing {
+                            "{txt.nothing_selected}"
+                        } else { "{(txt.found)(&installed_count)}" }
                     }
-                    if *is_running.read() {
+                }
+                div { class: "row wrap",
+                    if !*is_running.read() {
                         button {
-                            class: "btn btn-secondary",
-                            onclick: move |_| on_cancel.call(()),
-                            "{strings(en).cancel}"
-                        }
-                    } else {
-                        button {
-                            class: "btn btn-secondary",
+                            class: "btn",
                             disabled: busy,
                             onclick: move |_| sig.apply_recommended_defaults(&scan_result.read()),
                             "{txt.recommended}"
                         }
                         button {
-                            class: "btn btn-secondary",
-                            disabled: busy,
+                            class: "btn",
+                            disabled: busy || total_selected == 0,
                             onclick: move |_| {
                                 selected_apps.write().clear();
                                 selected_regs.write().clear();
@@ -288,28 +285,57 @@ fn DebloatActions(
                             "{strings(en).clear}"
                         }
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn",
                             disabled: busy,
                             onclick: move |_| start_scan(sig),
                             "{txt.rescan}"
                         }
                         if scan.has_reg_backup {
                             button {
-                                class: "btn btn-secondary",
+                                class: "btn",
                                 disabled: busy,
                                 onclick: move |_| start_revert_registry(sig),
                                 "{txt.revert_registry}"
                             }
                         }
                     }
-                }
-
-                span { class: "badge badge-info",
-                    if *is_scanning.read() {
-                        "{strings(en).scanning}"
-                    } else { "{(txt.found)(&installed_count)}" }
+                    button {
+                        class: "btn btn-primary",
+                        disabled: busy || total_selected == 0,
+                        title: if nothing { txt.nothing_selected } else { "" },
+                        onclick: move |_| on_apply.call(()),
+                        if *is_running.read() {
+                            "{strings(en).running}"
+                        } else { "{(txt.apply)(&total_selected)}" }
+                    }
+                    if *is_running.read() {
+                        button { class: "btn", onclick: move |_| on_cancel.call(()), "{strings(en).cancel}" }
+                    }
                 }
             }
+        }
+    }
+}
+
+/// Encabezado de un grupo: título, contador de elegidos, etiqueta de reversibilidad y una nota breve.
+#[component]
+fn GroupHeading(
+    title: String,
+    note: String,
+    count: String,
+    tag: String,
+    tag_class: &'static str,
+) -> Element {
+    rsx! {
+        div { class: "stack-1",
+            div { class: "row-between gap-3 wrap",
+                div { class: "section-title", "{title}" }
+                div { class: "row",
+                    span { class: "badge {tag_class}", "{tag}" }
+                    span { class: "badge badge-info", "{count}" }
+                }
+            }
+            div { class: "text-xs text-muted", "{note}" }
         }
     }
 }
@@ -319,24 +345,19 @@ fn DebloatActions(
 fn DebloatReportCard(report: DebloatReport) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     rsx! {
-        Card {
-            title: strings(en).debloater.summary.to_string(),
-            subtitle: None,
-            div { class: "stack-1",
-                for item in report.outcomes.iter() {
-                    div {
-                        key: "{item.label}",
-                        class: "list-row dense text-xs",
-                        div {
-                            div { class: "fw-semibold", "{tr(&item.label, en)}" }
-                            if !item.message.is_empty() {
-                                div { class: "text-muted", "{item.message}" }
-                            }
+        div { class: "section-title", "{strings(en).debloater.summary}" }
+        div { class: "stack-1",
+            for item in report.outcomes.iter() {
+                div { key: "{item.label}", class: "item-row row-between gap-3",
+                    div { class: "grow stack-1",
+                        span { class: "fw-semibold", "{tr(&item.label, en)}" }
+                        if !item.message.is_empty() {
+                            span { class: "text-xs text-muted", "{item.message}" }
                         }
-                        span {
-                            class: if item.success { "badge badge-success" } else { "badge badge-danger" },
-                            if item.success { "OK" } else { "Error" }
-                        }
+                    }
+                    span {
+                        class: if item.success { "badge badge-success" } else { "badge badge-danger" },
+                        if item.success { "{strings(en).debloater.result_ok}" } else { "{strings(en).debloater.result_failed}" }
                     }
                 }
             }
@@ -348,31 +369,36 @@ fn DebloatReportCard(report: DebloatReport) -> Element {
 #[component]
 fn RegistryTweaksCard(sig: DebloaterSignals) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).debloater;
     let mut selected_regs = sig.selected_regs;
     let busy = sig.busy();
+    let chosen = selected_regs.read().len();
     rsx! {
-        Card {
-            title: strings(en).debloater.privacy_ad_block_registry_tweaks.to_string(),
-            subtitle: None,
-            div { class: "stack-2",
-                for spec in DEBLOAT_REG_TWEAKS {
-                    {
-                        let tid = spec.id;
-                        let checked = selected_regs.read().contains(tid);
-                        rsx! {
-                            CheckRow {
-                                key: "{tid}",
-                                class: "item-row gap-3",
-                                checked,
-                                disabled: busy,
-                                on_change: move |on| {
-                                    let mut s = selected_regs.write();
-                                    if on { s.insert(tid); } else { s.remove(tid); }
-                                },
-                                div {
-                                    div { class: "text-sm fw-semibold", "{tr(&spec.label, en)}" }
-                                    div { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
-                                }
+        GroupHeading {
+            title: txt.privacy_ad_block_registry_tweaks.to_string(),
+            note: txt.tweaks_group_note.to_string(),
+            count: (txt.selected_of)(&chosen, &DEBLOAT_REG_TWEAKS.len()),
+            tag: txt.reversible.to_string(),
+            tag_class: "badge-success",
+        }
+        div { class: "stack-1",
+            for spec in DEBLOAT_REG_TWEAKS {
+                {
+                    let tid = spec.id;
+                    let checked = selected_regs.read().contains(tid);
+                    rsx! {
+                        CheckRow {
+                            key: "{tid}",
+                            class: "item-row gap-3",
+                            checked,
+                            disabled: busy,
+                            on_change: move |on| {
+                                let mut s = selected_regs.write();
+                                if on { s.insert(tid); } else { s.remove(tid); }
+                            },
+                            div { class: "grow stack-1",
+                                span { "{tr(&spec.label, en)}" }
+                                span { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
                             }
                         }
                     }
@@ -390,36 +416,47 @@ fn CategoryCard(cat: DebloatCategory, sig: DebloaterSignals) -> Element {
     let mut selected_apps = sig.selected_apps;
     let busy = sig.busy();
     let scan = sig.scan_result.read();
+    let in_cat = scan.apps.iter().filter(|a| a.category == cat);
+    let installed = in_cat.clone().filter(|a| a.installed).count();
+    let chosen = in_cat
+        .clone()
+        .filter(|a| a.installed && selected_apps.read().contains(a.id))
+        .count();
     rsx! {
-        Card {
+        GroupHeading {
             title: tr(cat.label(), en).into_owned(),
-            subtitle: None,
-            div { class: "stack-2",
-                for app in scan.apps.iter().filter(|a| a.category == cat) {
-                    {
-                        let app_id = app.id;
-                        let checked = app.installed && selected_apps.read().contains(app_id);
-                        rsx! {
-                            CheckRow {
-                                key: "{app_id}",
-                                class: "item-row gap-3",
-                                checked,
-                                disabled: busy || !app.installed,
-                                on_change: move |on| {
-                                    let mut s = selected_apps.write();
-                                    if on { s.insert(app_id); } else { s.remove(app_id); }
-                                },
-                                div { class: "grow",
-                                    span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
-                                    span { class: "text-xs text-muted", "({app.package_name})" }
-                                    div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
+            note: txt.apps_group_note.to_string(),
+            count: (txt.selected_of)(&chosen, &installed),
+            tag: txt.reinstallable.to_string(),
+            tag_class: "badge-warning",
+        }
+        div { class: "stack-1",
+            for app in in_cat {
+                {
+                    let app_id = app.id;
+                    let checked = app.installed && selected_apps.read().contains(app_id);
+                    rsx! {
+                        CheckRow {
+                            key: "{app_id}",
+                            class: "item-row gap-3",
+                            checked,
+                            disabled: busy || !app.installed,
+                            on_change: move |on| {
+                                let mut s = selected_apps.write();
+                                if on { s.insert(app_id); } else { s.remove(app_id); }
+                            },
+                            div { class: "grow stack-1",
+                                span { class: if app.installed { "" } else { "text-muted" },
+                                    "{tr(&app.display_name, en)}"
                                 }
-                                span {
-                                    class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
-                                    if app.installed {
-                                        "{strings(en).installed_app}"
-                                    } else { "{txt.not_installed}" }
-                                }
+                                span { class: "text-xs text-muted", "{tr(&app.description, en)}" }
+                                span { class: "text-xs text-muted", "{app.package_name}" }
+                            }
+                            span {
+                                class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
+                                if app.installed {
+                                    "{strings(en).installed_app}"
+                                } else { "{txt.not_installed}" }
                             }
                         }
                     }
@@ -500,10 +537,14 @@ pub fn DebloaterView() -> Element {
                 DebloatReportCard { report }
             }
 
-            RegistryTweaksCard { sig }
+            if *sig.is_scanning.read() && sig.scan_result.read().apps.is_empty() {
+                LoadingState { message: strings(en).scanning.to_string() }
+            } else {
+                RegistryTweaksCard { sig }
 
-            for cat in categories {
-                CategoryCard { key: "{cat.label()}", cat, sig }
+                for cat in categories {
+                    CategoryCard { key: "{cat.label()}", cat, sig }
+                }
             }
         }
     }

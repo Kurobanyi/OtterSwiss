@@ -71,7 +71,9 @@ fn error_text(kind: ErrorKind, detail: &str, en: bool) -> String {
     if detail.is_empty() {
         title.to_string()
     } else {
-        format!("{title}: {detail}")
+        // El detalle que core escribe en español (la operación que pidió administrador, por ejemplo) se traduce si
+        // está en el catálogo; si no, se muestra tal cual, como cualquier detalle técnico.
+        format!("{title}: {}", super::core_text::tr(detail, en))
     }
 }
 

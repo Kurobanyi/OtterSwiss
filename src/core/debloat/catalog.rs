@@ -350,9 +350,9 @@ pub enum DebloatCategory {
 impl DebloatCategory {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Recommended => "Bloatware Común y Telemetría (Recomendado)",
-            Self::OptionalApps => "Aplicaciones Integradas Opcionales",
-            Self::XboxGaming => "Xbox y Gaming (NO marcar si usas Xbox Game Pass)",
+            Self::Recommended => "Bloatware común y telemetría (recomendado)",
+            Self::OptionalApps => "Apps integradas opcionales",
+            Self::XboxGaming => "Xbox y juegos (no las marques si usas Xbox Game Pass)",
         }
     }
 }

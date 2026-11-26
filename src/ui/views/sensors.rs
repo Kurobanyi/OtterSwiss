@@ -5,7 +5,7 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::core::hardware::sensors::{SensorMonitor, SensorReading, SystemSensorsSnapshot};
-use crate::ui::components::{Card, EmptyState};
+use crate::ui::components::{EmptyState, InfoBar, Tone};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, strings};
 
@@ -54,14 +54,10 @@ pub fn SensorsView() -> Element {
         || !snap.gpu_temperatures.is_empty()
         || !snap.storage_temperatures.is_empty();
 
-    let thermal_title = txt.thermal_monitor.to_string();
-    let thermal_sub = Some(txt.live_gpu_nvme_acpi_readings.to_string());
     let reset_peaks_lbl = txt.reset_peaks;
-    let pause_lbl = if *paused.read() {
-        txt.resume
-    } else {
-        txt.pause
-    };
+    let is_paused = *paused.read();
+    let pause_lbl = if is_paused { txt.resume } else { txt.pause };
+    let pause_glyph = if is_paused { "\u{E768}" } else { "\u{E769}" };
 
     let empty_title = txt.waiting_for_sensors.to_string();
     let empty_desc = txt.checking_nvml_adl2_wmi_nvme.to_string();
@@ -73,24 +69,25 @@ pub fn SensorsView() -> Element {
 
     rsx! {
         div { class: "content-body",
-            Card {
-                title: thermal_title,
-                subtitle: thermal_sub,
-                div { class: "row-end",
-                    button {
-                        class: "btn btn-secondary",
-                        onclick: move |_| peaks.write().clear(),
-                        "{reset_peaks_lbl}"
-                    }
-                    button {
-                        class: "btn btn-secondary",
-                            "aria-pressed": if *paused.read() { "true" } else { "false" },
-                        onclick: move |_| {
-                            let next = !*paused.read();
-                            paused.set(next);
-                        },
-                        "{pause_lbl}"
-                    }
+            div { class: "row wrap",
+                button {
+                    class: "btn",
+                    "aria-pressed": if is_paused { "true" } else { "false" },
+                    onclick: move |_| {
+                        let next = !*paused.read();
+                        paused.set(next);
+                    },
+                    span { class: "fluent-icon", "aria-hidden": "true", "{pause_glyph}" }
+                    "{pause_lbl}"
+                }
+                button {
+                    class: "btn",
+                    onclick: move |_| peaks.write().clear(),
+                    span { class: "fluent-icon", "aria-hidden": "true", "\u{E72C}" }
+                    "{reset_peaks_lbl}"
+                }
+                if is_paused {
+                    span { class: "badge badge-info", "{txt.paused_note}" }
                 }
             }
 
@@ -106,14 +103,15 @@ pub fn SensorsView() -> Element {
             }
 
             if !snap.backend_notes.is_empty() {
-                Card {
+                InfoBar {
+                    tone: Tone::Info,
                     title: diagnostics_title,
-                    subtitle: None,
-                    div { class: "stack-1 text-xs text-muted",
-                        for note in snap.backend_notes.iter() {
-                            p { key: "{note}", "• {note}" }
-                        }
-                    }
+                    message: snap
+                        .backend_notes
+                        .iter()
+                        .map(|n| tr(n, en).into_owned())
+                        .collect::<Vec<_>>()
+                        .join(" · "),
                 }
             }
         }
@@ -129,33 +127,37 @@ fn render_sensor_section(
     if items.is_empty() {
         return rsx! {};
     }
+    let txt = strings(en).sensors;
 
     rsx! {
-        div { class: "stack-2",
-            h3 { class: "text-md", "{section_title}" }
-            div { class: "cards-grid",
-                for reading in items.iter() {
-                    Card {
-                        key: "{reading.name}",
-                        title: reading.name.clone(),
-                        subtitle: Some(tr(&reading.sensor_type, en).into_owned()),
-                        div { class: "stack-2",
-                            h2 {
-                                class: if reading.current_celsius >= 80.0 {
-                                    "text-xl text-danger"
-                                } else if reading.current_celsius >= 65.0 {
-                                    "text-xl text-warning"
-                                } else {
-                                    "text-xl text-success"
-                                },
-                                "{reading.current_celsius:.1} °C"
+        div { class: "section-title", "{section_title}" }
+        div { class: "snr-grid",
+            for reading in items.iter() {
+                {
+                    // Umbrales de siempre; el estado va también en texto, no solo en color.
+                    let (tone_class, badge_class, level) = if reading.current_celsius >= 80.0 {
+                        ("text-danger", "badge badge-danger", txt.level_critical)
+                    } else if reading.current_celsius >= 65.0 {
+                        ("text-warning", "badge badge-warning", txt.level_high)
+                    } else {
+                        ("text-success", "badge badge-success", txt.level_normal)
+                    };
+                    rsx! {
+                        div { key: "{reading.name}", class: "card snr-card",
+                            div { class: "row-between",
+                                div { class: "grow stack-1",
+                                    span { class: "fw-semibold", "{reading.name}" }
+                                    span { class: "text-xs text-muted", "{tr(&reading.sensor_type, en)}" }
+                                }
+                                span { class: "{badge_class}", "{level}" }
                             }
-                            div { class: "flex gap-3 text-xs text-muted",
+                            div { class: "snr-temp {tone_class}", "{reading.current_celsius:.1} °C" }
+                            div { class: "snr-meta text-xs text-muted",
                                 if let Some(pk) = peaks.get(&reading.name) {
-                                    span { "{(strings(en).sensors.peak_c)(&pk)}" }
+                                    span { "{(txt.peak_c)(&pk)}" }
                                 }
                                 if let Some(max_t) = reading.max_celsius {
-                                    span { "{(strings(en).sensors.max_c)(&max_t)}" }
+                                    span { "{(txt.max_c)(&max_t)}" }
                                 }
                             }
                         }

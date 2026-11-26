@@ -5,7 +5,9 @@ use crate::core::optimize::engine::{
     EngineExecutionReport, EngineProgress, OptimizationEngine, OptimizationProfile,
     OptimizationStepStatus, PlannedOptimizationItem, RollbackReport,
 };
-use crate::core::optimize::power_plan::get_active_scheme_guid;
+use crate::core::optimize::power_plan::{
+    GUID_BALANCED, GUID_HIGH_PERFORMANCE, GUID_ULTIMATE_PERFORMANCE, get_active_scheme_guid,
+};
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
@@ -192,56 +194,102 @@ fn OptimizeConfirm(
     }
 }
 
+/// Una fila de dato del equipo: icono, nombre a la izquierda y valor a la derecha.
+#[component]
+fn SpecRow(glyph: &'static str, label: String, value: String) -> Element {
+    rsx! {
+        div { class: "item-row dash-row",
+            span { class: "fluent-icon dash-icon", "aria-hidden": "true", "{glyph}" }
+            span { class: "dash-label", "{label}" }
+            span { class: "dash-value", "{value}" }
+        }
+    }
+}
+
 /// CPU, placa, RAM, GPU y discos detectados, con el nivel de hardware.
 #[component]
-fn OverviewCard(hw: HardwareProfile) -> Element {
+fn OverviewGroup(hw: HardwareProfile) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     let txt = strings(en).dashboard;
+    let (tier_class, tier_text) = match hw.tier {
+        HardwareTier::HighEnd => ("badge badge-success", txt.tier_high),
+        HardwareTier::MidRange => ("badge badge-info", txt.tier_mid),
+        HardwareTier::LowEnd => ("badge badge-warning", txt.tier_low),
+    };
     rsx! {
-        Card {
-            title: txt.system_overview.to_string(),
-            subtitle: Some(txt.native_win32_detection.to_string()),
-            div { class: "stack-2 text-sm",
-                p { strong { "CPU: " } "{hw.cpu_name} ({hw.logical_cores}T)" }
-                p { strong { "{txt.board}" } "{tr(&hw.motherboard, en)}" }
-                p { strong { "RAM: " } "{hw.total_ram_mb} MB" }
-                for gpu in hw.gpu_names.iter() {
-                    p { strong { "GPU: " } "{gpu}" }
+        div { class: "section-title", "{txt.your_pc}" }
+        div { class: "stack-1",
+            SpecRow {
+                glyph: "\u{E950}",
+                label: txt.cpu.to_string(),
+                value: format!("{} ({}T)", hw.cpu_name, hw.logical_cores),
+            }
+            SpecRow {
+                glyph: "\u{E7F8}",
+                label: txt.board.to_string(),
+                value: tr(&hw.motherboard, en).to_string(),
+            }
+            SpecRow {
+                glyph: "\u{E964}",
+                label: txt.ram.to_string(),
+                value: format!("{} MB", hw.total_ram_mb),
+            }
+            for (i , gpu) in hw.gpu_names.iter().enumerate() {
+                SpecRow {
+                    key: "gpu{i}",
+                    glyph: "\u{E7F4}",
+                    label: txt.graphics.to_string(),
+                    value: gpu.clone(),
                 }
-                for drive in hw.storage_drives.iter() {
-                    p { strong { "{txt.disk}" } "{drive}" }
+            }
+            for (i , drive) in hw.storage_drives.iter().enumerate() {
+                SpecRow {
+                    key: "drive{i}",
+                    glyph: "\u{EDA2}",
+                    label: txt.disk.to_string(),
+                    value: drive.clone(),
                 }
-                div { class: "mt-1",
-                    span {
-                        class: match hw.tier {
-                            HardwareTier::HighEnd => "badge badge-success",
-                            HardwareTier::MidRange => "badge badge-info",
-                            HardwareTier::LowEnd => "badge badge-warning",
-                        },
-                        "{hw.tier:?}"
-                    }
-                }
+            }
+            div { class: "item-row dash-row",
+                span { class: "fluent-icon dash-icon", "aria-hidden": "true", "\u{E9D9}" }
+                span { class: "dash-label", "{txt.hardware_tier}" }
+                span { class: "dash-value", span { class: "{tier_class}", "{tier_text}" } }
             }
         }
     }
 }
 
+/// Plan de energía activo: su nombre si es uno conocido y el GUID como dato secundario.
 #[component]
-fn PowerPlanCard(active_scheme: Signal<String>) -> Element {
+fn PowerPlanRow(active_scheme: Signal<String>) -> Element {
     let txt = strings(use_context::<Signal<Lang>>().read().is_en()).dashboard;
+    let guid = active_scheme.read().clone();
+    let lower = guid.to_lowercase();
+    let name = if lower.contains(GUID_BALANCED) {
+        txt.power_plan_balanced
+    } else if lower.contains(GUID_HIGH_PERFORMANCE) {
+        txt.power_plan_high
+    } else if lower.contains(GUID_ULTIMATE_PERFORMANCE) {
+        txt.power_plan_ultimate
+    } else {
+        txt.power_plan_other
+    };
     rsx! {
-        Card {
-            title: txt.active_power_plan.to_string(),
-            subtitle: Some(txt.current_windows_scheme.to_string()),
-            div { class: "stack-2",
-                code { class: "code-box", "{active_scheme.read()}" }
-                p { class: "text-xs text-muted", "{txt.auto_selects_optimal_plan_for}" }
+        div { class: "item-row dash-row",
+            span { class: "fluent-icon dash-icon", "aria-hidden": "true", "\u{E83F}" }
+            div { class: "grow stack-1",
+                span { class: "dash-label", "{txt.active_power_plan}" }
+                span { class: "text-xs text-muted", "{txt.auto_selects_optimal_plan_for}" }
+            }
+            div { class: "dash-value stack-1",
+                span { class: "fw-semibold", "{name}" }
+                code { class: "text-xs mono", "{guid}" }
             }
         }
     }
 }
 
-/// Botones de optimizar y de revertir.
+/// Acción principal de la página: optimizar, con la explicación del respaldo y el botón de revertir.
 #[component]
 fn OptimizerCard(
     is_running: Signal<bool>,
@@ -251,24 +299,28 @@ fn OptimizerCard(
 ) -> Element {
     let txt = strings(use_context::<Signal<Lang>>().read().is_en()).dashboard;
     rsx! {
-        Card {
-            title: txt.optimizer.to_string(),
-            // UI-01: sin «transaccional»; el respaldo permite revertir, pero no garantiza todo o nada.
-            subtitle: Some(txt.backs_up_each_value_before.to_string()),
-            div { class: "stack-3",
-                button {
-                    class: "btn btn-primary",
-                    disabled: *is_running.read() || nothing_to_apply,
-                    onclick: move |_| on_optimize.call(()),
-                    if *is_running.read() {
-                        "{txt.processing}"
-                    } else { "{txt.optimize_system}" }
+        div { class: "card",
+            div { class: "row-between gap-4 wrap",
+                div { class: "grow-wide stack-1",
+                    div { class: "card-title", "{txt.optimizer_title}" }
+                    // UI-01: sin «transaccional»; el respaldo permite revertir, pero no garantiza todo o nada.
+                    div { class: "text-muted", "{txt.optimizer_desc}" }
                 }
-                button {
-                    class: "btn btn-secondary",
-                    disabled: *is_running.read(),
-                    onclick: move |_| on_rollback.call(()),
-                    "{txt.revert_rollback}"
+                div { class: "row",
+                    button {
+                        class: "btn btn-primary",
+                        disabled: *is_running.read() || nothing_to_apply,
+                        onclick: move |_| on_optimize.call(()),
+                        if *is_running.read() {
+                            "{txt.processing}"
+                        } else { "{txt.optimize_system}" }
+                    }
+                    button {
+                        class: "btn",
+                        disabled: *is_running.read(),
+                        onclick: move |_| on_rollback.call(()),
+                        "{txt.revert_rollback}"
+                    }
                 }
             }
         }
@@ -332,78 +384,106 @@ fn RollbackResultCard(rb: RollbackReport) -> Element {
     }
 }
 
+/// Una fila de ajuste: nombre, qué hace, y su estado a la derecha.
+#[component]
+fn TweakRow(
+    label: String,
+    detail: String,
+    badge_class: &'static str,
+    badge_text: String,
+) -> Element {
+    rsx! {
+        div { class: "item-row dash-row",
+            div { class: "grow stack-1",
+                div { class: "fw-semibold", "{label}" }
+                if !detail.is_empty() {
+                    div { class: "text-xs text-muted", "{detail}" }
+                }
+            }
+            span { class: "{badge_class}", "{badge_text}" }
+        }
+    }
+}
+
 /// Resultado de aplicar el perfil: fallos, advertencias y cada paso.
 #[component]
 fn EngineReportCard(report: EngineExecutionReport) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     let txt = strings(en).dashboard;
     rsx! {
-        Card {
-            title: (txt.results)(&report.profile_name),
-            subtitle: Some((txt.applied_skipped_errors)(&report.applied_count, &report.skipped_count, &report.failed_items.len())),
-            div { class: "stack-2",
-                // UI-01: fallos y advertencias del motor, no solo los contadores.
-                if !report.failed_items.is_empty() {
-                    StatusBanner { text: report.failed_items.join("\n"), tone: Tone::Danger }
-                }
-                if !report.warnings.is_empty() {
-                    StatusBanner { text: report.warnings.join("\n"), tone: Tone::Warning }
-                }
-                for step in report.step_results.iter() {
-                    div {
-                        key: "{step.category}:{step.label}",
-                        class: "list-row",
-                        div {
-                            div { class: "text-sm fw-semibold", "[{tr(&step.category, en)}] {tr(&step.label, en)}" }
-                            if !step.detail.is_empty() {
-                                div { class: "text-xs text-muted", "{tr(&step.detail, en)}" }
-                            }
-                        }
-                        span {
-                            class: match step.status {
-                                OptimizationStepStatus::Applied => "badge badge-success",
-                                OptimizationStepStatus::Skipped => "badge badge-info",
-                                OptimizationStepStatus::Failed => "badge badge-danger",
-                            },
-                            match step.status {
-                                OptimizationStepStatus::Applied => txt.step_applied,
-                                OptimizationStepStatus::Skipped => txt.step_skipped,
-                                OptimizationStepStatus::Failed => "Error",
-                            }
-                        }
+        div { class: "section-title", "{(txt.results)(&report.profile_name)}" }
+        div { class: "text-muted",
+            "{(txt.applied_skipped_errors)(&report.applied_count, &report.skipped_count, &report.failed_items.len())}"
+        }
+        // UI-01: fallos y advertencias del motor, no solo los contadores.
+        if !report.failed_items.is_empty() {
+            StatusBanner { text: report.failed_items.join("\n"), tone: Tone::Danger }
+        }
+        if !report.warnings.is_empty() {
+            StatusBanner { text: report.warnings.join("\n"), tone: Tone::Warning }
+        }
+        div { class: "stack-1",
+            for step in report.step_results.iter() {
+                TweakRow {
+                    key: "{step.category}:{step.label}",
+                    label: format!("{}: {}", tr(&step.category, en), tr(&step.label, en)),
+                    detail: tr(&step.detail, en).to_string(),
+                    badge_class: match step.status {
+                        OptimizationStepStatus::Applied => "badge badge-success",
+                        OptimizationStepStatus::Skipped => "badge badge-info",
+                        OptimizationStepStatus::Failed => "badge badge-danger",
+                    },
+                    badge_text: match step.status {
+                        OptimizationStepStatus::Applied => txt.step_applied,
+                        OptimizationStepStatus::Skipped => txt.step_skipped,
+                        OptimizationStepStatus::Failed => "Error",
                     }
+                        .to_string(),
                 }
             }
         }
     }
 }
 
-/// Plan que se aplicaría con el perfil detectado, antes de optimizar.
+/// Plan que se aplicaría con el perfil detectado, antes de optimizar, agrupado por categoría.
 #[component]
-fn PlannedTweaksCard(items: Vec<PlannedOptimizationItem>, tier: HardwareTier) -> Element {
+fn PlannedTweaksGroups(items: Vec<PlannedOptimizationItem>, tier: HardwareTier) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     let txt = strings(en).dashboard;
+    let tier_text = match tier {
+        HardwareTier::HighEnd => txt.tier_high,
+        HardwareTier::MidRange => txt.tier_mid,
+        HardwareTier::LowEnd => txt.tier_low,
+    };
+    let mut groups: Vec<(String, Vec<&PlannedOptimizationItem>)> = Vec::new();
+    for item in items.iter() {
+        match groups.iter_mut().find(|(c, _)| *c == item.category) {
+            Some((_, v)) => v.push(item),
+            None => groups.push((item.category.clone(), vec![item])),
+        }
+    }
     rsx! {
-        Card {
-            title: (txt.planned_tweaks)(&format!("{tier:?}")),
-            subtitle: Some(txt.backed_up_before_applying.to_string()),
-            div { class: "stack-2",
-                for item in items.iter() {
-                    div {
+        div { class: "section-title", "{(txt.planned_tweaks)(&tier_text)}" }
+        div { class: "text-muted", "{txt.backed_up_before_applying}" }
+        for (category , group) in groups.iter() {
+            div { key: "{category}", class: "stack-1",
+                div { class: "text-xs fw-semibold text-muted dash-group", "{tr(category, en)}" }
+                for item in group.iter() {
+                    {
+                        let (badge_class, badge_text) = if item.eligible {
+                            ("badge badge-success", txt.included)
+                        } else {
+                            ("badge badge-info", txt.skipped)
+                        };
+                        rsx! {
+                            TweakRow {
                         key: "{item.category}:{item.label}",
-                        class: "list-row",
                         // UI-12: cada ajuste explica qué hace.
-                        div {
-                            div { class: "text-sm fw-semibold", "[{tr(&item.category, en)}] {tr(&item.label, en)}" }
-                            if !item.detail.is_empty() {
-                                div { class: "text-xs text-muted", "{tr(&item.detail, en)}" }
+                        label: tr(&item.label, en).to_string(),
+                        detail: tr(&item.detail, en).to_string(),
+                        badge_class,
+                        badge_text: badge_text.to_string(),
                             }
-                        }
-                        span {
-                            class: if item.eligible { "badge badge-success" } else { "badge badge-info" },
-                            if item.eligible {
-                                "{txt.included}"
-                            } else { "{txt.skipped}" }
                         }
                     }
                 }
@@ -473,15 +553,11 @@ pub fn DashboardView() -> Element {
                 }
             }
 
-            div { class: "cards-grid",
-                OverviewCard { hw: hw.clone() }
-                PowerPlanCard { active_scheme: sig.active_scheme }
-                OptimizerCard {
-                    is_running: sig.is_running,
-                    nothing_to_apply: eligible_items.is_empty(),
-                    on_optimize: move |_| confirm_optimize.set(true),
-                    on_rollback: move |_| start_rollback(sig, en),
-                }
+            OptimizerCard {
+                is_running: sig.is_running,
+                nothing_to_apply: eligible_items.is_empty(),
+                on_optimize: move |_| confirm_optimize.set(true),
+                on_rollback: move |_| start_rollback(sig, en),
             }
 
             if let Some(err) = sig.error_banner.read().as_ref().map(|m| m.text(en)) {
@@ -496,10 +572,13 @@ pub fn DashboardView() -> Element {
                 RollbackResultCard { rb }
             }
 
+            OverviewGroup { hw: hw.clone() }
+            PowerPlanRow { active_scheme: sig.active_scheme }
+
             if let Some(report) = sig.last_report.read().clone() {
                 EngineReportCard { report }
             } else {
-                PlannedTweaksCard { items: planned_items, tier: hw.tier }
+                PlannedTweaksGroups { items: planned_items, tier: hw.tier }
             }
         }
     }

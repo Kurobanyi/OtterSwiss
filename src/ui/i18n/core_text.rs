@@ -162,13 +162,33 @@ fn english(es: &str) -> Option<&'static str> {
         }
         "Servicio de enrutamiento de mensajes push WAP" => "WAP push message routing service",
         "Superfetch / SysMain (precarga en memoria)" => "Superfetch / SysMain (memory preloading)",
+        // Sensores: notas de diagnóstico.
+        "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo (opcionalmente puedes tener abierto LibreHardwareMonitor en segundo plano)." => {
+            "This desktop motherboard does not expose CPU sensors through ACPI/WMI without an external kernel driver (you can keep LibreHardwareMonitor open in the background)."
+        }
+        "NVML y ADL2 no detectados (sin driver NVIDIA/AMD compatible)" => {
+            "NVML and ADL2 not detected (no compatible NVIDIA/AMD driver)"
+        }
+        // Operaciones que piden administrador (detalle de `CoreError::NotElevated`).
+        "Registrar menú contextual en HKLM" => "Register the context menu in HKLM",
+        "Eliminar menú contextual de HKLM" => "Remove the context menu from HKLM",
+        "Escanear las apps instaladas para todos los usuarios" => {
+            "Scan the apps installed for all users"
+        }
+        "Ejecutar Debloater de Windows" => "Run the Windows Debloater",
+        "Revertir ajustes de registro del Debloater" => "Revert the Debloater registry tweaks",
+        "Modificar servidores DNS de red" => "Change the network DNS servers",
+        "Restaurar servidores DNS previos" => "Restore the previous DNS servers",
+        "Revertir todos los cambios de OtterSwiss" => "Revert all OtterSwiss changes",
+        "Instalar paquetes curados de software" => "Install curated software packages",
+        "Instalar runtime dependiente de Windows" => "Install a Windows runtime dependency",
         // Debloater: categorías.
-        "Bloatware Común y Telemetría (Recomendado)" => {
+        "Bloatware común y telemetría (recomendado)" => {
             "Common bloatware and telemetry (recommended)"
         }
-        "Aplicaciones Integradas Opcionales" => "Optional built-in apps",
-        "Xbox y Gaming (NO marcar si usas Xbox Game Pass)" => {
-            "Xbox and gaming (do NOT check if you use Xbox Game Pass)"
+        "Apps integradas opcionales" => "Optional built-in apps",
+        "Xbox y juegos (no las marques si usas Xbox Game Pass)" => {
+            "Xbox and gaming (leave unchecked if you use Xbox Game Pass)"
         }
         // Debloater: apps.
         "MSN Noticias" => "MSN News",

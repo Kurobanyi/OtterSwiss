@@ -4,8 +4,7 @@
 use super::strings::plural;
 
 pub struct DriversStrings {
-    pub title: &'static str,
-    pub subtitle: &'static str,
+    pub firmware_bios: &'static str,
     pub full_scan: &'static str,
     pub refresh_hardware: &'static str,
     pub backup_oem: &'static str,
@@ -26,8 +25,12 @@ pub struct DriversStrings {
     pub backup_saved: fn(&str) -> String,
     pub backup_failed: fn(&str) -> String,
     pub internal_error: &'static str,
-    pub device_errors: fn(usize) -> String,
-    pub all_ok: &'static str,
+    pub stat_devices: &'static str,
+    pub stat_errors: &'static str,
+    pub stat_updates: &'static str,
+    pub policy_title: &'static str,
+    pub reboot_title: &'static str,
+    pub filters_label: &'static str,
     pub policy_managed: &'static str,
     pub reboot_needed: &'static str,
     pub confirm_title: &'static str,
@@ -66,8 +69,7 @@ pub struct DriversStrings {
 }
 
 pub static ES: DriversStrings = DriversStrings {
-    title: "Gestor y actualizador de drivers",
-    subtitle: "Windows Update, NVIDIA oficial y el Catálogo de Microsoft (.cab)",
+    firmware_bios: "Firmware o BIOS",
     full_scan: "Buscar actualizaciones",
     refresh_hardware: "Releer hardware",
     backup_oem: "Respaldar drivers OEM",
@@ -111,8 +113,12 @@ pub static ES: DriversStrings = DriversStrings {
     backup_saved: |path| format!("Respaldo del Driver Store guardado en {path}"),
     backup_failed: |e| format!("Falló el respaldo, no se instaló nada: {e}"),
     internal_error: "Error interno",
-    device_errors: |n| format!("{} con error", plural(n, ("dispositivo", "dispositivos"))),
-    all_ok: "Hardware sin errores",
+    stat_devices: "Dispositivos",
+    stat_errors: "Con errores",
+    stat_updates: "Actualizaciones",
+    policy_title: "Equipo gestionado",
+    reboot_title: "Reinicio necesario",
+    filters_label: "Filtrar dispositivos",
     policy_managed: "Este equipo está gestionado: una política (exclusión de drivers o WSUS) decide las actualizaciones de drivers, así que OtterSwiss no las busca ni las instala.",
     reboot_needed: "Windows requiere reiniciar el equipo para terminar de instalar los drivers.",
     confirm_title: "¿Instalar drivers?",
@@ -167,8 +173,7 @@ pub static ES: DriversStrings = DriversStrings {
 };
 
 pub static EN: DriversStrings = DriversStrings {
-    title: "Driver manager and updater",
-    subtitle: "Windows Update, official NVIDIA drivers and the Microsoft Update Catalog (.cab)",
+    firmware_bios: "Firmware or BIOS",
     full_scan: "Check for updates",
     refresh_hardware: "Reload hardware",
     backup_oem: "Back up OEM drivers",
@@ -196,8 +201,12 @@ pub static EN: DriversStrings = DriversStrings {
     backup_saved: |path| format!("Driver Store backup saved to {path}"),
     backup_failed: |e| format!("Backup failed, nothing was installed: {e}"),
     internal_error: "Internal error",
-    device_errors: |n| format!("{} with errors", plural(n, ("device", "devices"))),
-    all_ok: "All hardware OK",
+    stat_devices: "Devices",
+    stat_errors: "With errors",
+    stat_updates: "Updates",
+    policy_title: "Managed PC",
+    reboot_title: "Restart required",
+    filters_label: "Filter devices",
     policy_managed: "This PC is managed: a policy (driver exclusion or WSUS) decides driver updates, so OtterSwiss does not search for or install drivers.",
     reboot_needed: "Windows needs a restart to finish installing the drivers.",
     confirm_title: "Install drivers?",
@@ -260,8 +269,13 @@ mod tests {
     fn textos_de_drivers_completos() {
         for s in [&ES, &EN] {
             for f in [
-                s.title,
-                s.subtitle,
+                s.firmware_bios,
+                s.stat_devices,
+                s.stat_errors,
+                s.stat_updates,
+                s.policy_title,
+                s.reboot_title,
+                s.filters_label,
                 s.scanning_devices,
                 s.scanning_sources,
                 s.scan_cancelled,
@@ -280,8 +294,6 @@ mod tests {
         }
         assert_eq!((ES.devices_detected)(1), "1 dispositivo detectado.");
         assert_eq!((ES.devices_detected)(3), "3 dispositivos detectados.");
-        assert_eq!((ES.device_errors)(1), "1 dispositivo con error");
-        assert_eq!((ES.device_errors)(2), "2 dispositivos con error");
         assert_eq!(
             (EN.catalog_found)(1),
             "1 package found in the Microsoft Update Catalog."

@@ -22,6 +22,9 @@ pub struct ShellStrings {
     pub standard_mode: &'static str,
     pub standard_mode_hint: &'static str,
     pub relaunch_as_admin: &'static str,
+    pub navigation: &'static str,
+    /// Descripción bajo el título de cada página, en el orden de `ActiveTab::ALL`.
+    pub page_descriptions: [&'static str; 10],
 }
 
 pub static ES: ShellStrings = ShellStrings {
@@ -53,6 +56,19 @@ pub static ES: ShellStrings = ShellStrings {
     standard_mode: "Modo estándar",
     standard_mode_hint: "Lo que cambia el sistema (optimizar, Debloater, DNS, drivers, tienda) y parte de la limpieza piden administrador; el resto funciona así.",
     relaunch_as_admin: "Reabrir como administrador",
+    navigation: "Secciones",
+    page_descriptions: [
+        "Resumen del equipo y optimización con respaldo para revertir.",
+        "Libera espacio borrando temporales, cachés y la papelera.",
+        "Quita apps preinstaladas y desactiva anuncios y telemetría.",
+        "Mide y cambia los servidores DNS de tus adaptadores de red.",
+        "Revisa tus dispositivos y busca drivers actualizados.",
+        "Comprime y extrae archivos ZIP, 7Z y TAR.GZ.",
+        "Instala apps, runtimes y el menú contextual del Explorador.",
+        "Desinstala programas y borra lo que dejan atrás.",
+        "Especificaciones detalladas de tu equipo.",
+        "Temperaturas de CPU y GPU en tiempo real.",
+    ],
 };
 
 pub static EN: ShellStrings = ShellStrings {
@@ -84,6 +100,19 @@ pub static EN: ShellStrings = ShellStrings {
     standard_mode: "Standard mode",
     standard_mode_hint: "What changes the system (optimizer, Debloater, DNS, drivers, store) and part of the cleanup need an administrator; the rest works as is.",
     relaunch_as_admin: "Reopen as administrator",
+    navigation: "Sections",
+    page_descriptions: [
+        "System overview and optimization with a backup to revert.",
+        "Free up space by deleting temporary files, caches and the Recycle Bin.",
+        "Remove preinstalled apps and turn off ads and telemetry.",
+        "Measure and change the DNS servers of your network adapters.",
+        "Review your devices and look for updated drivers.",
+        "Compress and extract ZIP, 7Z and TAR.GZ files.",
+        "Install apps, runtimes and the File Explorer context menu.",
+        "Uninstall programs and remove what they leave behind.",
+        "Detailed specifications of your PC.",
+        "Live CPU and GPU temperatures.",
+    ],
 };
 
 #[cfg(test)]
@@ -108,7 +137,11 @@ mod tests {
                 s.standard_mode,
                 s.standard_mode_hint,
                 s.relaunch_as_admin,
-            ] {
+                s.navigation,
+            ]
+            .into_iter()
+            .chain(s.page_descriptions)
+            {
                 assert!(!f.trim().is_empty());
             }
         }

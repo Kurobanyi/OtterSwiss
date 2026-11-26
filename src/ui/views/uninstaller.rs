@@ -6,7 +6,9 @@ use crate::core::store::app_store;
 use crate::core::uninstall::{
     self, InstalledApp, LeftoverItem, LeftoverKind, PurgeReport, UninstallOutcome,
 };
-use crate::ui::components::{Card, ConfirmDialog, LoadingState, Modal, StatusBanner, Tone};
+use crate::ui::components::{
+    Card, ConfirmDialog, EmptyState, InfoBar, LoadingState, Modal, StatusBanner, Tone,
+};
 use crate::ui::format::bytes_mb;
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::uninstaller::UninstallerStrings;
@@ -282,6 +284,16 @@ fn leftover_kind_label(kind: LeftoverKind, txt: &UninstallerStrings) -> &'static
     }
 }
 
+/// Icono (Segoe Fluent Icons) del tipo de un resto.
+fn leftover_kind_icon(kind: LeftoverKind) -> &'static str {
+    match kind {
+        LeftoverKind::Directory => "\u{E8B7}",
+        LeftoverKind::File => "\u{E8A5}",
+        LeftoverKind::RegistryKey => "\u{E943}",
+        LeftoverKind::RegistryValue => "\u{E7E8}",
+    }
+}
+
 /// Borra los restos marcados en el diálogo y deja el resumen del resultado.
 fn start_purge(sig: UninstallerSignals) {
     let UninstallerSignals {
@@ -370,7 +382,12 @@ fn LeftoversModal(sig: UninstallerSignals) -> Element {
             tone: Tone::Danger,
             wide: true,
             on_close: move |_| leftovers_modal.set(None),
-            StatusBanner { text: txt.files_and_folders_are_deleted.to_string(), tone: Tone::Warning }
+            InfoBar {
+                tone: Tone::Warning,
+                title: txt.permanent_delete_title.to_string(),
+                message: txt.files_and_folders_are_deleted.to_string(),
+                action: None,
+            }
 
             div { class: "modal-list",
                 for item in found_items.iter() {
@@ -379,33 +396,37 @@ fn LeftoversModal(sig: UninstallerSignals) -> Element {
                         let checked = selected_leftovers.read().contains(&item_id);
                         let badge_lbl = leftover_kind_label(item.kind, txt);
                         rsx! {
-                            label {
-                                key: "{item_id}",
-                                class: "list-row padded clickable text-xs",
-                                div { class: "row min-w-0",
-                                    input {
-                                        r#type: "checkbox",
-                                        checked: checked,
-                                        onchange: move |evt| {
-                                            let mut s = selected_leftovers.write();
-                                            if evt.checked() {
-                                                s.insert(item_id.clone());
-                                            } else {
-                                                s.remove(&item_id);
-                                            }
-                                        },
-                                    }
-                                    div { class: "min-w-0",
-                                        div { class: "fw-semibold",
-                                            "[{badge_lbl}] {tr(&item.category, en)} "
-                                            if !item.recommended {
-                                                span { class: "badge badge-warning", "{txt.review}" }
-                                            }
+                            label { key: "{item_id}", class: "unx-leftover clickable",
+                                input {
+                                    r#type: "checkbox",
+                                    checked: checked,
+                                    onchange: move |evt| {
+                                        let mut s = selected_leftovers.write();
+                                        if evt.checked() {
+                                            s.insert(item_id.clone());
+                                        } else {
+                                            s.remove(&item_id);
                                         }
-                                        div { class: "text-muted break-all", "{item.target_display}" }
-                                    }
+                                    },
                                 }
-                                span { class: "badge badge-info", "{format_size_mb(item.size_bytes)}" }
+                                span {
+                                    class: "tl-icon fluent-icon",
+                                    "aria-hidden": "true",
+                                    "{leftover_kind_icon(item.kind)}"
+                                }
+                                div { class: "grow min-w-0",
+                                    div { class: "row wrap",
+                                        span { class: "fw-semibold text-xs", "{tr(&item.category, en)}" }
+                                        span { class: "badge", "{badge_lbl}" }
+                                        if item.recommended {
+                                            span { class: "badge badge-success", "{txt.recommended}" }
+                                        } else {
+                                            span { class: "badge badge-warning", "{txt.review}" }
+                                        }
+                                    }
+                                    div { class: "text-xs text-muted mono unx-path", "{item.target_display}" }
+                                }
+                                span { class: "text-xs text-muted unx-size", "{format_size_mb(item.size_bytes)}" }
                             }
                         }
                     }
@@ -413,10 +434,10 @@ fn LeftoversModal(sig: UninstallerSignals) -> Element {
             }
 
             div { class: "row-between gap-3 wrap",
-                span { class: "text-xs text-muted", "{sel_count} • {format_size_mb(total_sel_bytes)}" }
+                span { class: "text-xs text-muted", "{(txt.selected_summary)(&sel_count, &format_size_mb(total_sel_bytes))}" }
                 div { class: "modal-actions",
                     button {
-                        class: "btn btn-secondary",
+                        class: "btn",
                         onclick: move |_| leftovers_modal.set(None),
                         "{strings(en).close}"
                     }
@@ -456,12 +477,11 @@ fn UninstallConfirm(
     }
 }
 
-/// Buscador, contador, recarga y orden de la lista.
+/// Barra de herramientas pegada a la lista: buscador, orden y recarga.
 #[component]
 fn UninstallerToolbar(
     search_query: Signal<String>,
     sort_mode: Signal<SortMode>,
-    shown: usize,
     is_working: Signal<bool>,
     on_refresh: EventHandler<()>,
 ) -> Element {
@@ -475,39 +495,33 @@ fn UninstallerToolbar(
         (SortMode::SizeAsc, txt.size_smallest),
     ];
     rsx! {
-        Card {
-            title: txt.deep_uninstaller.to_string(),
-            subtitle: Some(txt.uninstall_apps_and_purge_leftover.to_string()),
-            div { class: "stack-3",
-                div { class: "row gap-3 wrap",
-                    input {
-                        r#type: "text",
-                        placeholder: "{txt.search_app_or_publisher}",
-                        value: "{search_query.read()}",
-                        class: "input grow-wide",
-                        oninput: move |evt| search_query.set(evt.value()),
-                    }
-                    span { class: "badge badge-info", "{shown}" }
+        div { class: "tl-toolbar",
+            input {
+                r#type: "text",
+                placeholder: "{txt.search_app_or_publisher}",
+                "aria-label": "{txt.search_app_or_publisher}",
+                value: "{search_query.read()}",
+                class: "input grow-wide",
+                oninput: move |evt| search_query.set(evt.value()),
+            }
+            // La opción elegida se marca con aria-pressed, no alternando btn-primary.
+            div { class: "arc-segmented", role: "group", "aria-label": "{txt.sort}",
+                for (mode, label) in sorts {
                     button {
-                        class: "btn btn-secondary",
-                        disabled: *is_working.read(),
-                        onclick: move |_| on_refresh.call(()),
-                        "{strings(en).reload_list}"
+                        key: "{label}",
+                        class: "btn btn-sm",
+                        "aria-pressed": if current == mode { "true" } else { "false" },
+                        onclick: move |_| sort_mode.set(mode),
+                        "{label}"
                     }
                 }
-
-                div { class: "row wrap",
-                    span { class: "text-xs text-muted", "{txt.sort}" }
-                    for (mode, label) in sorts {
-                        button {
-                            key: "{label}",
-                            class: "btn btn-secondary btn-sm",
-                            "aria-pressed": if current == mode { "true" } else { "false" },
-                            onclick: move |_| sort_mode.set(mode),
-                            "{label}"
-                        }
-                    }
-                }
+            }
+            button {
+                class: "btn btn-sm",
+                disabled: *is_working.read(),
+                onclick: move |_| on_refresh.call(()),
+                span { class: "fluent-icon", "aria-hidden": "true", "\u{E72C} " }
+                "{strings(en).reload_list}"
             }
         }
     }
@@ -530,27 +544,30 @@ fn AppRow(
     let mut confirm_uninstall = confirm_uninstall;
 
     rsx! {
-        div { class: "list-row wrap",
-            div { class: "grow-wide",
-                div { class: "row wrap",
-                    span { class: "fw-semibold", "{app.display_name}" }
-                    if !app.display_version.is_empty() {
-                        span { class: "text-xs text-muted", "v{app.display_version}" }
+        div { class: "tl-row",
+            div { class: "tl-row-main",
+                span { class: "tl-icon fluent-icon", "aria-hidden": "true", "\u{E71D}" }
+                div { class: "grow min-w-0",
+                    div { class: "row wrap",
+                        span { class: "fw-semibold", "{app.display_name}" }
+                        if !app.display_version.is_empty() {
+                            span { class: "text-xs text-muted", "v{app.display_version}" }
+                        }
                     }
-                }
-                div { class: "text-xs text-muted mt-1",
-                    if !app.publisher.is_empty() {
-                        "{app.publisher} • "
+                    div { class: "text-xs text-muted mt-1",
+                        if !app.publisher.is_empty() {
+                            "{app.publisher} • "
+                        }
+                        "{size_label} • "
+                        {if app.is_per_user { "HKCU" } else { "HKLM" }}
                     }
-                    "{size_label} • "
-                    {if app.is_per_user { "HKCU" } else { "HKLM" }}
                 }
             }
 
-            div { class: "row",
+            div { class: "tl-status",
                 if let Some(newer) = update {
                     button {
-                        class: "btn btn-secondary btn-sm",
+                        class: "btn btn-sm",
                         // winget actualiza si hay versión nueva o responde «ya está al día».
                         disabled: *is_working.read(),
                         onclick: move |_| {
@@ -560,13 +577,13 @@ fn AppRow(
                     }
                 }
                 button {
-                    class: "btn btn-secondary",
+                    class: "btn btn-sm",
                     disabled: *is_working.read(),
                     onclick: move |_| start_scan(app_for_scan.clone(), sig),
                     "{txt.scan_leftovers}"
                 }
                 button {
-                    class: "btn btn-danger",
+                    class: "btn",
                     disabled: *is_working.read(),
                     onclick: move |_| confirm_uninstall.set(Some(app_for_uninstall.clone())),
                     "{strings(en).uninstall}"
@@ -637,6 +654,8 @@ pub fn UninstallerView() -> Element {
         *sort_mode.read(),
     );
 
+    let shown = filtered.len();
+
     rsx! {
         div { class: "content-body",
             LeftoversModal { sig }
@@ -670,30 +689,38 @@ pub fn UninstallerView() -> Element {
                 }
             }
 
-            UninstallerToolbar {
-                search_query,
-                sort_mode,
-                shown: filtered.len(),
-                is_working,
-                on_refresh: move |_| load_apps(),
-            }
-
-            Card {
-                title: txt.installed_applications.to_string(),
-                subtitle: None,
-                div { class: "stack-2",
+            div { class: "stack-2",
+                div { class: "stack-1",
+                    div { class: "section-title", "{txt.installed_applications}" }
+                    div { class: "text-xs text-muted", "{(txt.showing_apps)(&shown)}" }
+                }
+                div { class: "tl-panel",
+                    UninstallerToolbar {
+                        search_query,
+                        sort_mode,
+                        is_working,
+                        on_refresh: move |_| load_apps(),
+                    }
                     if !*apps_loaded.read() {
                         LoadingState { message: txt.reading_installed_apps.to_string() }
-                    }
-                    for app in filtered.into_iter() {
-                        AppRow {
-                            key: "{app.id}",
-                            app: app.clone(),
-                            size_label: effective_kb(app, &extra_map)
-                                .map(|kb| format_size_mb(kb.saturating_mul(1024)))
-                                .unwrap_or_else(|| "—".to_string()),
-                            sig,
-                            confirm_uninstall,
+                    } else if shown == 0 {
+                        EmptyState {
+                            title: txt.no_apps.to_string(),
+                            description: txt.no_apps_hint.to_string(),
+                        }
+                    } else {
+                        div { class: "tl-rows",
+                            for app in filtered.into_iter() {
+                                AppRow {
+                                    key: "{app.id}",
+                                    app: app.clone(),
+                                    size_label: effective_kb(app, &extra_map)
+                                        .map(|kb| format_size_mb(kb.saturating_mul(1024)))
+                                        .unwrap_or_else(|| "—".to_string()),
+                                    sig,
+                                    confirm_uninstall,
+                                }
+                            }
                         }
                     }
                 }

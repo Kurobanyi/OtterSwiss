@@ -17,6 +17,8 @@ pub fn CleanerView() -> Element {
 
     let mut is_cleaning = use_signal(|| false);
     let mut results = use_signal(Vec::<CategoryCleanResult>::new);
+    // El banner de éxito no debe salir si la limpieza se canceló a mitad.
+    let mut was_cancelled = use_signal(|| false);
     let mut clean_all_temps = use_signal(|| false);
     // ERR-07: vaciar la Papelera es irreversible; viene desmarcado.
     let mut clean_recycle = use_signal(|| false);
@@ -42,6 +44,7 @@ pub fn CleanerView() -> Element {
         });
 
         let cancel_worker = Arc::clone(&cancel_for_start);
+        let cancel_check = Arc::clone(&cancel_for_start);
 
         spawn(async move {
             let res = run_with_progress(progress_state, move |prog| {
@@ -60,6 +63,7 @@ pub fn CleanerView() -> Element {
                     ..Default::default()
                 }]
             });
+            was_cancelled.set(cancel_check.load(Ordering::Acquire));
             results.set(res);
             is_cleaning.set(false);
         });
@@ -71,12 +75,7 @@ pub fn CleanerView() -> Element {
     let prog = progress_state.read();
     let cancel_for_btn = Arc::clone(&cancel_flag);
 
-    let cleaner_title = txt.system_cleaner.to_string();
-    let cleaner_sub = Some(txt.safe_temp_cache_purge.to_string());
     let prog_title = txt.cleanup_progress.to_string();
-    let freed_title = txt.space_freed.to_string();
-    let files_title = txt.files_removed.to_string();
-    let details_title = txt.details.to_string();
 
     rsx! {
         div { class: "content-body",
@@ -101,33 +100,20 @@ pub fn CleanerView() -> Element {
                 }
             }
 
-            Card {
-                title: cleaner_title,
-                subtitle: cleaner_sub,
-                div { class: "stack-3",
-                    div { class: "row wrap gap-4",
-                        CheckRow {
-                            checked: *clean_recycle.read(),
-                            disabled: *is_cleaning.read(),
-                            on_change: move |on| clean_recycle.set(on),
-                            span { "{txt.empty_recycle_bin_permanent}" }
-                        }
-
-                        CheckRow {
-                            checked: *clean_all_temps.read(),
-                            disabled: *is_cleaning.read(),
-                            on_change: move |on| clean_all_temps.set(on),
-                            span { "{txt.all_temp_files_skip_24h}" }
+            div { class: "card",
+                div { class: "row-between gap-4 wrap",
+                    div { class: "grow-wide stack-1",
+                        div { class: "card-title", "{txt.system_cleaner}" }
+                        div { class: "text-muted", "{txt.safe_temp_cache_purge}" }
+                        div {
+                            span { class: "badge badge-info",
+                                if *clean_all_temps.read() {
+                                    "{txt.mode_full_0h}"
+                                } else { "{txt.mode_safe_24h}" }
+                            }
                         }
                     }
-
-                    div { class: "row gap-3 wrap",
-                        span { class: "badge badge-info",
-                            if *clean_all_temps.read() {
-                                "{txt.mode_full_0h}"
-                            } else { "{txt.mode_safe_24h}" }
-                        }
-
+                    div { class: "row",
                         button {
                             class: "btn btn-primary",
                             disabled: *is_cleaning.read(),
@@ -168,47 +154,76 @@ pub fn CleanerView() -> Element {
                 }
             }
 
-            if !results.read().is_empty() && error_count > 0 {
-                StatusBanner {
-                    text: (strings(en).cleaner.categories_could_not_be_cleaned)(&error_count),
-                    tone: Tone::Warning,
+            if !results.read().is_empty() {
+                if *was_cancelled.read() {
+                    StatusBanner { text: txt.cleanup_cancelled.to_string(), tone: Tone::Warning }
+                } else if error_count > 0 {
+                    StatusBanner {
+                        text: (strings(en).cleaner.categories_could_not_be_cleaned)(&error_count),
+                        tone: Tone::Warning,
+                    }
+                } else {
+                    StatusBanner { text: txt.cleanup_done.to_string(), tone: Tone::Success }
+                }
+            }
+
+            div { class: "section-title", "{txt.options}" }
+            div { class: "stack-1",
+                CheckRow {
+                    class: "item-row gap-3",
+                    checked: *clean_recycle.read(),
+                    disabled: *is_cleaning.read(),
+                    on_change: move |on| clean_recycle.set(on),
+                    span { class: "fluent-icon cln-icon", "aria-hidden": "true", "\u{E74D}" }
+                    div { class: "grow stack-1",
+                        span { "{txt.empty_recycle_bin_permanent}" }
+                        span { class: "text-xs text-muted", "{txt.empty_recycle_bin_desc}" }
+                    }
+                }
+                CheckRow {
+                    class: "item-row gap-3",
+                    checked: *clean_all_temps.read(),
+                    disabled: *is_cleaning.read(),
+                    on_change: move |on| clean_all_temps.set(on),
+                    span { class: "fluent-icon cln-icon", "aria-hidden": "true", "\u{E75C}" }
+                    div { class: "grow stack-1",
+                        span { "{txt.all_temp_files_skip_24h}" }
+                        span { class: "text-xs text-muted", "{txt.all_temp_files_desc}" }
+                    }
                 }
             }
 
             if !results.read().is_empty() {
-                div { class: "cards-grid",
-                    Card {
-                        title: freed_title,
-                        subtitle: None,
-                        h2 { class: "text-xl text-success", "{bytes_mb(total_freed)}" }
+                div { class: "section-title", "{txt.results}" }
+                div { class: "stack-1",
+                    div { class: "item-row row-between gap-3",
+                        span { "{txt.space_freed}" }
+                        span { class: "text-xl fw-semibold text-success", "{bytes_mb(total_freed)}" }
                     }
-                    Card {
-                        title: files_title,
-                        subtitle: None,
-                        h2 { class: "text-xl text-accent", "{total_files}" }
+                    div { class: "item-row row-between gap-3",
+                        span { "{txt.files_removed}" }
+                        span { class: "fw-semibold", "{total_files}" }
                     }
                 }
 
-                Card {
-                    title: details_title,
-                    subtitle: None,
-                    div { class: "stack-2",
-                        for item in results.read().iter() {
-                            div {
-                                key: "{item.category}",
-                                class: "list-row",
-                                div {
-                                    div { class: "fw-semibold", "{tr(&item.category, en)}" }
-                                    div { class: "text-xs text-muted",
-                                        "{(strings(en).cleaner.removed_skipped)(&item.files_removed, &item.skipped_recent_or_locked)}"
-                                    }
-                                    // ERR-07 / SYS-23: lo omitido o fallido se dice (p. ej. Windows Update activo).
-                                    if let Some(err) = item.error.as_ref() {
-                                        div { class: "text-xs text-warning", "{err}" }
+                div { class: "section-title", "{txt.details}" }
+                div { class: "stack-1",
+                    for item in results.read().iter() {
+                        div { key: "{item.category}", class: "item-row row-between gap-3",
+                            div { class: "grow stack-1",
+                                span { class: "fw-semibold", "{tr(&item.category, en)}" }
+                                span { class: "text-xs text-muted",
+                                    "{(strings(en).cleaner.removed_skipped)(&item.files_removed, &item.skipped_recent_or_locked)}"
+                                }
+                                // ERR-07 / SYS-23: lo omitido o fallido se dice (p. ej. Windows Update activo).
+                                if let Some(err) = item.error.as_ref() {
+                                    span { class: "text-xs",
+                                        span { class: "badge badge-warning cln-badge", "{txt.skipped_reason}" }
+                                        span { class: "text-warning", "{err}" }
                                     }
                                 }
-                                div { class: "fw-semibold text-success", "{bytes_mb(item.bytes_freed)}" }
                             }
+                            span { class: "fw-semibold text-success", "{bytes_mb(item.bytes_freed)}" }
                         }
                     }
                 }

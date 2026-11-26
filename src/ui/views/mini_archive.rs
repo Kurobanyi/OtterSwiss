@@ -103,25 +103,33 @@ pub fn MiniArchiveView() -> Element {
     let running = *is_running.read();
     let err_opt = error_msg.read().as_ref().map(|m| m.text(en));
     let win_drag = window.clone();
+    let win_drag_fill = window.clone();
     let win_close = window.clone();
     let win_done = window;
     let cancel_btn = Arc::clone(&cancel_flag);
     let cancel_close = Arc::clone(&cancel_flag);
     let dest_for_open = job.dest.clone();
 
-    let title_txt = match (job.mode, en) {
-        (ArchiveMode::Extract, false) => "Extrayendo archivo…",
-        (ArchiveMode::Extract, true) => "Extracting archive…",
-        (ArchiveMode::Compress, false) => "Comprimiendo a ZIP…",
-        (ArchiveMode::Compress, true) => "Compressing to ZIP…",
+    let title_txt = match job.mode {
+        ArchiveMode::Extract => txt.extracting,
+        ArchiveMode::Compress => txt.compressing_zip,
     };
-    let top_status_txt = if running {
-        title_txt
-    } else if err_opt.is_some() {
-        "Error"
+    let failed = err_opt.is_some();
+    let (state_title, state_icon, state_class) = if running {
+        (
+            title_txt,
+            match job.mode {
+                ArchiveMode::Extract => "\u{E896}",
+                ArchiveMode::Compress => "\u{E7B8}",
+            },
+            "text-accent",
+        )
+    } else if failed {
+        (txt.failed, "\u{EA39}", "text-danger")
     } else {
-        txt.completed
+        (txt.completed, "\u{E73E}", "text-success")
     };
+    let dest_text = dest_for_open.display().to_string();
     let current_file_lbl = if prog.current_file.is_empty() {
         txt.preparing_files.to_string()
     } else {
@@ -146,36 +154,52 @@ pub fn MiniArchiveView() -> Element {
                     class: "top-brand",
                     onmousedown: move |_| { win_drag.drag(); },
                     span { class: "top-title", "OtterSwiss" }
-                    span { class: "top-version", "{top_status_txt}" }
+                }
+                div {
+                    class: "titlebar-drag",
+                    onmousedown: move |_| { win_drag_fill.drag(); },
                 }
                 button {
                     class: "win-btn win-close-btn",
                     title: "{close_lbl}",
+                    "aria-label": "{close_lbl}",
                     onclick: move |_| {
                         cancel_close.store(true, Ordering::Release);
                         win_close.close();
                     },
-                    "✕"
+                    "\u{E8BB}"
                 }
             }
 
             div { class: "mini-window-body",
-                if let Some(err) = err_opt {
-                    StatusBanner { text: err, tone: Tone::Danger }
-                } else {
-                    div { class: "stack-2",
-                        div { class: "text-xs fw-semibold truncate", "{current_file_lbl}" }
-                        div {
-                            class: "progress",
-                            role: "progressbar",
-                            "aria-valuemin": "0",
-                            "aria-valuemax": "100",
-                            "aria-valuenow": "{prog.percent}",
-                            div { class: "progress-fill", style: "width: {prog.percent}%;" }
+                div { class: "stack-2",
+                    div { class: "row",
+                        span { class: "fluent-icon {state_class}", "aria-hidden": "true", "{state_icon}" }
+                        h1 { class: "mini-title", role: "status", "{state_title}" }
+                    }
+                    if let Some(err) = err_opt {
+                        StatusBanner { text: err, tone: Tone::Danger }
+                    } else if running {
+                        div { class: "stack-2",
+                            div { class: "text-xs text-muted truncate", title: "{current_file_lbl}", "{current_file_lbl}" }
+                            div {
+                                class: "progress",
+                                role: "progressbar",
+                                "aria-label": "{state_title}",
+                                "aria-valuemin": "0",
+                                "aria-valuemax": "100",
+                                "aria-valuenow": "{prog.percent}",
+                                div { class: "progress-fill", style: "width: {prog.percent}%;" }
+                            }
+                            div { class: "row-between text-xs text-muted",
+                                span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
+                                span { "{prog.speed_mbps:.1} MB/s • {strings(en).time_left} {eta_txt}" }
+                            }
                         }
-                        div { class: "row-between text-xs text-muted",
-                            span { "{prog.percent}% • {prog.files_done}/{prog.total_files} • {mb_done}/{mb_total} MB" }
-                            span { "{prog.speed_mbps:.1} MB/s • {strings(en).time_left} {eta_txt}" }
+                    } else {
+                        div { class: "stack-1",
+                            span { class: "text-xs text-muted", "{txt.destination}" }
+                            span { class: "mono text-xs mini-path", title: "{dest_text}", "{dest_text}" }
                         }
                     }
                 }
@@ -189,7 +213,7 @@ pub fn MiniArchiveView() -> Element {
                         }
                     } else {
                         button {
-                            class: "btn btn-secondary btn-sm",
+                            class: "btn btn-sm",
                             onclick: move |_| open_folder_in_explorer(&dest_for_open),
                             "{open_folder_lbl}"
                         }

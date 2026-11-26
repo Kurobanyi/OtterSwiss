@@ -8,7 +8,7 @@ use crate::core::dns::{
 };
 use crate::core::error::CoreError;
 use crate::ui::components::{
-    Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
+    ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
 use crate::ui::i18n::{Lang, Msg, pick, plural, strings};
 
@@ -198,7 +198,7 @@ pub fn DnsView() -> Element {
             if *sig.confirm_apply.read() {
                 ApplyConfirm { sig, physical: physical.clone() }
             }
-            OptimizerCard { sig, can_apply: !physical.is_empty() }
+            OptimizerCard { sig, physical }
             AdaptersCard { adapters }
         }
     }
@@ -241,9 +241,9 @@ fn ApplyConfirm(sig: DnsSignals, physical: Vec<String>) -> Element {
     }
 }
 
-/// Servidores públicos con su ping, aplicar y restaurar.
+/// Acción principal (aplicar o restaurar) y servidores públicos con su ping.
 #[component]
-fn OptimizerCard(sig: DnsSignals, can_apply: bool) -> Element {
+fn OptimizerCard(sig: DnsSignals, physical: Vec<String>) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     let txt = strings(en).dns;
     let mut selected_preset = sig.selected_preset;
@@ -251,6 +251,8 @@ fn OptimizerCard(sig: DnsSignals, can_apply: bool) -> Element {
     let bench_map = sig.benchmarks.read();
     let best_id = *sig.best_preset_id.read();
     let active_preset = DNS_PRESETS.iter().find(|p| p.id == *selected_preset.read());
+    let can_apply = !physical.is_empty();
+    let targets = physical.join(", ");
 
     let ping_btn_text = if *sig.is_benchmarking.read() {
         txt.pinging
@@ -259,51 +261,21 @@ fn OptimizerCard(sig: DnsSignals, can_apply: bool) -> Element {
     };
 
     rsx! {
-        Card {
-            title: txt.dns_optimizer.to_string(),
-            subtitle: Some(txt.public_dns_servers_and_ping.to_string()),
-            div { class: "stack-3",
-                div { class: "row wrap",
-                    for p in DNS_PRESETS {
-                        {
-                            let b = bench_map.get(p.id);
-                            let is_best = best_id == Some(p.id);
-                            rsx! {
-                                button {
-                                    key: "{p.id}",
-                                    class: "btn btn-secondary",
-                                    "aria-pressed": if *selected_preset.read() == p.id { "true" } else { "false" },
-                                    onclick: move |_| selected_preset.set(p.id),
-                                    "{p.name}"
-                                    if let Some(res) = b {
-                                        if let Some(ms) = res.avg_latency_ms {
-                                            " • {ms} ms"
-                                        } else {
-                                            " • N/A"
-                                        }
-                                    }
-                                    if is_best { " ★" }
-                                }
-                            }
+        div { class: "card",
+            div { class: "row-between gap-4 wrap",
+                div { class: "grow-wide stack-1",
+                    if let Some(p) = active_preset {
+                        div { class: "card-title", "{p.name}" }
+                    }
+                    div { class: "text-muted",
+                        if can_apply {
+                            "{(txt.applies_to)(&targets)}"
+                        } else {
+                            "{txt.there_are_no_active_physical}"
                         }
                     }
-
-                    button {
-                        class: "btn btn-secondary",
-                        disabled: *sig.is_benchmarking.read() || *sig.is_working.read(),
-                        onclick: move |_| start_benchmark(sig),
-                        "{ping_btn_text}"
-                    }
                 }
-
-                if let Some(active_p) = active_preset {
-                    div { class: "info-box text-xs",
-                        p { strong { "IPv4: " } "{active_p.ipv4_primary}, {active_p.ipv4_secondary}   |   " strong { "IPv6: " } "{active_p.ipv6_primary}, {active_p.ipv6_secondary}" }
-                        p { class: "text-muted", "{pick(en, active_p.privacy_notice, active_p.privacy_notice_en)}" }
-                    }
-                }
-
-                div { class: "flex gap-3",
+                div { class: "row wrap",
                     button {
                         class: "btn btn-primary",
                         disabled: *sig.is_working.read() || !can_apply,
@@ -313,16 +285,71 @@ fn OptimizerCard(sig: DnsSignals, can_apply: bool) -> Element {
                     // UI-07: «Restaurar» solo existe si hay un respaldo que restaurar.
                     if *sig.has_backup.read() {
                         button {
-                            class: "btn btn-secondary",
+                            class: "btn",
                             disabled: *sig.is_working.read(),
                             onclick: move |_| start_restore(sig),
                             "{txt.restore_previous}"
                         }
                     }
                 }
+            }
+        }
 
-                if let Some((msg, tone)) = sig.status_msg.read().clone().map(|(m, t)| (m.text(en), t)) {
-                    StatusBanner { text: msg, tone }
+        if let Some((msg, tone)) = sig.status_msg.read().clone().map(|(m, t)| (m.text(en), t)) {
+            StatusBanner { text: msg, tone }
+        }
+
+        div { class: "row-between gap-3 wrap",
+            div { class: "section-title", "{txt.dns_server}" }
+            button {
+                class: "btn btn-sm",
+                disabled: *sig.is_benchmarking.read() || *sig.is_working.read(),
+                onclick: move |_| start_benchmark(sig),
+                span { class: "fluent-icon", "aria-hidden": "true", "\u{E768}" }
+                "{ping_btn_text}"
+            }
+        }
+        div { class: "stack-1", role: "group", "aria-label": "{txt.dns_server}",
+            for p in DNS_PRESETS {
+                {
+                    let selected = *selected_preset.read() == p.id;
+                    let is_best = best_id == Some(p.id);
+                    let result = bench_map.get(p.id);
+                    rsx! {
+                        button {
+                            key: "{p.id}",
+                            class: "item-row dns-option gap-3",
+                            "aria-pressed": if selected { "true" } else { "false" },
+                            onclick: move |_| selected_preset.set(p.id),
+                            span { class: "fluent-icon dns-check", "aria-hidden": "true",
+                                if selected { "\u{E73E}" }
+                            }
+                            div { class: "grow stack-1",
+                                span { class: "fw-semibold", "{p.name}" }
+                                span { class: "text-xs text-muted",
+                                    "IPv4: {p.ipv4_primary}, {p.ipv4_secondary}"
+                                }
+                                span { class: "text-xs text-muted",
+                                    "IPv6: {p.ipv6_primary}, {p.ipv6_secondary}"
+                                }
+                                if selected {
+                                    span { class: "text-xs text-muted",
+                                        "{pick(en, p.privacy_notice, p.privacy_notice_en)}"
+                                    }
+                                }
+                            }
+                            if is_best {
+                                span { class: "badge badge-success", "{txt.fastest}" }
+                            }
+                            if let Some(res) = result {
+                                if let Some(ms) = res.avg_latency_ms {
+                                    span { class: "fw-semibold dns-latency", "{ms} ms" }
+                                } else {
+                                    span { class: "badge badge-warning", "{txt.no_response}" }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -337,50 +364,50 @@ fn AdaptersCard(adapters: Signal<AdaptersState>) -> Element {
     let adapters_state = adapters.read();
 
     rsx! {
-        Card {
-            title: txt.network_adapters.to_string(),
-            subtitle: None,
-            div { class: "stack-2",
-                match adapters_state.as_ref() {
-                    None => rsx! {
-                        LoadingState { message: txt.reading_network_adapters.to_string() }
-                    },
-                    Some(Err(err)) => rsx! {
-                        ErrorState {
-                            title: txt.could_not_read_the_adapters.to_string(),
-                            error_msg: err.text(en),
-                        }
-                    },
-                    Some(Ok(list)) if list.is_empty() => rsx! {
-                        EmptyState {
-                            title: txt.no_active_adapters.to_string(),
-                            description: txt.connect_to_a_network_and.to_string(),
-                        }
-                    },
-                    Some(Ok(list)) => rsx! {
-                        for adapter in list.iter() {
-                            div {
-                                key: "{adapter.interface_guid}",
-                                class: "item-row row-between",
-                                div {
-                                    div { class: "text-sm fw-semibold", "{adapter.friendly_name}" }
-                                    div { class: "text-xs text-muted",
-                                        "IPv4: "
-                                        {if adapter.current_ipv4_dns.is_empty() { "{txt.automatic_dhcp}" } else { adapter.current_ipv4_dns.as_str() }}
-                                        if !adapter.current_ipv6_dns.is_empty() {
-                                            " | IPv6: {adapter.current_ipv6_dns}"
-                                        }
-                                    }
+        div { class: "section-title", "{txt.network_adapters}" }
+        div { class: "stack-1",
+            match adapters_state.as_ref() {
+                None => rsx! {
+                    LoadingState { message: txt.reading_network_adapters.to_string() }
+                },
+                Some(Err(err)) => rsx! {
+                    ErrorState {
+                        title: txt.could_not_read_the_adapters.to_string(),
+                        error_msg: err.text(en),
+                    }
+                },
+                Some(Ok(list)) if list.is_empty() => rsx! {
+                    EmptyState {
+                        title: txt.no_active_adapters.to_string(),
+                        description: txt.connect_to_a_network_and.to_string(),
+                    }
+                },
+                Some(Ok(list)) => rsx! {
+                    for adapter in list.iter() {
+                        div {
+                            key: "{adapter.interface_guid}",
+                            class: "item-row row-between gap-3",
+                            span { class: "fluent-icon dns-check", "aria-hidden": "true",
+                                if adapter.is_virtual_or_vpn { "\u{E774}" } else { "\u{E839}" }
+                            }
+                            div { class: "grow stack-1",
+                                span { class: "fw-semibold", "{adapter.friendly_name}" }
+                                span { class: "text-xs text-muted",
+                                    "IPv4: "
+                                    {if adapter.current_ipv4_dns.is_empty() { txt.automatic_dhcp } else { adapter.current_ipv4_dns.as_str() }}
                                 }
-                                if adapter.is_virtual_or_vpn {
-                                    span { class: "badge badge-warning", "Virtual / VPN" }
-                                } else {
-                                    span { class: "badge badge-success", "{txt.physical}" }
+                                if !adapter.current_ipv6_dns.is_empty() {
+                                    span { class: "text-xs text-muted", "IPv6: {adapter.current_ipv6_dns}" }
                                 }
                             }
+                            if adapter.is_virtual_or_vpn {
+                                span { class: "badge badge-warning", "{txt.virtual_vpn}" }
+                            } else {
+                                span { class: "badge badge-success", "{txt.physical}" }
+                            }
                         }
-                    },
-                }
+                    }
+                },
             }
         }
     }

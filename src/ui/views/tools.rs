@@ -9,7 +9,7 @@ use crate::core::error::CoreError;
 use crate::core::platform::elevation;
 use crate::core::store::app_store::{self, AppCategory, CuratedPackage, InstallSource};
 use crate::core::store::dependencies;
-use crate::ui::components::{AppIconBadge, Card, EmptyState, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{AppIconBadge, EmptyState, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, pick, strings};
 use crate::ui::installer::{
@@ -109,14 +109,30 @@ pub fn ToolsView() -> Element {
             if let Some((msg, tone)) = state.tool_log.clone() {
                 StatusBanner { tone, text: msg.text(en) }
             }
-            ContextMenuCard { any_busy, local_working }
-            RuntimesCard { any_busy }
             BatchAppStoreCard {}
+            RuntimesCard { any_busy }
+            ContextMenuCard { any_busy, local_working }
         }
     }
 }
 
-/// Aviso fijo mientras hay una instalación en curso.
+/// Grupo de la página: título de sección, nota opcional y su contenido.
+#[component]
+fn ToolsGroup(title: String, note: Option<String>, children: Element) -> Element {
+    rsx! {
+        div { class: "stack-2",
+            div { class: "stack-1",
+                div { class: "section-title", "{title}" }
+                if let Some(note) = note {
+                    div { class: "text-xs text-muted", "{note}" }
+                }
+            }
+            {children}
+        }
+    }
+}
+
+/// Aviso fijo mientras hay una instalación en curso, con su barra de progreso.
 #[component]
 fn InstallProgressCard() -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
@@ -124,14 +140,15 @@ fn InstallProgressCard() -> Element {
     let tools_state = use_context::<Signal<ToolsSharedState>>();
     let state = tools_state.read();
     rsx! {
-        div {
-            class: "card card-warning",
-            div { class: "stack-2",
-                strong { class: "text-warning",
-                    "{txt.installing_please_keep_otterswiss_open}"
+        div { class: "info-bar info-bar-warning", role: "status",
+            span { class: "info-bar-icon fluent-icon", "aria-hidden": "true", "\u{E896}" }
+            div { class: "tl-progress",
+                div { class: "info-bar-text",
+                    strong { class: "info-bar-title", "{strings(en).installing}" }
+                    span { class: "info-bar-message", "{txt.installing_please_keep_otterswiss_open}" }
                 }
                 if let Some(lbl) = state.progress_label.as_ref() {
-                    div { class: "text-sm", "{lbl} ({state.progress_percent}%)" }
+                    div { class: "text-xs text-muted", "{lbl} ({state.progress_percent}%)" }
                 }
                 ProgressBar { percent: state.progress_percent }
             }
@@ -157,24 +174,33 @@ fn ContextMenuCard(any_busy: bool, local_working: Signal<bool>) -> Element {
     };
 
     rsx! {
-        div { class: "cards-grid",
-            Card {
-                title: txt.explorer_context_menu.to_string(),
-                subtitle: Some(txt.right_click_compress_zip_extract.to_string()),
-                div { class: "row-between gap-3",
-                    span {
-                        class: if *active.read() { "badge badge-success" } else { "badge badge-warning" },
-                        if *active.read() {
-                            "{strings(en).installed_runtime}"
-                        } else { "{txt.not_installed}" }
+        ToolsGroup { title: txt.explorer_context_menu.to_string(), note: None,
+            div { class: "tl-panel",
+                div { class: "tl-row",
+                    div { class: "tl-row-main",
+                        span { class: "tl-icon fluent-icon", "aria-hidden": "true", "\u{E8B7}" }
+                        div { class: "grow", "{txt.right_click_compress_zip_extract}" }
                     }
-                    button {
-                        class: if *active.read() { "btn btn-danger" } else { "btn btn-primary" },
-                        disabled: any_busy,
-                        onclick: on_toggle,
-                        if *active.read() {
-                            "{strings(en).uninstall}"
-                        } else { "{txt.install}" }
+                    div { class: "tl-status",
+                        span {
+                            class: if *active.read() { "badge badge-success" } else { "badge badge-warning" },
+                            span { class: "fluent-icon", "aria-hidden": "true",
+                                if *active.read() {
+                                    "\u{E73E}"
+                                } else { "\u{E7BA}" }
+                            }
+                            if *active.read() {
+                                "{strings(en).installed_runtime}"
+                            } else { "{txt.not_installed}" }
+                        }
+                        button {
+                            class: if *active.read() { "btn btn-sm btn-danger" } else { "btn btn-sm" },
+                            disabled: any_busy,
+                            onclick: on_toggle,
+                            if *active.read() {
+                                "{strings(en).uninstall}"
+                            } else { "{txt.install}" }
+                        }
                     }
                 }
             }
@@ -191,32 +217,36 @@ fn RuntimesCard(any_busy: bool) -> Element {
     let state = tools_state.read();
 
     rsx! {
-        Card {
+        ToolsGroup {
             title: txt.gaming_runtimes.to_string(),
-            subtitle: Some(txt.essential_official_windows_libraries.to_string()),
-            div { class: "stack-2",
+            note: Some(txt.essential_official_windows_libraries.to_string()),
+            div { class: "tl-panel",
                 for dep in dependencies::get_catalog() {
                     {
                         let installed = state.dep_states.get(dep.id).copied().unwrap_or(false);
                         let dep_id = dep.id;
                         let tx = dispatcher.tx.clone();
                         rsx! {
-                            div {
-                                key: "{dep_id}",
-                                class: "list-row",
-                                div {
-                                    div { class: "text-sm fw-semibold", "{dep.name}" }
+                            div { key: "{dep_id}", class: "tl-row",
+                                div { class: "tl-row-main",
+                                    span { class: "tl-icon fluent-icon", "aria-hidden": "true", "\u{E7B8}" }
+                                    div { class: "grow", "{dep.name}" }
                                 }
-                                div { class: "row",
+                                div { class: "tl-status",
                                     span {
                                         class: if installed { "badge badge-success" } else { "badge badge-warning" },
+                                        span { class: "fluent-icon", "aria-hidden": "true",
+                                            if installed {
+                                                "\u{E73E}"
+                                            } else { "\u{E7BA}" }
+                                        }
                                         if installed {
                                             "{strings(en).installed_runtime}"
                                         } else { "{txt.missing}" }
                                     }
                                     if !installed {
                                         button {
-                                            class: "btn btn-primary btn-sm",
+                                            class: "btn btn-sm",
                                             disabled: any_busy,
                                             onclick: move |_| {
                                                 let _ = tx.send(InstallJobRequest::InstallRuntime(dep_id));
@@ -234,13 +264,14 @@ fn RuntimesCard(any_busy: bool) -> Element {
     }
 }
 
-/// Búsqueda y filtro por categoría de la tienda.
+/// Búsqueda y filtro por categoría de la tienda (dos filas de la barra de herramientas del panel).
 #[component]
 fn StoreFilters(
     search_query: Signal<String>,
     selected_cat: Signal<Option<AppCategory>>,
 ) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).tools;
     let mut search_query = search_query;
     let mut selected_cat = selected_cat;
     let cur_cat = *selected_cat.read();
@@ -254,32 +285,40 @@ fn StoreFilters(
     ];
 
     rsx! {
-        div { class: "row wrap",
+        div { class: "tl-toolbar",
             input {
                 r#type: "text",
                 class: "input grow-wide",
                 placeholder: "{strings(en).store_search}",
+                "aria-label": "{strings(en).store_search}",
                 value: "{search_query.read()}",
                 oninput: move |evt| search_query.set(evt.value()),
             }
+        }
+        div { class: "tl-toolbar",
             // TE-28: la categoría elegida se marca con aria-pressed, no alternando btn-primary.
-            button {
-                class: "btn btn-secondary btn-sm",
-                "aria-pressed": if cur_cat.is_none() { "true" } else { "false" },
-                onclick: move |_| selected_cat.set(None),
-                "{strings(en).all_categories}"
-            }
-            for cat in categories {
-                {
-                    let cat_label = tr(cat.label(), en);
-                    let is_selected_cat = cur_cat == Some(cat);
-                    rsx! {
-                        button {
-                            key: "{cat_label}",
-                            class: "btn btn-secondary btn-sm",
-                            "aria-pressed": if is_selected_cat { "true" } else { "false" },
-                            onclick: move |_| selected_cat.set(Some(cat)),
-                            "{cat_label}"
+            div {
+                class: "arc-segmented",
+                role: "group",
+                "aria-label": "{txt.categories_label}",
+                button {
+                    class: "btn btn-sm",
+                    "aria-pressed": if cur_cat.is_none() { "true" } else { "false" },
+                    onclick: move |_| selected_cat.set(None),
+                    "{strings(en).all_categories}"
+                }
+                for cat in categories {
+                    {
+                        let cat_label = tr(cat.label(), en);
+                        let is_selected_cat = cur_cat == Some(cat);
+                        rsx! {
+                            button {
+                                key: "{cat_label}",
+                                class: "btn btn-sm",
+                                "aria-pressed": if is_selected_cat { "true" } else { "false" },
+                                onclick: move |_| selected_cat.set(Some(cat)),
+                                "{cat_label}"
+                            }
                         }
                     }
                 }
@@ -321,33 +360,32 @@ fn StoreActions(
     };
 
     rsx! {
-        div { class: "row-between gap-3 wrap",
-            div { class: "flex gap-2",
-                button {
-                    class: "btn btn-primary",
-                    disabled: is_running || selected_count == 0,
-                    onclick: on_install_selected,
-                    if is_running {
-                        "{strings(en).installing}"
-                    } else { "{(strings(en).tools.install_selected)(&selected_count)}" }
-                }
+        div { class: "tl-toolbar tl-actions",
+            button {
+                class: "btn btn-primary",
+                disabled: is_running || selected_count == 0,
+                onclick: on_install_selected,
+                span { class: "fluent-icon", "aria-hidden": "true", "\u{E896}" }
                 if is_running {
-                    button {
-                        class: "btn btn-danger",
-                        onclick: move |_| dispatcher.cancel_flag.store(true, Ordering::Release),
-                        "{strings(en).cancel}"
-                    }
-                } else if selected_count > 0 {
-                    button {
-                        class: "btn btn-secondary",
-                        onclick: move |_| selected.write().clear(),
-                        "{strings(en).clear}"
-                    }
+                    "{strings(en).installing}"
+                } else { "{(strings(en).tools.install_selected)(&selected_count)}" }
+            }
+            if is_running {
+                button {
+                    class: "btn btn-danger",
+                    onclick: move |_| dispatcher.cancel_flag.store(true, Ordering::Release),
+                    "{strings(en).cancel}"
+                }
+            } else if selected_count > 0 {
+                button {
+                    class: "btn",
+                    onclick: move |_| selected.write().clear(),
+                    "{strings(en).clear}"
                 }
             }
 
             if let Some(msg) = state.summary_msg.as_ref().map(|m| m.text(en)) {
-                span { class: "badge badge-info", "{msg}" }
+                span { class: "badge badge-info tl-summary", "{msg}" }
             }
         }
     }
@@ -357,6 +395,7 @@ fn StoreActions(
 #[component]
 fn StoreRow(pkg: &'static CuratedPackage, selected: Signal<HashSet<&'static str>>) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).tools;
     let tools_state = use_context::<Signal<ToolsSharedState>>();
     let state = tools_state.read();
     let mut selected = selected;
@@ -373,53 +412,50 @@ fn StoreRow(pkg: &'static CuratedPackage, selected: Signal<HashSet<&'static str>
     };
 
     rsx! {
-        div {
-            class: "item-row stack-1",
-            label { class: "row-between clickable",
-                div { class: "row gap-3 grow",
-                    input {
-                        r#type: "checkbox",
-                        checked: is_checked,
-                        disabled: state.is_working,
-                        onchange: move |evt| {
-                            let mut set = selected.write();
-                            if evt.checked() {
-                                set.insert(pkg_id);
-                            } else {
-                                set.remove(pkg_id);
-                            }
-                        },
-                    }
-                    AppIconBadge { icon: pkg.icon }
-                    div { class: "grow",
-                        div { class: "row wrap",
-                            span { class: "text-sm fw-semibold", "{tr(pkg.name, en)}" }
-                            span { class: "badge badge-info", "{cat_tag}" }
-                            span { class: "text-xs text-muted",
-                                "{version_label} • © {pkg.copyright_holder}"
-                            }
+        div { class: "tl-row",
+            label { class: "tl-row-main clickable",
+                input {
+                    r#type: "checkbox",
+                    checked: is_checked,
+                    disabled: state.is_working,
+                    onchange: move |evt| {
+                        let mut set = selected.write();
+                        if evt.checked() {
+                            set.insert(pkg_id);
+                        } else {
+                            set.remove(pkg_id);
                         }
-                        div { class: "text-xs text-muted mt-1", "{desc}" }
-                    }
+                    },
                 }
-
-                div { class: "row",
-                    if is_installed {
-                        span { class: "badge badge-success", "{strings(en).installed_app}" }
+                AppIconBadge { icon: pkg.icon }
+                div { class: "grow",
+                    div { class: "fw-semibold", "{tr(pkg.name, en)}" }
+                    div { class: "text-xs text-muted", "{desc}" }
+                    div { class: "text-xs text-muted",
+                        "{cat_tag} · {version_label} · © {pkg.copyright_holder}"
                     }
-                    if let Some(ref status) = st {
-                        match status {
-                            InstallStatus::Queued => rsx! { span { class: "badge badge-info", "{strings(en).queued}" } },
-                            InstallStatus::Installing => rsx! { span { class: "badge badge-warning", "{strings(en).installing}" } },
-                            InstallStatus::Done => rsx! { span { class: "badge badge-success", "{strings(en).done}" } },
-                            InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "Error" } },
-                        }
+                    if let Some(InstallStatus::Failed(err_msg)) = st.as_ref() {
+                        // TE-27 (regresión de UI-18): texto en `--danger-text`, que cumple AA; `--danger` es para fondos.
+                        div { class: "text-xs text-danger", "{err_msg.text(en)}" }
                     }
                 }
             }
-            if let Some(InstallStatus::Failed(err_msg)) = st {
-                // TE-27 (regresión de UI-18): texto en `--danger-text`, que cumple AA; `--danger` es para fondos.
-                div { class: "text-xs text-danger ml-5", "{err_msg.text(en)}" }
+
+            div { class: "tl-status",
+                if is_installed {
+                    span { class: "badge badge-success",
+                        span { class: "fluent-icon", "aria-hidden": "true", "\u{E73E}" }
+                        "{strings(en).installed_app}"
+                    }
+                }
+                if let Some(ref status) = st {
+                    match status {
+                        InstallStatus::Queued => rsx! { span { class: "badge badge-info", "{strings(en).queued}" } },
+                        InstallStatus::Installing => rsx! { span { class: "badge badge-warning", "{strings(en).installing}" } },
+                        InstallStatus::Done => rsx! { span { class: "badge badge-success", "{strings(en).done}" } },
+                        InstallStatus::Failed(_) => rsx! { span { class: "badge badge-danger", "{txt.failed}" } },
+                    }
+                }
             }
         }
     }
@@ -440,10 +476,10 @@ pub fn BatchAppStoreCard() -> Element {
         .count();
 
     rsx! {
-        Card {
+        ToolsGroup {
             title: strings(en).store_title.to_string(),
-            subtitle: Some(strings(en).store_subtitle.to_string()),
-            div { class: "stack-3",
+            note: Some(strings(en).store_subtitle.to_string()),
+            div { class: "tl-panel",
                 StoreFilters { search_query, selected_cat }
                 StoreActions { selected, search_query, selected_cat, selected_count }
 
@@ -452,11 +488,11 @@ pub fn BatchAppStoreCard() -> Element {
                         title: strings(en).store_empty.to_string(),
                         description: strings(en).store_empty_hint.to_string(),
                     }
-                }
-
-                div { class: "modal-list tall",
-                    for pkg in filtered_catalog {
-                        StoreRow { key: "{pkg.id}", pkg, selected }
+                } else {
+                    div { class: "tl-rows",
+                        for pkg in filtered_catalog {
+                            StoreRow { key: "{pkg.id}", pkg, selected }
+                        }
                     }
                 }
             }

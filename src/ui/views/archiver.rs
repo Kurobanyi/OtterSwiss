@@ -8,7 +8,7 @@ use crate::core::archive::{
     self, ArchiveFormat, ArchiveMode, ArchiveProgress, DEFAULT_EXTRACT_QUOTA,
     resolve_extract_destination,
 };
-use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::format::{bytes_mb, eta, mb_1};
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
@@ -102,20 +102,15 @@ pub fn ArchiverView() -> Element {
     let mb_total = mb_1(prog.total_bytes);
     let eta_txt = eta(prog.eta_seconds);
 
-    let card_title = txt.secure_archiver_zip_7z_tar.to_string();
-    let card_sub = Some(txt.n_100_open_source_rust_compression.to_string());
+    let extracting = *mode.read() == ArchiveMode::Extract;
+    let busy = *is_working.read();
 
     rsx! {
         div { class: "content-body",
             // UI-09: diálogo de progreso; Escape no cancela por accidente (para eso está «Cancelar»).
-            if *is_working.read() {
+            if busy {
                 Modal {
-                    title: match (*mode.read() == ArchiveMode::Extract, en) {
-                        (true, true) => "Extracting archive…".to_string(),
-                        (true, false) => "Extrayendo archivo…".to_string(),
-                        (false, true) => "Compressing…".to_string(),
-                        (false, false) => "Comprimiendo…".to_string(),
-                    },
+                    title: if extracting { txt.extracting.to_string() } else { txt.compressing.to_string() },
                     subtitle: Some(if prog.current_file.is_empty() { "…".to_string() } else { prog.current_file.clone() }),
                     on_close: move |_| {},
                         ProgressBar { percent: prog.percent }
@@ -133,100 +128,108 @@ pub fn ArchiverView() -> Element {
                 }
             }
 
-            Card {
-                title: card_title,
-                subtitle: card_sub,
-                div { class: "stack-3",
-                    div { class: "flex gap-2",
-                        button {
-                            class: "btn btn-secondary",
-                            "aria-pressed": if *mode.read() == ArchiveMode::Extract { "true" } else { "false" },
-                            disabled: *is_working.read(),
-                            onclick: move |_| mode.set(ArchiveMode::Extract),
-                            "{txt.extract}"
-                        }
-                        button {
-                            class: "btn btn-secondary",
-                            "aria-pressed": if *mode.read() == ArchiveMode::Compress { "true" } else { "false" },
-                            disabled: *is_working.read(),
-                            onclick: move |_| mode.set(ArchiveMode::Compress),
-                            "{txt.compress}"
-                        }
+            div { class: "arc-segmented", role: "group", "aria-label": "{txt.operation}",
+                button {
+                    class: "btn",
+                    "aria-pressed": if extracting { "true" } else { "false" },
+                    disabled: busy,
+                    onclick: move |_| mode.set(ArchiveMode::Extract),
+                    span { class: "fluent-icon", "aria-hidden": "true", "\u{E896}" }
+                    "{txt.extract}"
+                }
+                button {
+                    class: "btn",
+                    "aria-pressed": if extracting { "false" } else { "true" },
+                    disabled: busy,
+                    onclick: move |_| mode.set(ArchiveMode::Compress),
+                    span { class: "fluent-icon", "aria-hidden": "true", "\u{E7B8}" }
+                    "{txt.compress}"
+                }
+            }
+
+            div { class: "card",
+                div { class: "arc-field",
+                    label { class: "fw-semibold", r#for: "arc-src",
+                        if extracting { "{txt.archive_path}" } else { "{txt.source_path}" }
                     }
+                    input {
+                        id: "arc-src",
+                        r#type: "text",
+                        class: "input",
+                        placeholder: if extracting { "D:\\Backups\\files.zip" } else { "D:\\Projects\\Photos" },
+                        "aria-describedby": "arc-src-hint",
+                        value: "{src_path.read()}",
+                        disabled: busy,
+                        oninput: move |evt| src_path.set(evt.value()),
+                    }
+                    span { id: "arc-src-hint", class: "text-xs text-muted",
+                        if extracting { "{txt.archive_path_hint}" } else { "{txt.source_path_hint}" }
+                    }
+                }
 
-                    div { class: "stack-2",
-                        label { class: "text-xs text-muted",
-                            if *mode.read() == ArchiveMode::Extract {
-                                "{txt.archive_path_zip_7z_tar}"
-                            } else { "{txt.source_file_or_folder}" }
-                        }
-                        input {
-                            r#type: "text",
-                            placeholder: "C:\\Path\\To\\Target",
-                            value: "{src_path.read()}",
-                            disabled: *is_working.read(),
-                            class: "input",
-                            oninput: move |evt| src_path.set(evt.value()),
-                        }
+                div { class: "arc-field",
+                    label { class: "fw-semibold", r#for: "arc-dest",
+                        if extracting { "{txt.extract_destination}" } else { "{txt.output_archive}" }
+                    }
+                    input {
+                        id: "arc-dest",
+                        r#type: "text",
+                        class: "input",
+                        placeholder: if extracting { "D:\\Backups\\files" } else { "D:\\Backups\\Photos.zip" },
+                        "aria-describedby": "arc-dest-hint",
+                        value: "{dest_path.read()}",
+                        disabled: busy,
+                        oninput: move |evt| dest_path.set(evt.value()),
+                    }
+                    span { id: "arc-dest-hint", class: "text-xs text-muted",
+                        if extracting { "{txt.extract_destination_hint}" } else { "{txt.output_archive_hint}" }
+                    }
+                }
 
-                        label { class: "text-xs text-muted",
-                            if *mode.read() == ArchiveMode::Extract {
-                                "{txt.output_folder}"
-                            } else { "{txt.output_archive_file}" }
-                        }
-                        input {
-                            r#type: "text",
-                            placeholder: if *mode.read() == ArchiveMode::Extract { "C:\\Extracted" } else { "C:\\Backup\\Archive.zip" },
-                            value: "{dest_path.read()}",
-                            disabled: *is_working.read(),
-                            class: "input",
-                            oninput: move |evt| dest_path.set(evt.value()),
-                        }
-
-                        if *mode.read() == ArchiveMode::Compress {
-                            div { class: "row mt-1",
-                                span { class: "text-xs text-muted", "{txt.format}" }
-                                button {
-                                    class: "btn btn-secondary",
-                            "aria-pressed": if *selected_format.read() == ArchiveFormat::Zip { "true" } else { "false" },
-                                    disabled: *is_working.read(),
-                                    onclick: move |_| selected_format.set(ArchiveFormat::Zip),
-                                    ".ZIP"
-                                }
-                                button {
-                                    class: "btn btn-secondary",
-                            "aria-pressed": if *selected_format.read() == ArchiveFormat::SevenZip { "true" } else { "false" },
-                                    disabled: *is_working.read(),
-                                    onclick: move |_| selected_format.set(ArchiveFormat::SevenZip),
-                                    ".7Z"
-                                }
-                                button {
-                                    class: "btn btn-secondary",
-                            "aria-pressed": if *selected_format.read() == ArchiveFormat::TarGz { "true" } else { "false" },
-                                    disabled: *is_working.read(),
-                                    onclick: move |_| selected_format.set(ArchiveFormat::TarGz),
-                                    ".TAR.GZ"
-                                }
-                            }
-                        }
-
-                        div { class: "flex gap-2 mt-2",
+                if !extracting {
+                    div { class: "arc-field",
+                        span { class: "fw-semibold", id: "arc-format-label", "{txt.format}" }
+                        div { class: "arc-segmented", role: "group", "aria-labelledby": "arc-format-label",
                             button {
-                                class: "btn btn-primary",
-                                disabled: *is_working.read() || src_path.read().trim().is_empty() || dest_path.read().trim().is_empty(),
-                                onclick: on_execute,
-                                if *mode.read() == ArchiveMode::Extract {
-                                    "{txt.extract_now}"
-                                } else { "{txt.compress_now}" }
+                                class: "btn",
+                                "aria-pressed": if *selected_format.read() == ArchiveFormat::Zip { "true" } else { "false" },
+                                disabled: busy,
+                                onclick: move |_| selected_format.set(ArchiveFormat::Zip),
+                                "ZIP"
+                            }
+                            button {
+                                class: "btn",
+                                "aria-pressed": if *selected_format.read() == ArchiveFormat::SevenZip { "true" } else { "false" },
+                                disabled: busy,
+                                onclick: move |_| selected_format.set(ArchiveFormat::SevenZip),
+                                "7Z"
+                            }
+                            button {
+                                class: "btn",
+                                "aria-pressed": if *selected_format.read() == ArchiveFormat::TarGz { "true" } else { "false" },
+                                disabled: busy,
+                                onclick: move |_| selected_format.set(ArchiveFormat::TarGz),
+                                "TAR.GZ"
                             }
                         }
                     }
+                }
 
-                    if let Some((msg, tone)) = status_msg.read().clone() {
-                        StatusBanner { text: msg.text(en), tone }
+                div { class: "row-end",
+                    button {
+                        class: "btn btn-primary",
+                        disabled: busy || src_path.read().trim().is_empty() || dest_path.read().trim().is_empty(),
+                        onclick: on_execute,
+                        if extracting { "{txt.extract_now}" } else { "{txt.compress_now}" }
                     }
                 }
             }
+
+            if let Some((msg, tone)) = status_msg.read().clone() {
+                StatusBanner { text: msg.text(en), tone }
+            }
+
+            p { class: "text-xs text-muted", "{txt.supported_formats}" }
         }
     }
 }

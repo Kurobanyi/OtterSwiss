@@ -1,5 +1,7 @@
 /*
- * Estilos de OtterSwiss. Orden: 1 tokens comunes · 2 temas · 3 reset y base · 4 layout · 5 componentes ·
+ * Estilos de OtterSwiss, con el lenguaje visual de Windows 11 (Fluent): panel de navegación lateral, capa de
+ * contenido sobre el fondo de la ventana, tarjetas con trazo sutil, controles de 32 px con radio 4 y tarjetas con
+ * radio 8. Orden: 1 tokens comunes · 2 temas · capas derivadas · 3 reset y base · 4 layout · 5 componentes ·
  * 6 utilidades · 7 accesibilidad y medios.
  *
  * Reglas (ver .agents/rules/ui-temas.md):
@@ -12,45 +14,54 @@
 /* 1 · Tokens comunes ------------------------------------------------------------------------------------------ */
 
 :root {
+    /* Rampa tipográfica de Windows 11 (Fluent): pie 12, cuerpo 14, subtítulo 20, título 28. */
     --font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
     --font-mono: "Cascadia Mono", Consolas, monospace;
     --font-icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
 
-    --font-size-2xs: 11px;
+    --font-size-2xs: 12px;
     --font-size-xs: 12px;
-    --font-size-sm: 13px;
+    --font-size-sm: 14px;
     --font-size-md: 14px;
-    --font-size-lg: 18px;
-    --font-size-xl: 24px;
+    --font-size-lg: 20px;
+    --font-size-xl: 28px;
     --fw-regular: 400;
     --fw-medium: 500;
     --fw-semibold: 600;
-    --fw-bold: 700;
+    --fw-bold: 600;
 
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
     --space-5: 24px;
+    --space-6: 32px;
 
+    /* Fluent: 4 px en controles, 8 px en tarjetas y diálogos. */
     --radius-xs: 4px;
-    --radius-sm: 6px;
-    --radius: 10px;
-    --radius-lg: 14px;
+    --radius-sm: 4px;
+    --radius: 4px;
+    --radius-lg: 8px;
     --radius-pill: 999px;
 
-    --duration-fast: 0.15s;
-    --ease: ease;
+    --duration-fast: 0.12s;
+    --duration: 0.2s;
+    --ease: cubic-bezier(0, 0, 0, 1);
 
     --z-titlebar: 100;
     --z-modal: 1000;
 
-    --titlebar-h: 52px;
-    --content-max: 1200px;
-    --control-min-h: 28px;
-    --overlay: rgb(0 0 0 / 0.72);
+    --titlebar-h: 44px;
+    --nav-w: 240px;
+    --nav-w-compact: 56px;
+    --nav-item-h: 36px;
+    --content-max: 1080px;
+    --control-min-h: 32px;
+    --control-sm-h: 28px;
+    --overlay: rgb(0 0 0 / 0.5);
     /* Rojo estándar del botón de cerrar de Windows, en todos los temas. */
-    --win-close: #e81123;
+    --win-close: #c42b1c;
     --on-win-close: #ffffff;
 }
 
@@ -311,6 +322,23 @@
     --accent-text: #c4a7e7;
 }
 
+/* Capas y trazos derivados del tema (Fluent): se calculan en cada elemento con data-theme, así siguen al tema activo. */
+:root,
+[data-theme] {
+    /* Capa de contenido sobre el fondo de la ventana (como Mica en Configuración de Windows). */
+    --layer: color-mix(in srgb, var(--surface) 55%, var(--bg));
+    /* Trazo de tarjetas y separadores: sutil, no compite con el contenido. */
+    --stroke: color-mix(in srgb, var(--text) 10%, transparent);
+    --stroke-strong: color-mix(in srgb, var(--text) 16%, transparent);
+    /* Relleno de controles estándar (botón, campo) y sus estados. */
+    --control-fill: color-mix(in srgb, var(--text) 6%, var(--surface));
+    --control-fill-hover: color-mix(in srgb, var(--text) 10%, var(--surface));
+    --control-fill-active: color-mix(in srgb, var(--text) 4%, var(--surface));
+    --subtle-fill-hover: color-mix(in srgb, var(--text) 7%, transparent);
+    --subtle-fill-active: color-mix(in srgb, var(--text) 4%, transparent);
+    --shadow-flyout: 0 8px 32px rgb(0 0 0 / 0.28), 0 2px 8px rgb(0 0 0 / 0.16);
+}
+
 /* 3 · Reset y base --------------------------------------------------------------------------------------------- */
 
 *,
@@ -334,17 +362,22 @@ body {
     background: transparent;
     color: var(--text);
     font-family: var(--font-family);
+    font-size: var(--font-size-md);
+    line-height: 1.43;
     accent-color: var(--accent);
+    -webkit-font-smoothing: antialiased;
 }
 
 /* Barras de desplazamiento con los colores del tema (TE-01). */
 * {
     scrollbar-color: var(--control-border) transparent;
+    scrollbar-width: thin;
 }
 
 /* TE-20: se puede seleccionar texto (rutas, errores, notas); los controles no. */
 button,
 .top-titlebar,
+.nav-pane,
 .badge {
     user-select: none;
 }
@@ -353,6 +386,14 @@ input,
 select,
 button {
     font: inherit;
+}
+
+.fluent-icon {
+    font-family: var(--font-icons);
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    speak: never;
 }
 
 /* 4 · Layout --------------------------------------------------------------------------------------------------- */
@@ -371,21 +412,22 @@ button {
     border: 1px solid var(--border);
 }
 
+/* Barra de título: marca a la izquierda, franja de arrastre, controles a la derecha. */
 .top-titlebar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: var(--space-2);
     height: var(--titlebar-h);
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 var(--space-2) 0 var(--space-3);
+    background: var(--bg);
+    padding: 0 0 0 var(--space-4);
     flex-shrink: 0;
     z-index: var(--z-titlebar);
 }
 
 .mini-window .top-titlebar {
     height: 40px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--stroke);
 }
 
 .mini-window-body {
@@ -402,68 +444,47 @@ button {
     align-items: center;
     gap: var(--space-2);
     flex-shrink: 0;
-    cursor: grab;
+    height: 100%;
+    cursor: default;
 }
 
 .top-brand .brand-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: var(--radius-sm);
+    width: 18px;
+    height: 18px;
 }
 
 .top-title {
-    font-size: var(--font-size-md);
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.4px;
+    font-size: var(--font-size-xs);
 }
 
 .top-version {
-    font-size: var(--font-size-2xs);
+    font-size: var(--font-size-xs);
     color: var(--text-muted);
-    font-weight: var(--fw-semibold);
-    background: var(--surface-subtle);
-    padding: 2px var(--space-2);
-    border-radius: var(--radius-xs);
 }
 
-.top-nav {
-    display: flex;
+/* Toda la franja libre de la barra arrastra la ventana. */
+.titlebar-drag {
+    flex: 1;
+    align-self: stretch;
+}
+
+.update-chip {
+    display: inline-flex;
     align-items: center;
-    gap: 2px;
-    min-width: 0;
-    /* TE-15: si no entra en el ancho mínimo, se desplaza en vez de empujar los botones de ventana. */
-    overflow-x: auto;
-    scrollbar-width: none;
-}
-
-.top-nav-item {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    min-height: var(--control-min-h);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--font-size-2xs);
+    gap: var(--space-1);
+    height: 24px;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent-text);
+    font-size: var(--font-size-xs);
     font-weight: var(--fw-semibold);
     cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
-    white-space: nowrap;
 }
 
-.top-nav-item:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-}
-
-.top-nav-item:active {
-    background: var(--surface-active);
-}
-
-.top-nav-item.active,
-.top-nav-item[aria-current="page"] {
-    /* UI-18: --accent como texto queda bajo 4.5:1 en cuatro temas. */
-    color: var(--accent-text);
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
+.update-chip:hover {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .top-controls {
@@ -471,51 +492,161 @@ button {
     align-items: center;
     gap: var(--space-1);
     flex-shrink: 0;
+    height: 100%;
+}
+
+/* Cuerpo: panel de navegación + capa de contenido. */
+.app-body {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.nav-pane {
+    width: var(--nav-w);
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-1) var(--space-1) var(--space-4);
+    overflow-y: auto;
+}
+
+.nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--nav-item-h);
+    padding: 0 var(--space-3);
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-size: var(--font-size-md);
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--duration-fast) var(--ease);
+}
+
+.nav-item:hover {
+    background: var(--subtle-fill-hover);
+}
+
+.nav-item:active {
+    background: var(--subtle-fill-active);
+}
+
+.nav-item[aria-current="page"] {
+    background: var(--subtle-fill-hover);
+}
+
+/* Indicador de la sección activa: la píldora de acento a la izquierda del NavigationView. */
+.nav-item[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 3px;
+    height: 16px;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+    transform: translateY(-50%);
+}
+
+.nav-icon {
+    width: 16px;
+    font-size: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .main-content-full {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
-    padding: var(--space-4);
-    background: var(--bg);
+    padding: var(--space-5) var(--space-6) var(--space-6);
+    background: var(--layer);
+    border-top: 1px solid var(--stroke);
+    border-left: 1px solid var(--stroke);
+    border-top-left-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+/* El encabezado, el aviso de permisos y cada vista comparten el mismo ancho máximo. */
+.main-content-full > * {
+    width: 100%;
+    max-width: var(--content-max);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.page-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding-bottom: var(--space-1);
+}
+
+.page-title {
+    font-family: var(--font-display);
+    font-size: var(--font-size-xl);
+    font-weight: var(--fw-semibold);
+    line-height: 36px;
+}
+
+.page-desc {
+    color: var(--text-muted);
 }
 
 .content-body {
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
-    max-width: var(--content-max);
-    margin: 0 auto;
 }
 
 .cards-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: var(--space-4);
+}
+
+/* Título de una sección dentro de una página (Fluent «BodyStrong» sobre un grupo de tarjetas). */
+.section-title {
+    font-size: var(--font-size-md);
+    font-weight: var(--fw-semibold);
+    margin-top: var(--space-2);
 }
 
 /* 5 · Componentes ---------------------------------------------------------------------------------------------- */
 
-/* Controles de la barra superior: idioma, tema y botones de ventana. */
+/* Controles de la barra de título: idioma y tema. */
 .theme-toggle-btn,
 .theme-select {
-    min-height: var(--control-min-h);
-    background: var(--surface-subtle);
-    border: 1px solid var(--control-border);
+    height: var(--control-sm-h);
+    background: transparent;
+    border: 1px solid transparent;
     font-size: var(--font-size-xs);
-    font-weight: var(--fw-semibold);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius);
     cursor: pointer;
     color: var(--text);
-    transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease);
     white-space: nowrap;
 }
 
 .theme-toggle-btn:hover,
 .theme-select:hover {
-    background: var(--surface-hover);
-    border-color: var(--accent);
+    background: var(--subtle-fill-hover);
+    border-color: var(--stroke);
 }
 
 .theme-select option {
@@ -523,25 +654,24 @@ button {
     color: var(--text);
 }
 
+/* Botones de ventana de Windows 11: 46 × alto de la barra, sin radio. */
 .win-btn {
     background: transparent;
     border: none;
-    color: var(--text-muted);
-    width: 34px;
-    height: 30px;
+    color: var(--text);
+    width: 46px;
+    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: var(--font-icons), var(--font-family);
-    font-size: var(--font-size-2xs);
+    font-family: var(--font-icons);
+    font-size: 10px;
     cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease);
 }
 
 .win-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text);
+    background: var(--subtle-fill-hover);
 }
 
 .win-btn.win-close-btn:hover {
@@ -549,37 +679,32 @@ button {
     color: var(--on-win-close);
 }
 
-/* Tarjeta */
+/* Tarjeta: superficie sobre la capa de contenido, trazo sutil, radio 8. */
 .card {
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--stroke);
     border-radius: var(--radius-lg);
     padding: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    transition: border-color var(--duration-fast) var(--ease);
-}
-
-.card:hover {
-    border-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 .card.card-warning {
-    border-color: var(--warning);
+    border-color: color-mix(in srgb, var(--warning) 55%, transparent);
     background: color-mix(in srgb, var(--warning) 8%, var(--surface));
 }
 
 .card-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--space-3);
 }
 
 .card-title {
     font-size: var(--font-size-md);
-    font-weight: var(--fw-bold);
+    font-weight: var(--fw-semibold);
 }
 
 .card-subtitle {
@@ -590,71 +715,87 @@ button {
 
 .card-kicker {
     font-size: var(--font-size-xs);
-    font-weight: var(--fw-bold);
-    letter-spacing: 0.4px;
+    font-weight: var(--fw-semibold);
     color: var(--accent-text);
 }
 
-/* Botones */
+/* Botones: estándar (relleno de control) y de acento; altura 32, radio 4, texto 14. */
 .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--space-2);
     min-height: var(--control-min-h);
-    padding: var(--space-2) var(--space-4);
+    padding: 5px var(--space-3) 6px;
     border-radius: var(--radius);
-    font-size: var(--font-size-sm);
-    font-weight: var(--fw-semibold);
+    font-size: var(--font-size-md);
+    font-weight: var(--fw-regular);
+    line-height: 20px;
     cursor: pointer;
-    border: 1px solid transparent;
+    background: var(--control-fill);
+    color: var(--text);
+    border: 1px solid var(--stroke);
+    border-bottom-color: var(--stroke-strong);
+    white-space: nowrap;
     transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
         color var(--duration-fast) var(--ease);
 }
 
+.btn:hover:not(:disabled) {
+    background: var(--control-fill-hover);
+}
+
+.btn:active:not(:disabled) {
+    background: var(--control-fill-active);
+    color: var(--text-muted);
+}
+
 .btn-sm {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--font-size-xs);
+    min-height: var(--control-sm-h);
+    padding: 3px var(--space-3) 4px;
+    font-size: var(--font-size-md);
 }
 
 .btn-primary {
     background: var(--accent);
     color: var(--on-accent);
+    border-color: transparent;
+    border-bottom-color: color-mix(in srgb, black 25%, var(--accent));
 }
 
 .btn-primary:hover:not(:disabled) {
     background: var(--accent-hover);
 }
 
-.btn-secondary {
-    background: var(--bg);
-    color: var(--text);
-    border-color: var(--control-border);
+.btn-primary:active:not(:disabled) {
+    background: var(--accent);
+    color: color-mix(in srgb, var(--on-accent) 75%, var(--accent));
 }
 
-.btn-secondary:hover:not(:disabled) {
-    border-color: var(--accent);
-    color: var(--accent-text);
+.btn-secondary {
+    /* Igual que el estándar: el nombre se conserva para las vistas. */
 }
 
 .btn-danger {
     background: var(--danger);
     color: var(--on-danger);
+    border-color: transparent;
 }
 
 .btn-danger:hover:not(:disabled) {
     background: var(--danger-hover);
 }
 
-.btn:active:not(:disabled) {
-    transform: translateY(1px);
+.btn-danger:active:not(:disabled) {
+    background: var(--danger);
+    color: color-mix(in srgb, var(--on-danger) 75%, var(--danger));
 }
 
 /* TE-24: deshabilitado con fondo y texto propios, no solo opacidad. */
 .btn:disabled {
-    background: var(--surface-hover);
+    background: var(--control-fill-active);
     color: var(--text-muted);
-    border-color: transparent;
+    border-color: var(--stroke);
     cursor: not-allowed;
 }
 
@@ -662,8 +803,8 @@ button {
    pantalla anuncia «presionado» y el estado no depende solo del color. */
 .btn[aria-pressed="true"],
 .btn[aria-pressed="true"]:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg));
-    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
     color: var(--accent-text);
 }
 
@@ -671,10 +812,13 @@ button {
 .badge {
     display: inline-flex;
     align-items: center;
-    padding: 3px var(--space-2);
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
     border-radius: var(--radius-pill);
-    font-size: var(--font-size-2xs);
+    font-size: var(--font-size-xs);
     font-weight: var(--fw-semibold);
+    line-height: 16px;
+    white-space: nowrap;
 }
 
 .badge-success { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--success-text); }
@@ -683,30 +827,97 @@ button {
 .badge-info { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent-text); }
 
 button.badge {
-    min-height: var(--control-min-h);
+    min-height: var(--control-sm-h);
     border: 1px solid currentColor;
     cursor: pointer;
 }
 
 /* Aviso de estado de una acción (resultado, error, advertencia). */
 .status-banner {
-    padding: var(--space-3);
-    border-radius: var(--radius);
-    font-size: var(--font-size-sm);
-    font-weight: var(--fw-semibold);
-    line-height: 1.4;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid currentColor;
+    font-size: var(--font-size-md);
+    font-weight: var(--fw-regular);
+    line-height: 1.43;
     white-space: pre-line;
 }
 
-/* Campos */
+/* InfoBar de Windows 11: aviso persistente de una página con icono de tono y acción a la derecha. */
+.info-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--stroke);
+    background: var(--surface);
+}
+
+.info-bar-info { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.info-bar-success { background: color-mix(in srgb, var(--success) 9%, var(--surface)); }
+.info-bar-warning { background: color-mix(in srgb, var(--warning) 9%, var(--surface)); }
+.info-bar-danger { background: color-mix(in srgb, var(--danger) 9%, var(--surface)); }
+
+.info-bar-icon {
+    font-size: 16px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 2px;
+}
+
+.info-bar-info .info-bar-icon { color: var(--accent-text); }
+.info-bar-success .info-bar-icon { color: var(--success-text); }
+.info-bar-warning .info-bar-icon { color: var(--warning-text); }
+.info-bar-danger .info-bar-icon { color: var(--danger-text); }
+
+.info-bar-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: var(--space-3);
+}
+
+.info-bar-title {
+    font-weight: var(--fw-semibold);
+}
+
+.info-bar-message {
+    color: var(--text);
+}
+
+.info-bar-action {
+    flex-shrink: 0;
+}
+
+/* Campos: relleno de control con trazo inferior más marcado (TextBox de Fluent). */
 .input {
     min-height: var(--control-min-h);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--control-border);
+    padding: 5px var(--space-3) 6px;
+    border: 1px solid var(--stroke);
+    border-bottom-color: var(--control-border);
     border-radius: var(--radius);
-    background: var(--bg);
+    background: var(--control-fill);
     color: var(--text);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
+    transition: background-color var(--duration-fast) var(--ease);
+}
+
+.input:hover:not(:disabled) {
+    background: var(--control-fill-hover);
+}
+
+.input:focus,
+.input:focus-visible {
+    outline: none;
+    background: var(--surface);
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 5px;
+}
+
+.input::placeholder {
+    color: var(--text-muted);
 }
 
 .input:disabled {
@@ -719,14 +930,23 @@ button.badge {
     display: flex;
     align-items: flex-start;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
     cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease);
 }
 
 .select-row:hover {
-    background: var(--surface-hover);
+    background: var(--control-fill-hover);
+}
+
+.select-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    flex-shrink: 0;
 }
 
 .select-row:has(input:disabled) {
@@ -740,7 +960,7 @@ button.badge {
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--stroke);
 }
 
 .list-row:last-child {
@@ -757,13 +977,13 @@ button.badge {
     gap: var(--space-2);
 }
 
-/* TE-25: fila con borde de una lista (app de la tienda, driver, dispositivo). El layout lo ponen las utilidades
-   (`row-between`, `stack-1`…); dentro de una `.modal-list` se separa del fondo con `--surface`. */
+/* TE-25: fila con borde de una lista (app de la tienda, driver, dispositivo), al estilo de las filas de
+   Configuración de Windows. El layout lo ponen las utilidades (`row-between`, `stack-1`…). */
 .item-row {
-    padding: var(--space-2) var(--space-3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--bg);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
 }
 
 .modal-list .item-row {
@@ -772,13 +992,13 @@ button.badge {
 
 /* OR-07, TE-26: icono de una app de la tienda (AppIconBadge). */
 .app-icon {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     background: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
@@ -792,12 +1012,11 @@ button.badge {
     stroke-linejoin: round;
 }
 
-/* Barra de progreso (ProgressBar) */
+/* Barra de progreso (ProgressBar): pista fina y relleno de acento, como el ProgressBar de Fluent. */
 .progress {
     width: 100%;
-    height: var(--space-2);
-    background: var(--bg);
-    border: 1px solid var(--border);
+    height: 4px;
+    background: var(--stroke-strong);
     border-radius: var(--radius-pill);
     overflow: hidden;
 }
@@ -805,10 +1024,11 @@ button.badge {
 .progress-fill {
     height: 100%;
     background: var(--accent);
-    transition: width var(--duration-fast) var(--ease);
+    border-radius: var(--radius-pill);
+    transition: width var(--duration) var(--ease);
 }
 
-/* Diálogos modales (UI-09, role="dialog") */
+/* Diálogos modales (UI-09, role="dialog"): ContentDialog de Fluent. */
 .modal-overlay {
     position: fixed;
     inset: 0;
@@ -821,15 +1041,23 @@ button.badge {
 }
 
 .modal-card {
-    max-width: 520px;
+    max-width: 540px;
     width: 100%;
     max-height: calc(100vh - 2 * var(--space-5));
     overflow-y: auto;
+    padding: var(--space-5);
+    gap: var(--space-4);
+    box-shadow: var(--shadow-flyout);
+}
+
+.modal-card .card-title {
+    font-size: var(--font-size-lg);
+    font-family: var(--font-display);
 }
 
 .modal-card.modal-wide { max-width: 720px; }
-.modal-card.modal-danger { border-color: var(--danger); }
-.modal-card.modal-warning { border-color: var(--warning); }
+.modal-card.modal-danger { border-color: color-mix(in srgb, var(--danger) 60%, transparent); }
+.modal-card.modal-warning { border-color: color-mix(in srgb, var(--warning) 60%, transparent); }
 
 .modal-list.tall {
     max-height: 480px;
@@ -839,10 +1067,10 @@ button.badge {
 .modal-list {
     max-height: 280px;
     overflow-y: auto;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
     padding: var(--space-2);
-    background: var(--bg);
+    background: var(--layer);
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
@@ -854,44 +1082,53 @@ button.badge {
     justify-content: flex-end;
     gap: var(--space-2);
     flex-wrap: wrap;
+    margin: var(--space-2) calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+    padding: var(--space-5);
+    background: var(--layer);
+    border-top: 1px solid var(--stroke);
 }
 
 /* Estados de carga, vacío y error (LoadingState, EmptyState, ErrorState) */
 .state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
     text-align: center;
-    padding: var(--space-5);
+    padding: var(--space-6) var(--space-5);
     background: var(--surface);
-    border: 1px dashed var(--border);
+    border: 1px solid var(--stroke);
     border-radius: var(--radius-lg);
 }
 
 .state-title {
     font-size: var(--font-size-md);
     font-weight: var(--fw-semibold);
-    margin-bottom: var(--space-1);
 }
 
 .state-desc {
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
     color: var(--text-muted);
+    max-width: 60ch;
 }
 
 .state-error {
-    border-style: solid;
-    border-color: var(--danger);
+    border-color: color-mix(in srgb, var(--danger) 55%, transparent);
+    background: color-mix(in srgb, var(--danger) 6%, var(--surface));
 }
 
 .state-error .state-title { color: var(--danger-text); }
 
-/* UI-17: indicador de carga de LoadingState. */
+/* UI-17: indicador de carga de LoadingState (ProgressRing de Fluent). */
 .state-spinner {
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     margin: 0 auto var(--space-3);
-    border: 3px solid var(--border);
+    border: 3px solid transparent;
     border-top-color: var(--accent);
+    border-right-color: var(--accent);
     border-radius: 50%;
-    animation: state-spin 0.8s linear infinite;
+    animation: state-spin 0.9s linear infinite;
 }
 
 @keyframes state-spin { to { transform: rotate(360deg); } }
@@ -929,6 +1166,7 @@ button.badge {
 .text-xs { font-size: var(--font-size-xs); }
 .text-sm { font-size: var(--font-size-sm); }
 .text-md { font-size: var(--font-size-md); }
+.text-lg { font-size: var(--font-size-lg); }
 .text-xl { font-size: var(--font-size-xl); }
 .fw-semibold { font-weight: var(--fw-semibold); }
 .fw-bold { font-weight: var(--fw-bold); }
@@ -947,13 +1185,13 @@ button.badge {
     outline-offset: 2px;
 }
 
-/* TE-15: en el ancho mínimo (960px) se ahorra espacio en la barra superior. */
-@media (max-width: 1150px) {
-    /* La mini ventana del archivador muestra ahí su estado: no se oculta. */
-    .app-root-frameless:not(.mini-window) .top-version { display: none; }
-    /* UI-23: con el nombre y el logo la barra no entra a 960px y «Sensores» queda tapado (la barra no muestra su scroll). */
-    .app-root-frameless:not(.mini-window) .top-title { display: none; }
-    .top-nav-item { padding: var(--space-1) 6px; }
+/* TE-15, UI-23: ventana estrecha (hasta 1100 px): el panel de navegación queda solo con iconos (el nombre va en el
+   `title`) y la capa de contenido gana aire. */
+@media (max-width: 1100px) {
+    .nav-pane { width: var(--nav-w-compact); }
+    .nav-item { justify-content: center; padding: 0; }
+    .nav-label { display: none; }
+    .main-content-full { padding: var(--space-5) var(--space-5) var(--space-6); }
 }
 
 /* TE-09: sin animaciones si el sistema pide reducir el movimiento. */
@@ -975,12 +1213,13 @@ button.badge {
     .theme-select,
     .input,
     .select-row,
+    .item-row,
+    .info-bar,
     .card {
         border: 1px solid CanvasText;
     }
 
-    .top-nav-item.active,
-    .top-nav-item[aria-current="page"],
+    .nav-item[aria-current="page"],
     .btn[aria-pressed="true"] {
         outline: 2px solid Highlight;
     }
@@ -996,10 +1235,6 @@ button.badge {
     padding: var(--space-3) var(--space-4);
 }
 
-.card-warning {
-    border: 1px solid var(--warning);
-    background: color-mix(in srgb, var(--warning) 8%, var(--surface));
-}
 
 .heading-flat {
     margin: 0;
@@ -1014,8 +1249,8 @@ button.badge {
 }
 
 .tile {
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
     padding: var(--space-3);
 }
 
@@ -1025,7 +1260,11 @@ button.badge {
     gap: var(--space-3);
     font-size: var(--font-size-xs);
     padding: var(--space-1) 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--stroke);
+}
+
+.kv-row:last-child {
+    border-bottom: none;
 }
 
 .kv-value {
@@ -1035,16 +1274,379 @@ button.badge {
 }
 
 .info-box {
-    background: var(--bg);
+    background: var(--layer);
     padding: var(--space-3);
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--stroke);
 }
 
 .code-box {
     font-size: var(--font-size-xs);
-    background: var(--bg);
+    background: var(--layer);
     padding: var(--space-2);
     border-radius: var(--radius-sm);
     word-break: break-all;
+}
+
+/* 8 · Vistas ---------------------------------------------------------------------------------------------------- */
+/* Clases propias de una vista (lo que no es un componente común), con un comentario por vista. */
+
+/* Inicio (Dashboard) */
+.dash-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.dash-icon {
+    flex: none;
+    width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.dash-label {
+    flex: none;
+    min-width: 140px;
+}
+
+.dash-value {
+    flex: 1;
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
+}
+
+.dash-group {
+    margin-top: var(--space-2);
+}
+
+/* Limpiador (Cleaner) */
+.cln-icon {
+    flex: none;
+    width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.cln-badge {
+    margin-right: var(--space-2);
+}
+
+/* DNS */
+.dns-option {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dns-option:hover {
+    background: color-mix(in srgb, var(--text) 4%, var(--surface));
+}
+
+.dns-option[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.dns-check {
+    flex: none;
+    width: 20px;
+    text-align: center;
+    color: var(--accent-text);
+}
+
+.dns-latency {
+    flex: none;
+    min-width: 56px;
+    text-align: right;
+}
+
+/* Drivers */
+.drv-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+}
+
+.drv-stat {
+    display: flex;
+    flex-direction: column;
+    min-width: 72px;
+}
+
+.drv-stat-value {
+    font-size: var(--font-size-lg);
+    font-weight: var(--fw-semibold);
+    line-height: 28px;
+}
+
+/* Lista larga: un solo panel con la barra de herramientas pegada arriba y filas planas separadas por trazos. */
+.drv-panel {
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.drv-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--stroke);
+}
+
+.drv-rows {
+    max-height: 560px;
+    overflow-y: auto;
+}
+
+.drv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--stroke);
+    border-inline-start: 3px solid transparent;
+}
+
+.drv-row:last-child {
+    border-bottom: none;
+}
+
+.drv-row:hover {
+    background: var(--subtle-fill-hover);
+}
+
+.drv-row-error {
+    border-inline-start-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+
+.drv-tech {
+    overflow-wrap: anywhere;
+}
+
+.drv-status {
+    justify-content: flex-end;
+}
+
+/* Archivos (Archiver) y mini ventana del menú contextual */
+.arc-segmented {
+    display: inline-flex;
+    align-self: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background: var(--control-fill);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+}
+
+.arc-segmented .btn {
+    border-color: transparent;
+    background: transparent;
+}
+
+.arc-segmented .btn:hover:not(:disabled):not([aria-pressed="true"]) {
+    background: var(--subtle-fill-hover);
+}
+
+.arc-segmented .btn[aria-pressed="true"],
+.arc-segmented .btn[aria-pressed="true"]:hover:not(:disabled) {
+    background: var(--surface);
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.arc-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.mini-title {
+    font-size: var(--font-size-md);
+    font-weight: var(--fw-semibold);
+}
+
+.mini-path {
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Herramientas y tienda (Tools) */
+.tl-panel {
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.tl-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--stroke);
+}
+
+.tl-actions .tl-summary {
+    margin-inline-start: auto;
+}
+
+.tl-rows {
+    max-height: min(560px, 60vh);
+    overflow-y: auto;
+}
+
+.tl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--stroke);
+}
+
+.tl-row:last-child {
+    border-bottom: none;
+}
+
+.tl-row:hover {
+    background: var(--subtle-fill-hover);
+}
+
+.tl-row-main {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    gap: var(--space-3);
+}
+
+.tl-row-main input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.tl-icon {
+    flex: none;
+    width: 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.tl-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+}
+
+/* Aviso de instalación en curso: texto y barra de progreso apilados dentro de un InfoBar. */
+.tl-progress {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+/* Desinstalador (Uninstaller): reutiliza el panel y las filas de Herramientas; aquí solo la fila de un resto. */
+.unx-leftover {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-lg);
+}
+
+.unx-leftover:hover {
+    background: var(--subtle-fill-hover);
+}
+
+.unx-leftover input[type="checkbox"] {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: var(--space-1);
+}
+
+.unx-leftover .tl-icon {
+    margin-top: var(--space-1);
+}
+
+.unx-path {
+    overflow-wrap: anywhere;
+}
+
+.unx-size {
+    flex: none;
+    white-space: nowrap;
+}
+
+/* Hardware: filas etiqueta/valor de Inicio (.dash-row); aquí solo el valor, que puede llevar una segunda línea. */
+.hw-value {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-variant-numeric: tabular-nums;
+}
+
+.hw-strong {
+    color: var(--text);
+    font-weight: var(--fw-semibold);
+}
+
+/* Lista larga (instrucciones de la CPU): alineada a la izquierda para que el salto de línea se lea bien. */
+.hw-row-top {
+    align-items: flex-start;
+}
+
+.hw-long {
+    text-align: left;
+    font-size: var(--font-size-xs);
+}
+
+/* Sensores: tarjeta compacta por sensor. Las cifras tabulares evitan que el diseño se mueva al actualizar. */
+.snr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-3);
+}
+
+.snr-card {
+    gap: var(--space-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.snr-temp {
+    font-size: var(--font-size-xl);
+    font-weight: var(--fw-semibold);
+    line-height: 36px;
+}
+
+.snr-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    min-height: 16px;
 }
