@@ -18,7 +18,7 @@ pub enum HardwareTier {
     HighEnd,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HardwareProfile {
     pub logical_cores: usize,
     pub total_ram_mb: u64,

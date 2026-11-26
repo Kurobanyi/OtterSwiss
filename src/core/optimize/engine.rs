@@ -74,7 +74,7 @@ pub struct PlannedOptimizationItem {
     pub eligible: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EngineExecutionReport {
     pub profile_name: String,
     pub hardware: HardwareProfile,
@@ -87,7 +87,7 @@ pub struct EngineExecutionReport {
     pub step_results: Vec<OptimizationStepResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RollbackReport {
     pub restored_registry: usize,
     pub restored_services: usize,
