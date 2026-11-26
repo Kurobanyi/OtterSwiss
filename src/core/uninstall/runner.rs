@@ -16,29 +16,6 @@ use crate::core::platform::process::{
 };
 use crate::core::platform::wide::to_wide_null;
 
-pub(super) fn parse_cmd_exe_and_args(trimmed: &str) -> (&str, &str) {
-    if let Some(stripped) = trimmed.strip_prefix('"') {
-        if let Some(end) = stripped.find('"') {
-            return (&stripped[..end], stripped[end + 1..].trim());
-        }
-        return (trimmed, "");
-    }
-
-    let lower = trimmed.to_ascii_lowercase();
-    if let Some(pos) = lower.find(".exe") {
-        let split_at = pos + 4;
-        if split_at == trimmed.len() || trimmed.as_bytes()[split_at].is_ascii_whitespace() {
-            return (&trimmed[..split_at], trimmed[split_at..].trim());
-        }
-    }
-
-    let mut parts = trimmed.splitn(2, ' ');
-    (
-        parts.next().unwrap_or(trimmed),
-        parts.next().unwrap_or("").trim(),
-    )
-}
-
 impl UninstallerManager {
     /// Expande `%VAR%` con el entorno del **sistema** (sin token) o del usuario dueño de `token`, nunca con
     /// el del propio proceso: un proceso sin elevar puede redefinir `%ProgramFiles%` en `HKCU\Environment`
@@ -138,4 +115,27 @@ impl UninstallerManager {
             None,
         )
     }
+}
+
+pub(super) fn parse_cmd_exe_and_args(trimmed: &str) -> (&str, &str) {
+    if let Some(stripped) = trimmed.strip_prefix('"') {
+        if let Some(end) = stripped.find('"') {
+            return (&stripped[..end], stripped[end + 1..].trim());
+        }
+        return (trimmed, "");
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if let Some(pos) = lower.find(".exe") {
+        let split_at = pos + 4;
+        if split_at == trimmed.len() || trimmed.as_bytes()[split_at].is_ascii_whitespace() {
+            return (&trimmed[..split_at], trimmed[split_at..].trim());
+        }
+    }
+
+    let mut parts = trimmed.splitn(2, ' ');
+    (
+        parts.next().unwrap_or(trimmed),
+        parts.next().unwrap_or("").trim(),
+    )
 }

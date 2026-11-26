@@ -23,6 +23,8 @@ administrador (manifiesto `requireAdministrator` en `build.rs`).
 
 `//!` con el propósito del módulo → `use` → constantes → tipos públicos → `impl` → funciones privadas → `#[cfg(test)]`. Sin
 cabeceras que repitan la ruta. Un comentario explica la regla y cita el ID entre paréntesis (por ejemplo `(SYS-04)`).
+Excepción: en `ui/i18n/` los `static ES`/`EN` van tras su `struct`, y `hardware/sensors/{adl,nvml}.rs` (FFI con macros y
+`extern "system"`) conservan su orden.
 
 ## Comandos
 

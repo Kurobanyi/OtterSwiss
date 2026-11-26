@@ -26,6 +26,19 @@ enum SortMode {
 /// Mensaje de estado con su tono (UI-02).
 type Status = Option<(Msg, Tone)>;
 
+/// CL-14: señales de la vista que comparten el escaneo y la desinstalación. Son `Copy`.
+#[derive(Clone, Copy)]
+struct UninstallerSignals {
+    is_working: Signal<bool>,
+    purge_summary: Signal<Option<PurgeReport>>,
+    status_msg: Signal<Status>,
+    apps: Signal<Vec<InstalledApp>>,
+    extra_sizes: Signal<HashMap<String, u64>>,
+    selected_leftovers: Signal<HashSet<String>>,
+    leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
+    tools_state: Signal<ToolsSharedState>,
+}
+
 /// Tamaño de una app o un resto; 0 significa «desconocido», no «vacío».
 fn format_size_mb(bytes: u64) -> String {
     if bytes == 0 {
@@ -49,19 +62,6 @@ fn spawn_fill_missing_sizes(
             extra_sizes.set(computed);
         }
     });
-}
-
-/// CL-14: señales de la vista que comparten el escaneo y la desinstalación. Son `Copy`.
-#[derive(Clone, Copy)]
-struct UninstallerSignals {
-    is_working: Signal<bool>,
-    purge_summary: Signal<Option<PurgeReport>>,
-    status_msg: Signal<Status>,
-    apps: Signal<Vec<InstalledApp>>,
-    extra_sizes: Signal<HashMap<String, u64>>,
-    selected_leftovers: Signal<HashSet<String>>,
-    leftovers_modal: Signal<Option<(InstalledApp, Vec<LeftoverItem>)>>,
-    tools_state: Signal<ToolsSharedState>,
 }
 
 fn start_scan(app: InstalledApp, sig: UninstallerSignals) {

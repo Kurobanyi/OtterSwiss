@@ -36,6 +36,77 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::handles::{JobObject, SafeHandle};
 use crate::core::platform::wide::to_wide_null;
 
+/// AR-16: tiempo máximo que se espera a un instalador o desinstalador.
+pub const INSTALLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// `ERROR_PRODUCT_VERSION` de Windows Installer: otra versión del producto ya está instalada.
+pub const ERROR_PRODUCT_VERSION: u32 = 1638;
+
+/// `CREATE_NO_WINDOW`: el proceso hijo de consola no abre ventana.
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+struct EnvBlockGuard(*mut std::ffi::c_void);
+impl Drop for EnvBlockGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: el bloque lo creó CreateEnvironmentBlock y solo se destruye aquí, una vez.
+            unsafe {
+                let _ = DestroyEnvironmentBlock(self.0);
+            }
+        }
+    }
+}
+
+/// Qué ejecutar y cómo.
+pub struct Launch<'a> {
+    /// Ruta absoluta del ejecutable (se pasa como `lpApplicationName`: no hay búsqueda por PATH).
+    pub application: &'a Path,
+    /// Línea de comandos completa, con el ejecutable entrecomillado como primer argumento.
+    pub command_line: String,
+    /// Directorio de trabajo explícito.
+    pub working_dir: &'a Path,
+    /// Si existe, el proceso corre sin elevación con este token (el del Explorador).
+    pub user_token: Option<&'a SafeHandle>,
+}
+
+/// Resultado de un proceso que terminó dentro del tiempo.
+#[derive(Debug, Clone, Copy)]
+pub struct ProcessExit {
+    pub exit_code: u32,
+}
+
+impl ProcessExit {
+    /// Códigos que Windows Installer y la mayoría de instaladores usan para «terminó bien»
+    /// (0, 3010 y 1641 = requiere reinicio).
+    pub fn is_success(&self) -> bool {
+        matches!(self.exit_code, 0 | 3010 | 1641)
+    }
+
+    /// Para un instalador: éxito, o que ya había otra versión instalada (`ERROR_PRODUCT_VERSION`).
+    pub fn is_installed_ok(&self) -> bool {
+        self.is_success() || self.exit_code == ERROR_PRODUCT_VERSION
+    }
+
+    /// Código para mostrar: los HRESULT (p. ej. `0x80040902` de EdgeUpdate) en hexadecimal, que es como se
+    /// buscan; los códigos chicos (1603, 3010…) en decimal.
+    pub fn code_display(&self) -> String {
+        if self.exit_code > 0xFFFF {
+            format!("0x{:08X}", self.exit_code)
+        } else {
+            self.exit_code.to_string()
+        }
+    }
+}
+
+/// Salida de un proceso de consola ya terminado.
+#[derive(Debug, Clone)]
+pub struct CapturedOutput {
+    pub success: bool,
+    pub code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 /// Carpeta `System32` real, sin depender de variables de entorno.
 pub fn system32_dir() -> CoreResult<PathBuf> {
     let mut buf = [0u16; 260];
@@ -127,65 +198,6 @@ pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
         })?;
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Ok(PathBuf::from(String::from_utf16_lossy(&buf[..end])))
-}
-
-struct EnvBlockGuard(*mut std::ffi::c_void);
-impl Drop for EnvBlockGuard {
-    fn drop(&mut self) {
-        if !self.0.is_null() {
-            // SAFETY: el bloque lo creó CreateEnvironmentBlock y solo se destruye aquí, una vez.
-            unsafe {
-                let _ = DestroyEnvironmentBlock(self.0);
-            }
-        }
-    }
-}
-
-/// Qué ejecutar y cómo.
-pub struct Launch<'a> {
-    /// Ruta absoluta del ejecutable (se pasa como `lpApplicationName`: no hay búsqueda por PATH).
-    pub application: &'a Path,
-    /// Línea de comandos completa, con el ejecutable entrecomillado como primer argumento.
-    pub command_line: String,
-    /// Directorio de trabajo explícito.
-    pub working_dir: &'a Path,
-    /// Si existe, el proceso corre sin elevación con este token (el del Explorador).
-    pub user_token: Option<&'a SafeHandle>,
-}
-
-/// AR-16: tiempo máximo que se espera a un instalador o desinstalador.
-pub const INSTALLER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
-
-/// `ERROR_PRODUCT_VERSION` de Windows Installer: otra versión del producto ya está instalada.
-pub const ERROR_PRODUCT_VERSION: u32 = 1638;
-
-/// Resultado de un proceso que terminó dentro del tiempo.
-#[derive(Debug, Clone, Copy)]
-pub struct ProcessExit {
-    pub exit_code: u32,
-}
-
-impl ProcessExit {
-    /// Códigos que Windows Installer y la mayoría de instaladores usan para «terminó bien»
-    /// (0, 3010 y 1641 = requiere reinicio).
-    pub fn is_success(&self) -> bool {
-        matches!(self.exit_code, 0 | 3010 | 1641)
-    }
-
-    /// Para un instalador: éxito, o que ya había otra versión instalada (`ERROR_PRODUCT_VERSION`).
-    pub fn is_installed_ok(&self) -> bool {
-        self.is_success() || self.exit_code == ERROR_PRODUCT_VERSION
-    }
-
-    /// Código para mostrar: los HRESULT (p. ej. `0x80040902` de EdgeUpdate) en hexadecimal, que es como se
-    /// buscan; los códigos chicos (1603, 3010…) en decimal.
-    pub fn code_display(&self) -> String {
-        if self.exit_code > 0xFFFF {
-            format!("0x{:08X}", self.exit_code)
-        } else {
-            self.exit_code.to_string()
-        }
-    }
 }
 
 fn active_processes(job: &JobObject) -> CoreResult<u32> {
@@ -343,80 +355,6 @@ pub fn run_in_job(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{ERROR_PRODUCT_VERSION, ProcessExit, run_captured, system32_dir};
-
-    /// SYS-02: solo 0, 3010 y 1641 cuentan como éxito de un (des)instalador.
-    #[test]
-    fn codigos_de_salida_de_exito() {
-        for ok in [0, 3010, 1641] {
-            assert!(ProcessExit { exit_code: ok }.is_success());
-        }
-        for fail in [1, 1602, 1603, 5, u32::MAX] {
-            assert!(!ProcessExit { exit_code: fail }.is_success());
-        }
-        assert!(
-            ProcessExit {
-                exit_code: ERROR_PRODUCT_VERSION
-            }
-            .is_installed_ok()
-        );
-    }
-
-    #[test]
-    fn captura_la_salida_de_una_herramienta() {
-        let cmd = system32_dir().unwrap().join("cmd.exe");
-        let out = run_captured(
-            &cmd,
-            &["/c", "echo hola"],
-            std::time::Duration::from_secs(10),
-        )
-        .unwrap();
-        assert!(out.success);
-        assert_eq!(out.stdout.trim(), "hola");
-    }
-
-    #[test]
-    fn corta_la_herramienta_que_pasa_el_tiempo() {
-        let cmd = system32_dir().unwrap().join("cmd.exe");
-        let started = std::time::Instant::now();
-        let res = run_captured(
-            &cmd,
-            &["/c", "ping -n 30 127.0.0.1 > nul"],
-            std::time::Duration::from_millis(300),
-        );
-        assert!(res.is_err());
-        assert!(started.elapsed() < std::time::Duration::from_secs(10));
-    }
-
-    #[test]
-    fn codigo_de_salida_legible() {
-        assert_eq!(ProcessExit { exit_code: 1603 }.code_display(), "1603");
-        assert_eq!(
-            ProcessExit {
-                exit_code: 2_147_748_098
-            }
-            .code_display(),
-            "0x80040902"
-        );
-        assert!(ProcessExit { exit_code: 3010 }.is_success());
-        assert!(!ProcessExit { exit_code: 1602 }.is_success());
-    }
-}
-
-/// `CREATE_NO_WINDOW`: el proceso hijo de consola no abre ventana.
-pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// Salida de un proceso de consola ya terminado.
-#[derive(Debug, Clone)]
-pub struct CapturedOutput {
-    pub success: bool,
-    pub code: Option<i32>,
-    pub stdout: String,
-    pub stderr: String,
-}
-
 /// AR-10: ejecuta una herramienta de consola de Windows (PowerShell, reg.exe…) sin ventana, leyendo stdout y
 /// stderr en hilos propios mientras corre (patrón 3 de BUGS.md) y matándola si pasa `timeout`. `program` tiene
 /// que ser una ruta absoluta (de `system32_dir`), nunca un nombre que se busque en `PATH`.
@@ -487,4 +425,66 @@ pub fn run_captured<S: AsRef<std::ffi::OsStr>>(
         stdout: text(out_reader),
         stderr: text(err_reader).trim().to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ERROR_PRODUCT_VERSION, ProcessExit, run_captured, system32_dir};
+
+    /// SYS-02: solo 0, 3010 y 1641 cuentan como éxito de un (des)instalador.
+    #[test]
+    fn codigos_de_salida_de_exito() {
+        for ok in [0, 3010, 1641] {
+            assert!(ProcessExit { exit_code: ok }.is_success());
+        }
+        for fail in [1, 1602, 1603, 5, u32::MAX] {
+            assert!(!ProcessExit { exit_code: fail }.is_success());
+        }
+        assert!(
+            ProcessExit {
+                exit_code: ERROR_PRODUCT_VERSION
+            }
+            .is_installed_ok()
+        );
+    }
+
+    #[test]
+    fn captura_la_salida_de_una_herramienta() {
+        let cmd = system32_dir().unwrap().join("cmd.exe");
+        let out = run_captured(
+            &cmd,
+            &["/c", "echo hola"],
+            std::time::Duration::from_secs(10),
+        )
+        .unwrap();
+        assert!(out.success);
+        assert_eq!(out.stdout.trim(), "hola");
+    }
+
+    #[test]
+    fn corta_la_herramienta_que_pasa_el_tiempo() {
+        let cmd = system32_dir().unwrap().join("cmd.exe");
+        let started = std::time::Instant::now();
+        let res = run_captured(
+            &cmd,
+            &["/c", "ping -n 30 127.0.0.1 > nul"],
+            std::time::Duration::from_millis(300),
+        );
+        assert!(res.is_err());
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn codigo_de_salida_legible() {
+        assert_eq!(ProcessExit { exit_code: 1603 }.code_display(), "1603");
+        assert_eq!(
+            ProcessExit {
+                exit_code: 2_147_748_098
+            }
+            .code_display(),
+            "0x80040902"
+        );
+        assert!(ProcessExit { exit_code: 3010 }.is_success());
+        assert!(!ProcessExit { exit_code: 1602 }.is_success());
+    }
 }

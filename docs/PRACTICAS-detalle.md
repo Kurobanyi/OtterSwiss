@@ -53,12 +53,13 @@ Leyenda:
 
 <a id="or-04"></a>
 ### OR-04 · El orden interno de los archivos no sigue una regla
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: constantes entre funciones (`GENERIC_FOLDER_TOKENS` en `uninstaller.rs:234`, entre helpers), helpers antes y después
   del `impl`, tipos públicos al final (`FullRevertReport` en la línea 1349), cabeceras `// src/…` que repiten la ruta.
 - **Propuesta**: regla en `AGENTS.md`: `use` → constantes → tipos públicos → `impl` → funciones privadas → `#[cfg(test)]`; sin
   cabeceras de ruta.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Regla escrita en AGENTS.md y fuera las cabeceras `// src/…`; los archivos partidos ya la siguen, el resto se ordena cuando se toque. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): los 29 archivos de `src/` que rompían la regla (constantes entre funciones, funciones antes del `impl`, tipos públicos al final) se reordenaron con un script que parte cada archivo en elementos de nivel superior y los ordena por `use` → constantes → tipos e `impl` → funciones → `#[cfg(test)]`, sin tocar su texto (inserciones = borrados en el diff). Excepciones escritas en `AGENTS.md`: los `static ES/EN` de `ui/i18n/` van tras su `struct` y los dos archivos FFI de sensores (`adl.rs`, `nvml.rs`). Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="or-05"></a>
 ### OR-05 · Dos carpetas de configuración de agentes sin explicar
@@ -147,7 +148,7 @@ Leyenda:
   solo tipo. Gradual, módulo por módulo.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): CoreError::sys/trust guardan el source (30 sitios), invalid_handle no lee GetLastError ajeno, NoActiveAdapters tipado. Quedan unos 125 `source: None` para migrar de a poco. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Más sitios con `source`; quedan 96 `source: None`, casi todos errores propios sin causa externa. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
-- **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): `Registry` y `Service` guardan ahora su origen como `BoxedSource` (antes `io::Error`, que no admitía un HRESULT de `windows`), y 28 sitios con el error en la mano (servicios, SetupAPI, ACL, DNS, elevación, hilos de la UI) pasan de `source: None` a `Some(Box::new(e))`. `source: None` baja de 115 a 95 (techo de `tests/indicadores.rs`); los que quedan son códigos de salida, estados de API y validaciones sin error de origen. Siguen sin hacerse las variantes por causa (`NotFound`, `AccessDenied`, `ExitCode`…). Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
+- **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): `Registry` y `Service` guardan ahora su origen como `BoxedSource` (antes `io::Error`, que no admitía un HRESULT de `windows`), y 20 sitios con el error en la mano (servicios, SetupAPI, ACL, DNS, elevación, hilos de la UI) pasan de `source: None` a `Some(Box::new(e))`. `source: None` baja de 115 a 95 (techo de `tests/indicadores.rs`); los que quedan son códigos de salida, estados de API y validaciones sin error de origen. Siguen sin hacerse las variantes por causa (`NotFound`, `AccessDenied`, `ExitCode`…). Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-07"></a>
 ### AR-07 · La carpeta de datos la resuelve la UI y sus nombres están repartidos

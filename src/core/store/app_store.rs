@@ -21,101 +21,6 @@ use crate::core::store::winget::{
 /// el Job entero (winget y el instalador).
 const WINGET_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 
-/// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá
-/// en el programa instalado.
-fn windows_ui_is_spanish() -> bool {
-    crate::core::platform::user_settings::user_ui_language_is_spanish()
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AppCategory {
-    Gaming,
-    Communication,
-    Utilities,
-    Browsers,
-    Development,
-    UwpRestoration,
-}
-
-impl AppCategory {
-    pub fn label(&self, en: bool) -> &'static str {
-        if en {
-            match self {
-                Self::Gaming => "Gaming & Launchers",
-                Self::Communication => "Communication & Media",
-                Self::Utilities => "Utilities & System Tools",
-                Self::Browsers => "Web Browsers",
-                Self::Development => "Development & Editors",
-                Self::UwpRestoration => "Windows UWP & Store (Restoration)",
-            }
-        } else {
-            match self {
-                Self::Gaming => "Gaming y Launchers",
-                Self::Communication => "Comunicación y Multimedia",
-                Self::Utilities => "Utilidades y Sistema",
-                Self::Browsers => "Navegadores Web",
-                Self::Development => "Desarrollo y Editores",
-                Self::UwpRestoration => "Aplicaciones UWP y Windows (Restauración)",
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppIcon {
-    Gamepad,
-    Chat,
-    Video,
-    Browser,
-    Terminal,
-    Code,
-    Archive,
-    Download,
-    Search,
-    Wrench,
-    Disk,
-    Camera,
-    Clock,
-    Calculator,
-    Microphone,
-    Phone,
-    Checklist,
-    Store,
-    Paint,
-    Scissors,
-}
-
-/// De dónde sale una app del catálogo (AR-27: un enum, así que no hay paquete «sin verificación» posible).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InstallSource {
-    /// Repositorio comunitario de winget: última versión y SHA-256 del manifiesto. `id_es`, si existe, es el paquete
-    /// en español, que se pide cuando Windows está en español (IN-01).
-    Winget {
-        id: &'static str,
-        id_es: Option<&'static str>,
-        scope: WingetScope,
-    },
-    /// Microsoft Store, siempre como el usuario de la sesión.
-    Store { id: &'static str },
-}
-
-#[derive(Debug, Clone)]
-pub struct CuratedPackage {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub category: AppCategory,
-    pub icon: AppIcon,
-    pub copyright_holder: &'static str,
-    pub license: &'static str,
-    pub official_site: &'static str,
-    pub description_es: &'static str,
-    pub description_en: &'static str,
-    pub source: InstallSource,
-    /// Cómo se detecta instalada: prefijo del `DisplayName` en Uninstall, o, para las apps de la Store, nombre del
-    /// paquete (`Microsoft.WindowsCalculator`).
-    pub uninstall_display_prefix: &'static str,
-}
-
 static CURATED_CATALOG: &[CuratedPackage] = &[
     // --- GAMING & LAUNCHERS ---
     CuratedPackage {
@@ -864,75 +769,93 @@ static CURATED_CATALOG: &[CuratedPackage] = &[
     },
 ];
 
-fn check_spotify_presence_on_disk() -> bool {
-    if let Some(roaming) = dirs::config_dir()
-        && roaming.join(r"Spotify\Spotify.exe").is_file()
-    {
-        return true;
-    }
-    if let Some(local) = dirs::data_local_dir() {
-        if local.join(r"Microsoft\WindowsApps\Spotify.exe").is_file() {
-            return true;
-        }
-        let packages = local.join("Packages");
-        if let Ok(entries) = std::fs::read_dir(packages) {
-            for entry in entries.flatten() {
-                if entry
-                    .file_name()
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .starts_with("spotifyab.spotifymusic")
-                {
-                    return true;
-                }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AppCategory {
+    Gaming,
+    Communication,
+    Utilities,
+    Browsers,
+    Development,
+    UwpRestoration,
+}
+
+impl AppCategory {
+    pub fn label(&self, en: bool) -> &'static str {
+        if en {
+            match self {
+                Self::Gaming => "Gaming & Launchers",
+                Self::Communication => "Communication & Media",
+                Self::Utilities => "Utilities & System Tools",
+                Self::Browsers => "Web Browsers",
+                Self::Development => "Development & Editors",
+                Self::UwpRestoration => "Windows UWP & Store (Restoration)",
+            }
+        } else {
+            match self {
+                Self::Gaming => "Gaming y Launchers",
+                Self::Communication => "Comunicación y Multimedia",
+                Self::Utilities => "Utilidades y Sistema",
+                Self::Browsers => "Navegadores Web",
+                Self::Development => "Desarrollo y Editores",
+                Self::UwpRestoration => "Aplicaciones UWP y Windows (Restauración)",
             }
         }
     }
-    if let Some(pf) = crate::core::platform::folders::program_files_dir()
-        && pf.join(r"Spotify\Spotify.exe").is_file()
-    {
-        return true;
-    }
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey(r"Software\Spotify")
-        .is_ok()
 }
 
-/// UI-20: paquetes de la Store instalados para el usuario (nombres completos en minúsculas). Las apps de la Store no
-/// aparecen en `Uninstall`; su registro está en el repositorio de AppModel del perfil.
-fn installed_store_packages() -> Vec<String> {
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(
-            r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages",
-            KEY_READ,
-        )
-        .map(|k| k.enum_keys().flatten().map(|n| n.to_ascii_lowercase()).collect())
-        .unwrap_or_default()
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppIcon {
+    Gamepad,
+    Chat,
+    Video,
+    Browser,
+    Terminal,
+    Code,
+    Archive,
+    Download,
+    Search,
+    Wrench,
+    Disk,
+    Camera,
+    Clock,
+    Calculator,
+    Microphone,
+    Phone,
+    Checklist,
+    Store,
+    Paint,
+    Scissors,
 }
 
-fn display_name_matches(display_name: &str, prefix: &str) -> bool {
-    let dn = display_name.trim().to_ascii_lowercase();
-    let pref = prefix.trim().to_ascii_lowercase();
-    if dn == pref {
-        return true;
-    }
-    let Some(rest) = dn.strip_prefix(&pref) else {
-        return false;
-    };
-    // Prefijo que ya es una versión («Python 3.12») seguido de más versión («.8 (64-bit)»).
-    if pref.ends_with(|c: char| c.is_ascii_digit())
-        && rest.starts_with('.')
-        && rest[1..].starts_with(|c: char| c.is_ascii_digit())
-    {
-        return true;
-    }
-    let mut chars = rest.chars();
-    match chars.next() {
-        Some(' ') | Some('-') => {}
-        _ => return false,
-    }
-    let after = chars.as_str().trim_start_matches(['v', 'V']);
-    after.chars().next().is_some_and(|c| c.is_ascii_digit()) || after.starts_with('(')
+/// De dónde sale una app del catálogo (AR-27: un enum, así que no hay paquete «sin verificación» posible).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallSource {
+    /// Repositorio comunitario de winget: última versión y SHA-256 del manifiesto. `id_es`, si existe, es el paquete
+    /// en español, que se pide cuando Windows está en español (IN-01).
+    Winget {
+        id: &'static str,
+        id_es: Option<&'static str>,
+        scope: WingetScope,
+    },
+    /// Microsoft Store, siempre como el usuario de la sesión.
+    Store { id: &'static str },
+}
+
+#[derive(Debug, Clone)]
+pub struct CuratedPackage {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub category: AppCategory,
+    pub icon: AppIcon,
+    pub copyright_holder: &'static str,
+    pub license: &'static str,
+    pub official_site: &'static str,
+    pub description_es: &'static str,
+    pub description_en: &'static str,
+    pub source: InstallSource,
+    /// Cómo se detecta instalada: prefijo del `DisplayName` en Uninstall, o, para las apps de la Store, nombre del
+    /// paquete (`Microsoft.WindowsCalculator`).
+    pub uninstall_display_prefix: &'static str,
 }
 
 pub struct AppStoreManager;
@@ -1034,6 +957,83 @@ impl AppStoreManager {
         };
         run_winget(&args, scope, pkg.name, cancel)
     }
+}
+
+/// IN-01: los instaladores se descargan en el idioma de Windows, no en el de la app: es el que el usuario verá
+/// en el programa instalado.
+fn windows_ui_is_spanish() -> bool {
+    crate::core::platform::user_settings::user_ui_language_is_spanish()
+}
+
+fn check_spotify_presence_on_disk() -> bool {
+    if let Some(roaming) = dirs::config_dir()
+        && roaming.join(r"Spotify\Spotify.exe").is_file()
+    {
+        return true;
+    }
+    if let Some(local) = dirs::data_local_dir() {
+        if local.join(r"Microsoft\WindowsApps\Spotify.exe").is_file() {
+            return true;
+        }
+        let packages = local.join("Packages");
+        if let Ok(entries) = std::fs::read_dir(packages) {
+            for entry in entries.flatten() {
+                if entry
+                    .file_name()
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .starts_with("spotifyab.spotifymusic")
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    if let Some(pf) = crate::core::platform::folders::program_files_dir()
+        && pf.join(r"Spotify\Spotify.exe").is_file()
+    {
+        return true;
+    }
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Spotify")
+        .is_ok()
+}
+
+/// UI-20: paquetes de la Store instalados para el usuario (nombres completos en minúsculas). Las apps de la Store no
+/// aparecen en `Uninstall`; su registro está en el repositorio de AppModel del perfil.
+fn installed_store_packages() -> Vec<String> {
+    RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey_with_flags(
+            r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages",
+            KEY_READ,
+        )
+        .map(|k| k.enum_keys().flatten().map(|n| n.to_ascii_lowercase()).collect())
+        .unwrap_or_default()
+}
+
+fn display_name_matches(display_name: &str, prefix: &str) -> bool {
+    let dn = display_name.trim().to_ascii_lowercase();
+    let pref = prefix.trim().to_ascii_lowercase();
+    if dn == pref {
+        return true;
+    }
+    let Some(rest) = dn.strip_prefix(&pref) else {
+        return false;
+    };
+    // Prefijo que ya es una versión («Python 3.12») seguido de más versión («.8 (64-bit)»).
+    if pref.ends_with(|c: char| c.is_ascii_digit())
+        && rest.starts_with('.')
+        && rest[1..].starts_with(|c: char| c.is_ascii_digit())
+    {
+        return true;
+    }
+    let mut chars = rest.chars();
+    match chars.next() {
+        Some(' ') | Some('-') => {}
+        _ => return false,
+    }
+    let after = chars.as_str().trim_start_matches(['v', 'V']);
+    after.chars().next().is_some_and(|c| c.is_ascii_digit()) || after.starts_with('(')
 }
 
 /// Corre `winget <args>` dentro de un Job con plazo y cancelación. Como administrador, el winget protegido de App

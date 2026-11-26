@@ -29,6 +29,39 @@ pub struct DownloadPolicy<'a> {
     pub max_bytes: u64,
 }
 
+/// AR-09: instalador descargado y verificado en la carpeta de staging. El archivo se borra al soltar el valor.
+pub struct StagedDownload {
+    path: PathBuf,
+}
+
+impl StagedDownload {
+    /// Descarga `policy.url` a `staging/<stem>_<pid>_<nonce>.<ext>` y lo verifica (SHA-256 y Authenticode). Si
+    /// algo falla, no queda nada en disco.
+    pub fn download(stem: &str, ext: &str, policy: &DownloadPolicy<'_>) -> CoreResult<Self> {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let file_name = format!("{stem}_{}_{nonce}.{ext}", std::process::id());
+        let staged = Self {
+            path: staging_dir()?.join(&file_name),
+        };
+        // Si la descarga falla, `staged` se suelta aquí y borra lo que se haya escrito.
+        drop(secure_download_and_verify(&staged.path, policy)?);
+        Ok(staged)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for StagedDownload {
+    fn drop(&mut self) {
+        let _ = delete_verified_file(&self.path);
+    }
+}
+
 pub fn secure_download_and_verify(
     dest_path: &Path,
     policy: &DownloadPolicy<'_>,
@@ -267,39 +300,6 @@ pub fn validate_https_host(url: &str, allowed_hosts: &[&str]) -> CoreResult<()> 
         });
     }
     Ok(())
-}
-
-/// AR-09: instalador descargado y verificado en la carpeta de staging. El archivo se borra al soltar el valor.
-pub struct StagedDownload {
-    path: PathBuf,
-}
-
-impl StagedDownload {
-    /// Descarga `policy.url` a `staging/<stem>_<pid>_<nonce>.<ext>` y lo verifica (SHA-256 y Authenticode). Si
-    /// algo falla, no queda nada en disco.
-    pub fn download(stem: &str, ext: &str, policy: &DownloadPolicy<'_>) -> CoreResult<Self> {
-        let nonce = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let file_name = format!("{stem}_{}_{nonce}.{ext}", std::process::id());
-        let staged = Self {
-            path: staging_dir()?.join(&file_name),
-        };
-        // Si la descarga falla, `staged` se suelta aquí y borra lo que se haya escrito.
-        drop(secure_download_and_verify(&staged.path, policy)?);
-        Ok(staged)
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for StagedDownload {
-    fn drop(&mut self) {
-        let _ = delete_verified_file(&self.path);
-    }
 }
 
 /// Hexadecimal en minúsculas de un digest.

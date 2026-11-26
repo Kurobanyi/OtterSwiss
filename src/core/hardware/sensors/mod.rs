@@ -23,19 +23,6 @@ pub struct SensorReading {
     pub max_celsius: Option<f32>,
 }
 
-/// UI-14: dos GPU del mismo modelo dan el mismo nombre; la UI usa el nombre como clave y para picos.
-/// Desde la segunda aparición se agrega « #n».
-pub fn disambiguate_sensor_names(readings: &mut [SensorReading]) {
-    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    for r in readings.iter_mut() {
-        let count = seen.entry(r.name.clone()).or_insert(0);
-        *count += 1;
-        if *count > 1 {
-            r.name = format!("{} #{}", r.name, count);
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SystemSensorsSnapshot {
     pub cpu_temperatures: Vec<SensorReading>,
@@ -43,18 +30,6 @@ pub struct SystemSensorsSnapshot {
     pub storage_temperatures: Vec<SensorReading>,
     pub backend_notes: Vec<String>,
     pub updated_at_ms: u64,
-}
-
-/// Busca `symbol` en la DLL y lo convierte al tipo de puntero a función `T`.
-///
-/// # Safety
-/// `T` tiene que ser un `unsafe extern` fn con la firma real que exporta la DLL; `symbol` termina en NUL.
-unsafe fn resolve_proc<T>(lib: &SafeLibrary, symbol: &[u8]) -> Option<T> {
-    debug_assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<usize>());
-    // SAFETY: la DLL sigue cargada y el puntero se resolvió con la firma de su encabezado.
-    let f = unsafe { lib.get_proc(symbol)? };
-    // SAFETY: contrato de resolve_proc: `T` es un puntero a función del mismo tamaño que el devuelto.
-    Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
 pub struct SensorSession {
@@ -190,6 +165,31 @@ impl Drop for SensorMonitor {
         self.stop_flag.store(true, Ordering::Release);
         drop(self.worker.take());
     }
+}
+
+/// UI-14: dos GPU del mismo modelo dan el mismo nombre; la UI usa el nombre como clave y para picos.
+/// Desde la segunda aparición se agrega « #n».
+pub fn disambiguate_sensor_names(readings: &mut [SensorReading]) {
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for r in readings.iter_mut() {
+        let count = seen.entry(r.name.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            r.name = format!("{} #{}", r.name, count);
+        }
+    }
+}
+
+/// Busca `symbol` en la DLL y lo convierte al tipo de puntero a función `T`.
+///
+/// # Safety
+/// `T` tiene que ser un `unsafe extern` fn con la firma real que exporta la DLL; `symbol` termina en NUL.
+unsafe fn resolve_proc<T>(lib: &SafeLibrary, symbol: &[u8]) -> Option<T> {
+    debug_assert_eq!(std::mem::size_of::<T>(), std::mem::size_of::<usize>());
+    // SAFETY: la DLL sigue cargada y el puntero se resolvió con la firma de su encabezado.
+    let f = unsafe { lib.get_proc(symbol)? };
+    // SAFETY: contrato de resolve_proc: `T` es un puntero a función del mismo tamaño que el devuelto.
+    Some(unsafe { std::mem::transmute_copy(&f) })
 }
 
 #[cfg(test)]

@@ -45,7 +45,6 @@ dependencias directas se usan.
 
 | ID | Título | Esf. | Estado |
 |---|---|---|---|
-| [`OR-04`](PRACTICAS-detalle.md#or-04) | El orden interno de los archivos no sigue una regla | M | Parcial |
 | [`AR-06`](PRACTICAS-detalle.md#ar-06) | `CoreError` por módulo y no por causa; 161 `source: None` | L | Parcial |
 | [`AR-17`](PRACTICAS-detalle.md#ar-17) | Textos de presentación generados en core | M | Parcial |
 | [`AR-18`](PRACTICAS-detalle.md#ar-18) | Tres versiones del crate `windows` y dependencias duplicadas | M | Parcial |

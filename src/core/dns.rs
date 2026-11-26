@@ -33,18 +33,6 @@ use crate::core::platform::wide::to_wide_null;
 const DNS_BACKUP_MUTEX: &str = r"Global\OtterSwiss_DnsBackup_Lock";
 const MAX_DNS_BACKUP_BYTES: u64 = 512 * 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DnsPreset {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub ipv4_primary: &'static str,
-    pub ipv4_secondary: &'static str,
-    pub ipv6_primary: &'static str,
-    pub ipv6_secondary: &'static str,
-    pub privacy_notice: &'static str,
-    pub privacy_notice_en: &'static str,
-}
-
 pub const DNS_PRESETS: &[DnsPreset] = &[
     DnsPreset {
         id: "cloudflare",
@@ -78,6 +66,18 @@ pub const DNS_PRESETS: &[DnsPreset] = &[
     },
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DnsPreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub ipv4_primary: &'static str,
+    pub ipv4_secondary: &'static str,
+    pub ipv6_primary: &'static str,
+    pub ipv6_secondary: &'static str,
+    pub privacy_notice: &'static str,
+    pub privacy_notice_en: &'static str,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DnsBenchmarkResult {
     pub preset_id: &'static str,
@@ -94,6 +94,219 @@ impl Drop for IcmpHandle {
                 let _ = IcmpCloseHandle(self.0);
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkAdapterInfo {
+    pub interface_guid: String,
+    pub friendly_name: String,
+    pub description: String,
+    pub if_type: u32,
+    pub current_ipv4_dns: String,
+    pub current_ipv6_dns: String,
+    pub is_virtual_or_vpn: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsAdapterSnapshot {
+    pub interface_guid: String,
+    pub friendly_name: String,
+    pub previous_ipv4_nameserver: String,
+    pub previous_ipv6_nameserver: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DnsBackupDocument {
+    pub version: u32,
+    pub adapters: Vec<DnsAdapterSnapshot>,
+}
+
+pub struct DnsManager {
+    dns_backup_path: PathBuf,
+}
+
+impl DnsManager {
+    pub fn new(secure_data_dir: &Path) -> Self {
+        Self {
+            dns_backup_path: secure_data_dir.join("dns_backup.json"),
+        }
+    }
+
+    /// AR-07: abre el gestor sobre la carpeta de datos solo-admin.
+    pub fn open_default() -> CoreResult<Self> {
+        Ok(Self::new(
+            &crate::core::security::data_dir::ensure_admin_only_data_dir()?,
+        ))
+    }
+
+    /// AR-15: aplica `preset` (IPv4 e IPv6) a todos los adaptadores físicos activos, sin VPN ni virtuales.
+    /// `NoActiveAdapters` si no hay ninguno. Devuelve a cuántos se aplicó.
+    pub fn apply_preset_to_physical(&self, preset: &DnsPreset) -> CoreResult<usize> {
+        let guids: Vec<String> = list_active_adapters()?
+            .into_iter()
+            .filter(|a| !a.is_virtual_or_vpn)
+            .map(|a| a.interface_guid)
+            .collect();
+        if guids.is_empty() {
+            return Err(CoreError::NoActiveAdapters);
+        }
+        self.apply_dns_to_selected(
+            &guids,
+            &format!("{},{}", preset.ipv4_primary, preset.ipv4_secondary),
+            &format!("{},{}", preset.ipv6_primary, preset.ipv6_secondary),
+        )
+    }
+
+    pub fn apply_dns_to_selected(
+        &self,
+        selected_guids: &[String],
+        ipv4_csv: &str,
+        ipv6_csv: &str,
+    ) -> CoreResult<usize> {
+        ElevationManager::require_elevated("Modificar servidores DNS de red")?;
+        if selected_guids.is_empty() {
+            return Err(CoreError::Validation(
+                "Debe seleccionar al menos un adaptador de red".into(),
+            ));
+        }
+
+        let active = list_active_adapters()?;
+        let mut modified_count = 0usize;
+
+        for raw_guid in selected_guids {
+            let clean_guid = raw_guid.trim_matches(|c| c == '{' || c == '}');
+            let guid_struct = parse_guid_strict(clean_guid)?;
+            let adapter = active
+                .iter()
+                .find(|a| a.interface_guid.eq_ignore_ascii_case(clean_guid))
+                .ok_or_else(|| {
+                    CoreError::Validation(format!(
+                        "El adaptador '{}' no está activo o no existe",
+                        clean_guid
+                    ))
+                })?;
+
+            let (prev_v4, prev_v6) = read_adapter_nameservers_strict(&adapter.interface_guid)?;
+            self.record_adapter_before_apply(DnsAdapterSnapshot {
+                interface_guid: adapter.interface_guid.clone(),
+                friendly_name: adapter.friendly_name.clone(),
+                previous_ipv4_nameserver: prev_v4,
+                previous_ipv6_nameserver: prev_v6,
+            })?;
+
+            apply_interface_dns_typed(guid_struct, ipv4_csv, ipv6_csv)?;
+            modified_count += 1;
+        }
+
+        flush_dns_cache();
+        Ok(modified_count)
+    }
+
+    /// `true` si hay un respaldo de DNS pendiente de restaurar.
+    pub fn has_backup(&self) -> bool {
+        self.dns_backup_path.exists()
+    }
+
+    /// Restaura el DNS previo de cada adaptador del respaldo, IPv4 **e** IPv6 (vacío = automático).
+    /// Los adaptadores que ya no existen se omiten; si alguno falla, el respaldo conserva solo los
+    /// pendientes y se devuelve el error.
+    pub fn restore_dns(&self) -> CoreResult<usize> {
+        ElevationManager::require_elevated("Restaurar servidores DNS previos")?;
+        let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
+
+        if !self.dns_backup_path.exists() {
+            return Err(CoreError::Backup {
+                message: "No existe respaldo DNS activo".into(),
+                source: None,
+            });
+        }
+
+        let doc = self.load_doc_unlocked()?;
+
+        let mut restored = 0usize;
+        let mut pending: Vec<DnsAdapterSnapshot> = Vec::new();
+        let mut failures: Vec<String> = Vec::new();
+        for snap in &doc.adapters {
+            let clean = snap.interface_guid.trim_matches(|c| c == '{' || c == '}');
+            if !interface_exists(clean) {
+                // El adaptador se quitó (USB, VPN desinstalada): no queda nada que restaurar.
+                continue;
+            }
+            let res = parse_guid_strict(clean).and_then(|g| {
+                restore_interface_dns(
+                    g,
+                    &snap.previous_ipv4_nameserver,
+                    &snap.previous_ipv6_nameserver,
+                )
+            });
+            match res {
+                Ok(()) => restored += 1,
+                Err(e) => {
+                    failures.push(format!("{}: {}", snap.friendly_name, e));
+                    pending.push(snap.clone());
+                }
+            }
+        }
+
+        flush_dns_cache();
+        if failures.is_empty() {
+            delete_verified_file(&self.dns_backup_path)?;
+            return Ok(restored);
+        }
+
+        self.save_doc_unlocked(&DnsBackupDocument {
+            version: doc.version,
+            adapters: pending,
+        })?;
+        Err(CoreError::Dns {
+            message: format!(
+                "Se restauraron {} adaptadores, pero {} fallaron y siguen en el respaldo: {}",
+                restored,
+                failures.len(),
+                failures.join("; ")
+            ),
+            source: None,
+        })
+    }
+
+    /// Lee y valida el respaldo. Si existe y no se puede leer, falla; si trae servidores que no son
+    /// direcciones válidas, falla (archivo manipulado).
+    fn load_doc_unlocked(&self) -> CoreResult<DnsBackupDocument> {
+        let doc: DnsBackupDocument = read_backup(
+            &self.dns_backup_path,
+            MAX_DNS_BACKUP_BYTES,
+            "no se tocará el DNS para no perder la configuración original",
+        )?
+        .unwrap_or(DnsBackupDocument {
+            version: 1,
+            adapters: Vec::new(),
+        });
+        for a in &doc.adapters {
+            parse_guid_strict(a.interface_guid.trim_matches(|c| c == '{' || c == '}'))?;
+            validate_dns_csv(&a.previous_ipv4_nameserver, false)?;
+            validate_dns_csv(&a.previous_ipv6_nameserver, true)?;
+        }
+        Ok(doc)
+    }
+
+    fn save_doc_unlocked(&self, doc: &DnsBackupDocument) -> CoreResult<()> {
+        write_backup(&self.dns_backup_path, doc)
+    }
+
+    fn record_adapter_before_apply(&self, snap: DnsAdapterSnapshot) -> CoreResult<()> {
+        let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
+        let mut doc = self.load_doc_unlocked()?;
+
+        // Si el adaptador ya está en el respaldo, se conserva su estado original (el primero).
+        if !doc
+            .adapters
+            .iter()
+            .any(|a| a.interface_guid.eq_ignore_ascii_case(&snap.interface_guid))
+        {
+            doc.adapters.push(snap);
+        }
+        self.save_doc_unlocked(&doc)
     }
 }
 
@@ -181,31 +394,6 @@ pub fn benchmark_dns_presets() -> Vec<DnsBenchmarkResult> {
         .collect();
 
     handles.into_iter().filter_map(|h| h.join().ok()).collect()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkAdapterInfo {
-    pub interface_guid: String,
-    pub friendly_name: String,
-    pub description: String,
-    pub if_type: u32,
-    pub current_ipv4_dns: String,
-    pub current_ipv6_dns: String,
-    pub is_virtual_or_vpn: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DnsAdapterSnapshot {
-    pub interface_guid: String,
-    pub friendly_name: String,
-    pub previous_ipv4_nameserver: String,
-    pub previous_ipv6_nameserver: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DnsBackupDocument {
-    pub version: u32,
-    pub adapters: Vec<DnsAdapterSnapshot>,
 }
 
 pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
@@ -437,194 +625,6 @@ fn validate_ipv6_dns(s: &str) -> CoreResult<()> {
         )));
     }
     Ok(())
-}
-
-pub struct DnsManager {
-    dns_backup_path: PathBuf,
-}
-
-impl DnsManager {
-    pub fn new(secure_data_dir: &Path) -> Self {
-        Self {
-            dns_backup_path: secure_data_dir.join("dns_backup.json"),
-        }
-    }
-
-    /// AR-07: abre el gestor sobre la carpeta de datos solo-admin.
-    pub fn open_default() -> CoreResult<Self> {
-        Ok(Self::new(
-            &crate::core::security::data_dir::ensure_admin_only_data_dir()?,
-        ))
-    }
-
-    /// AR-15: aplica `preset` (IPv4 e IPv6) a todos los adaptadores físicos activos, sin VPN ni virtuales.
-    /// `NoActiveAdapters` si no hay ninguno. Devuelve a cuántos se aplicó.
-    pub fn apply_preset_to_physical(&self, preset: &DnsPreset) -> CoreResult<usize> {
-        let guids: Vec<String> = list_active_adapters()?
-            .into_iter()
-            .filter(|a| !a.is_virtual_or_vpn)
-            .map(|a| a.interface_guid)
-            .collect();
-        if guids.is_empty() {
-            return Err(CoreError::NoActiveAdapters);
-        }
-        self.apply_dns_to_selected(
-            &guids,
-            &format!("{},{}", preset.ipv4_primary, preset.ipv4_secondary),
-            &format!("{},{}", preset.ipv6_primary, preset.ipv6_secondary),
-        )
-    }
-
-    pub fn apply_dns_to_selected(
-        &self,
-        selected_guids: &[String],
-        ipv4_csv: &str,
-        ipv6_csv: &str,
-    ) -> CoreResult<usize> {
-        ElevationManager::require_elevated("Modificar servidores DNS de red")?;
-        if selected_guids.is_empty() {
-            return Err(CoreError::Validation(
-                "Debe seleccionar al menos un adaptador de red".into(),
-            ));
-        }
-
-        let active = list_active_adapters()?;
-        let mut modified_count = 0usize;
-
-        for raw_guid in selected_guids {
-            let clean_guid = raw_guid.trim_matches(|c| c == '{' || c == '}');
-            let guid_struct = parse_guid_strict(clean_guid)?;
-            let adapter = active
-                .iter()
-                .find(|a| a.interface_guid.eq_ignore_ascii_case(clean_guid))
-                .ok_or_else(|| {
-                    CoreError::Validation(format!(
-                        "El adaptador '{}' no está activo o no existe",
-                        clean_guid
-                    ))
-                })?;
-
-            let (prev_v4, prev_v6) = read_adapter_nameservers_strict(&adapter.interface_guid)?;
-            self.record_adapter_before_apply(DnsAdapterSnapshot {
-                interface_guid: adapter.interface_guid.clone(),
-                friendly_name: adapter.friendly_name.clone(),
-                previous_ipv4_nameserver: prev_v4,
-                previous_ipv6_nameserver: prev_v6,
-            })?;
-
-            apply_interface_dns_typed(guid_struct, ipv4_csv, ipv6_csv)?;
-            modified_count += 1;
-        }
-
-        flush_dns_cache();
-        Ok(modified_count)
-    }
-
-    /// `true` si hay un respaldo de DNS pendiente de restaurar.
-    pub fn has_backup(&self) -> bool {
-        self.dns_backup_path.exists()
-    }
-
-    /// Restaura el DNS previo de cada adaptador del respaldo, IPv4 **e** IPv6 (vacío = automático).
-    /// Los adaptadores que ya no existen se omiten; si alguno falla, el respaldo conserva solo los
-    /// pendientes y se devuelve el error.
-    pub fn restore_dns(&self) -> CoreResult<usize> {
-        ElevationManager::require_elevated("Restaurar servidores DNS previos")?;
-        let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
-
-        if !self.dns_backup_path.exists() {
-            return Err(CoreError::Backup {
-                message: "No existe respaldo DNS activo".into(),
-                source: None,
-            });
-        }
-
-        let doc = self.load_doc_unlocked()?;
-
-        let mut restored = 0usize;
-        let mut pending: Vec<DnsAdapterSnapshot> = Vec::new();
-        let mut failures: Vec<String> = Vec::new();
-        for snap in &doc.adapters {
-            let clean = snap.interface_guid.trim_matches(|c| c == '{' || c == '}');
-            if !interface_exists(clean) {
-                // El adaptador se quitó (USB, VPN desinstalada): no queda nada que restaurar.
-                continue;
-            }
-            let res = parse_guid_strict(clean).and_then(|g| {
-                restore_interface_dns(
-                    g,
-                    &snap.previous_ipv4_nameserver,
-                    &snap.previous_ipv6_nameserver,
-                )
-            });
-            match res {
-                Ok(()) => restored += 1,
-                Err(e) => {
-                    failures.push(format!("{}: {}", snap.friendly_name, e));
-                    pending.push(snap.clone());
-                }
-            }
-        }
-
-        flush_dns_cache();
-        if failures.is_empty() {
-            delete_verified_file(&self.dns_backup_path)?;
-            return Ok(restored);
-        }
-
-        self.save_doc_unlocked(&DnsBackupDocument {
-            version: doc.version,
-            adapters: pending,
-        })?;
-        Err(CoreError::Dns {
-            message: format!(
-                "Se restauraron {} adaptadores, pero {} fallaron y siguen en el respaldo: {}",
-                restored,
-                failures.len(),
-                failures.join("; ")
-            ),
-            source: None,
-        })
-    }
-
-    /// Lee y valida el respaldo. Si existe y no se puede leer, falla; si trae servidores que no son
-    /// direcciones válidas, falla (archivo manipulado).
-    fn load_doc_unlocked(&self) -> CoreResult<DnsBackupDocument> {
-        let doc: DnsBackupDocument = read_backup(
-            &self.dns_backup_path,
-            MAX_DNS_BACKUP_BYTES,
-            "no se tocará el DNS para no perder la configuración original",
-        )?
-        .unwrap_or(DnsBackupDocument {
-            version: 1,
-            adapters: Vec::new(),
-        });
-        for a in &doc.adapters {
-            parse_guid_strict(a.interface_guid.trim_matches(|c| c == '{' || c == '}'))?;
-            validate_dns_csv(&a.previous_ipv4_nameserver, false)?;
-            validate_dns_csv(&a.previous_ipv6_nameserver, true)?;
-        }
-        Ok(doc)
-    }
-
-    fn save_doc_unlocked(&self, doc: &DnsBackupDocument) -> CoreResult<()> {
-        write_backup(&self.dns_backup_path, doc)
-    }
-
-    fn record_adapter_before_apply(&self, snap: DnsAdapterSnapshot) -> CoreResult<()> {
-        let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
-        let mut doc = self.load_doc_unlocked()?;
-
-        // Si el adaptador ya está en el respaldo, se conserva su estado original (el primero).
-        if !doc
-            .adapters
-            .iter()
-            .any(|a| a.interface_guid.eq_ignore_ascii_case(&snap.interface_guid))
-        {
-            doc.adapters.push(snap);
-        }
-        self.save_doc_unlocked(&doc)
-    }
 }
 
 /// Fija IPv4 e IPv6 de forma explícita, aunque estén vacíos (= volver a automático).

@@ -2,35 +2,6 @@
 
 use crate::core::platform::registry::RegHive;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DebloatCategory {
-    Recommended,
-    OptionalApps,
-    XboxGaming,
-}
-
-impl DebloatCategory {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Recommended => "Bloatware Común y Telemetría (Recomendado)",
-            Self::OptionalApps => "Aplicaciones Integradas Opcionales",
-            Self::XboxGaming => "Xbox y Gaming (NO marcar si usas Xbox Game Pass)",
-        }
-    }
-}
-
-/// SYS-20: solo se preseleccionan apps sin uso real habitual; Outlook, To Do, Enlace Móvil y Teams
-/// quedan desmarcadas porque mucha gente las usa.
-#[derive(Debug, Clone)]
-pub struct DebloatAppSpec {
-    pub id: &'static str,
-    pub package_name: &'static str,
-    pub display_name: &'static str,
-    pub description: &'static str,
-    pub category: DebloatCategory,
-    pub default_selected: bool,
-}
-
 pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
     DebloatAppSpec {
         id: "bing_news",
@@ -266,23 +237,6 @@ pub const DEBLOAT_APP_CATALOG: &[DebloatAppSpec] = &[
     },
 ];
 
-#[derive(Debug, Clone)]
-pub struct DebloatRegEntry {
-    pub hive: RegHive,
-    pub subkey: &'static str,
-    pub value_name: &'static str,
-    pub target_dword: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct DebloatRegTweakSpec {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub entries: &'static [DebloatRegEntry],
-    pub default_selected: bool,
-}
-
 pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
     DebloatRegTweakSpec {
         id: "no_start_ads",
@@ -385,6 +339,52 @@ pub const DEBLOAT_REG_TWEAKS: &[DebloatRegTweakSpec] = &[
         }],
     },
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DebloatCategory {
+    Recommended,
+    OptionalApps,
+    XboxGaming,
+}
+
+impl DebloatCategory {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Recommended => "Bloatware Común y Telemetría (Recomendado)",
+            Self::OptionalApps => "Aplicaciones Integradas Opcionales",
+            Self::XboxGaming => "Xbox y Gaming (NO marcar si usas Xbox Game Pass)",
+        }
+    }
+}
+
+/// SYS-20: solo se preseleccionan apps sin uso real habitual; Outlook, To Do, Enlace Móvil y Teams
+/// quedan desmarcadas porque mucha gente las usa.
+#[derive(Debug, Clone)]
+pub struct DebloatAppSpec {
+    pub id: &'static str,
+    pub package_name: &'static str,
+    pub display_name: &'static str,
+    pub description: &'static str,
+    pub category: DebloatCategory,
+    pub default_selected: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DebloatRegEntry {
+    pub hive: RegHive,
+    pub subkey: &'static str,
+    pub value_name: &'static str,
+    pub target_dword: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct DebloatRegTweakSpec {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub entries: &'static [DebloatRegEntry],
+    pub default_selected: bool,
+}
 
 #[cfg(test)]
 mod tests {

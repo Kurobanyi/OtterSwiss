@@ -31,6 +31,17 @@ use crate::ui::installer::{
     run_installer_worker,
 };
 
+const KEEP_ALIVE_TABS: [ActiveTab; 8] = [
+    ActiveTab::Dashboard,
+    ActiveTab::Cleaner,
+    ActiveTab::Debloater,
+    ActiveTab::Dns,
+    ActiveTab::Drivers,
+    ActiveTab::Archiver,
+    ActiveTab::Tools,
+    ActiveTab::Uninstaller,
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActiveTab {
     Dashboard,
@@ -81,17 +92,6 @@ impl ActiveTab {
         }
     }
 }
-
-const KEEP_ALIVE_TABS: [ActiveTab; 8] = [
-    ActiveTab::Dashboard,
-    ActiveTab::Cleaner,
-    ActiveTab::Debloater,
-    ActiveTab::Dns,
-    ActiveTab::Drivers,
-    ActiveTab::Archiver,
-    ActiveTab::Tools,
-    ActiveTab::Uninstaller,
-];
 
 #[component]
 pub fn App() -> Element {

@@ -42,6 +42,114 @@ pub struct HttpsResponse {
     _session: WinInetHandle,
 }
 
+impl HttpsResponse {
+    fn query_number(&self, query: u32) -> Option<u32> {
+        let mut value: u32 = 0;
+        let mut len: u32 = std::mem::size_of::<u32>() as u32;
+        // SAFETY: `value` y `len` viven durante la llamada; se pide el número como u32.
+        unsafe {
+            HttpQueryInfoW(
+                self.request.raw(),
+                query | HTTP_QUERY_FLAG_NUMBER,
+                Some(&mut value as *mut u32 as *mut _),
+                &mut len,
+                None,
+            )
+        }
+        .ok()
+        .map(|()| value)
+    }
+
+    /// Código de estado HTTP.
+    pub fn status(&self) -> CoreResult<u32> {
+        self.query_number(HTTP_QUERY_STATUS_CODE)
+            .ok_or_else(|| trust_err("No se pudo leer el código de estado HTTP".into()))
+    }
+
+    /// Falla si el estado no es 200.
+    pub fn require_ok(&self) -> CoreResult<()> {
+        match self.status()? {
+            200 => Ok(()),
+            code => Err(trust_err(format!("Respuesta HTTP no permitida: {code}"))),
+        }
+    }
+
+    /// `Content-Length`, si el servidor lo envió.
+    pub fn content_length(&self) -> Option<u64> {
+        self.query_number(HTTP_QUERY_CONTENT_LENGTH).map(u64::from)
+    }
+
+    /// URL final después de los redireccionamientos.
+    pub fn final_url(&self) -> CoreResult<String> {
+        let mut len: u32 = 0;
+        // SAFETY: primera llamada solo para conocer el tamaño necesario.
+        let _ = unsafe {
+            InternetQueryOptionW(
+                Some(self.request.raw()),
+                INTERNET_OPTION_URL,
+                None,
+                &mut len,
+            )
+        };
+        if len == 0 {
+            return Err(trust_err(
+                "No se pudo verificar la URL final tras redirecciones".into(),
+            ));
+        }
+        let mut buf = vec![0u16; (len as usize / 2) + 1];
+        // SAFETY: `buf` tiene al menos `len` bytes y vive durante la llamada.
+        unsafe {
+            InternetQueryOptionW(
+                Some(self.request.raw()),
+                INTERNET_OPTION_URL,
+                Some(buf.as_mut_ptr() as *mut _),
+                &mut len,
+            )
+        }
+        .map_err(|e| {
+            trust_err(format!(
+                "InternetQueryOptionW(INTERNET_OPTION_URL) falló: {e}"
+            ))
+        })?;
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Ok(String::from_utf16_lossy(&buf[..end]))
+    }
+
+    /// Lee el siguiente bloque en `buf`. `Ok(0)` al terminar.
+    pub fn read_chunk(&self, buf: &mut [u8]) -> CoreResult<usize> {
+        let mut read: u32 = 0;
+        // SAFETY: `buf` es escribible por `buf.len()` bytes durante la llamada.
+        unsafe {
+            InternetReadFile(
+                self.request.raw(),
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                &mut read,
+            )
+        }
+        .map_err(|e| trust_err(format!("InternetReadFile falló: {e}")))?;
+        Ok(read as usize)
+    }
+
+    /// Lee todo el cuerpo, fallando si pasa de `max_bytes`.
+    pub fn read_to_end_capped(&self, max_bytes: usize) -> CoreResult<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            let n = self.read_chunk(&mut chunk)?;
+            if n == 0 {
+                return Ok(out);
+            }
+            out.extend_from_slice(&chunk[..n]);
+            if out.len() > max_bytes {
+                return Err(trust_err(format!(
+                    "La respuesta excede el tamaño máximo esperado ({max_bytes} bytes)"
+                )));
+            }
+        }
+    }
+}
+
 fn trust_err(message: String) -> CoreError {
     CoreError::Trust {
         message,
@@ -234,114 +342,6 @@ fn open_session(agent: &str, timeouts: Timeouts) -> CoreResult<WinInetHandle> {
         }
     }
     Ok(session)
-}
-
-impl HttpsResponse {
-    fn query_number(&self, query: u32) -> Option<u32> {
-        let mut value: u32 = 0;
-        let mut len: u32 = std::mem::size_of::<u32>() as u32;
-        // SAFETY: `value` y `len` viven durante la llamada; se pide el número como u32.
-        unsafe {
-            HttpQueryInfoW(
-                self.request.raw(),
-                query | HTTP_QUERY_FLAG_NUMBER,
-                Some(&mut value as *mut u32 as *mut _),
-                &mut len,
-                None,
-            )
-        }
-        .ok()
-        .map(|()| value)
-    }
-
-    /// Código de estado HTTP.
-    pub fn status(&self) -> CoreResult<u32> {
-        self.query_number(HTTP_QUERY_STATUS_CODE)
-            .ok_or_else(|| trust_err("No se pudo leer el código de estado HTTP".into()))
-    }
-
-    /// Falla si el estado no es 200.
-    pub fn require_ok(&self) -> CoreResult<()> {
-        match self.status()? {
-            200 => Ok(()),
-            code => Err(trust_err(format!("Respuesta HTTP no permitida: {code}"))),
-        }
-    }
-
-    /// `Content-Length`, si el servidor lo envió.
-    pub fn content_length(&self) -> Option<u64> {
-        self.query_number(HTTP_QUERY_CONTENT_LENGTH).map(u64::from)
-    }
-
-    /// URL final después de los redireccionamientos.
-    pub fn final_url(&self) -> CoreResult<String> {
-        let mut len: u32 = 0;
-        // SAFETY: primera llamada solo para conocer el tamaño necesario.
-        let _ = unsafe {
-            InternetQueryOptionW(
-                Some(self.request.raw()),
-                INTERNET_OPTION_URL,
-                None,
-                &mut len,
-            )
-        };
-        if len == 0 {
-            return Err(trust_err(
-                "No se pudo verificar la URL final tras redirecciones".into(),
-            ));
-        }
-        let mut buf = vec![0u16; (len as usize / 2) + 1];
-        // SAFETY: `buf` tiene al menos `len` bytes y vive durante la llamada.
-        unsafe {
-            InternetQueryOptionW(
-                Some(self.request.raw()),
-                INTERNET_OPTION_URL,
-                Some(buf.as_mut_ptr() as *mut _),
-                &mut len,
-            )
-        }
-        .map_err(|e| {
-            trust_err(format!(
-                "InternetQueryOptionW(INTERNET_OPTION_URL) falló: {e}"
-            ))
-        })?;
-        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-        Ok(String::from_utf16_lossy(&buf[..end]))
-    }
-
-    /// Lee el siguiente bloque en `buf`. `Ok(0)` al terminar.
-    pub fn read_chunk(&self, buf: &mut [u8]) -> CoreResult<usize> {
-        let mut read: u32 = 0;
-        // SAFETY: `buf` es escribible por `buf.len()` bytes durante la llamada.
-        unsafe {
-            InternetReadFile(
-                self.request.raw(),
-                buf.as_mut_ptr() as *mut _,
-                buf.len() as u32,
-                &mut read,
-            )
-        }
-        .map_err(|e| trust_err(format!("InternetReadFile falló: {e}")))?;
-        Ok(read as usize)
-    }
-
-    /// Lee todo el cuerpo, fallando si pasa de `max_bytes`.
-    pub fn read_to_end_capped(&self, max_bytes: usize) -> CoreResult<Vec<u8>> {
-        let mut out = Vec::new();
-        let mut chunk = [0u8; 8192];
-        loop {
-            let n = self.read_chunk(&mut chunk)?;
-            if n == 0 {
-                return Ok(out);
-            }
-            out.extend_from_slice(&chunk[..n]);
-            if out.len() > max_bytes {
-                return Err(trust_err(format!(
-                    "La respuesta excede el tamaño máximo esperado ({max_bytes} bytes)"
-                )));
-            }
-        }
-    }
 }
 
 #[cfg(test)]

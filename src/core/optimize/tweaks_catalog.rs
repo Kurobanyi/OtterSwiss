@@ -3,85 +3,7 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::core::platform::registry::RegHive;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RegValueKind {
-    Dword,
-    Qword,
-    Sz,
-    ExpandSz,
-    Binary,
-}
-
-impl RegValueKind {
-    pub fn win32_type(self) -> u32 {
-        match self {
-            Self::Sz => 1,       // REG_SZ
-            Self::ExpandSz => 2, // REG_EXPAND_SZ
-            Self::Binary => 3,   // REG_BINARY
-            Self::Dword => 4,    // REG_DWORD
-            Self::Qword => 11,   // REG_QWORD
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RegTargetValue {
-    Dword(u32),
-    Sz(&'static str),
-    Binary(&'static [u8]),
-}
-
-impl RegTargetValue {
-    pub fn kind(&self) -> RegValueKind {
-        match self {
-            Self::Dword(_) => RegValueKind::Dword,
-            Self::Sz(_) => RegValueKind::Sz,
-            Self::Binary(_) => RegValueKind::Binary,
-        }
-    }
-
-    pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            Self::Dword(v) => v.to_le_bytes().to_vec(),
-            Self::Sz(s) => s
-                .encode_utf16()
-                .chain(std::iter::once(0))
-                .flat_map(|u| u.to_le_bytes())
-                .collect(),
-            Self::Binary(b) => b.to_vec(),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RegistryTweakSpec {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub description: &'static str,
-    pub hive: RegHive,
-    pub subkey: &'static str,
-    pub value_name: &'static str,
-    pub value: RegTargetValue,
-    pub min_tier: HardwareTier,
-    pub applies_to_low_end: bool,
-    pub requires_relogon: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ServiceTargetAction {
-    DisableAndStop,
-    ManualStart,
-}
-
-#[derive(Debug, Clone)]
-pub struct ServiceTweakSpec {
-    pub id: &'static str,
-    pub service_name: &'static str,
-    pub label: &'static str,
-    pub action: ServiceTargetAction,
-    pub min_tier: HardwareTier,
-    pub applies_to_low_end: bool,
-}
+pub use crate::core::platform::services::is_valid_service_start_type;
 
 /// Tabla única de verdad (patrón 4 de docs/BUGS.md): usada tanto por el motor para aplicar
 /// como por `backup.rs` y `registry.rs` para validar cada clave, valor y tipo.
@@ -223,6 +145,86 @@ pub const SERVICE_TWEAKS: &[ServiceTweakSpec] = &[
     },
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RegValueKind {
+    Dword,
+    Qword,
+    Sz,
+    ExpandSz,
+    Binary,
+}
+
+impl RegValueKind {
+    pub fn win32_type(self) -> u32 {
+        match self {
+            Self::Sz => 1,       // REG_SZ
+            Self::ExpandSz => 2, // REG_EXPAND_SZ
+            Self::Binary => 3,   // REG_BINARY
+            Self::Dword => 4,    // REG_DWORD
+            Self::Qword => 11,   // REG_QWORD
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegTargetValue {
+    Dword(u32),
+    Sz(&'static str),
+    Binary(&'static [u8]),
+}
+
+impl RegTargetValue {
+    pub fn kind(&self) -> RegValueKind {
+        match self {
+            Self::Dword(_) => RegValueKind::Dword,
+            Self::Sz(_) => RegValueKind::Sz,
+            Self::Binary(_) => RegValueKind::Binary,
+        }
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        match self {
+            Self::Dword(v) => v.to_le_bytes().to_vec(),
+            Self::Sz(s) => s
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .flat_map(|u| u.to_le_bytes())
+                .collect(),
+            Self::Binary(b) => b.to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RegistryTweakSpec {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub hive: RegHive,
+    pub subkey: &'static str,
+    pub value_name: &'static str,
+    pub value: RegTargetValue,
+    pub min_tier: HardwareTier,
+    pub applies_to_low_end: bool,
+    pub requires_relogon: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceTargetAction {
+    DisableAndStop,
+    ManualStart,
+}
+
+#[derive(Debug, Clone)]
+pub struct ServiceTweakSpec {
+    pub id: &'static str,
+    pub service_name: &'static str,
+    pub label: &'static str,
+    pub action: ServiceTargetAction,
+    pub min_tier: HardwareTier,
+    pub applies_to_low_end: bool,
+}
+
 /// Comprueba si una entrada de registro del respaldo coincide exactamente con la tabla única.
 pub fn is_allowed_registry_entry(hive: RegHive, subkey: &str, value_name: &str) -> bool {
     REGISTRY_TWEAKS.iter().any(|spec| {
@@ -238,5 +240,3 @@ pub fn is_allowed_service_name(service_name: &str) -> bool {
         .iter()
         .any(|spec| spec.service_name.eq_ignore_ascii_case(service_name))
 }
-
-pub use crate::core::platform::services::is_valid_service_start_type;

@@ -14,44 +14,6 @@ use super::{InstalledApp, UninstallerManager};
 use crate::core::error::CoreResult;
 use crate::core::platform::safe_fs::is_safe_non_root_dir;
 
-pub(super) fn dir_size_bounded(dir: &Path, max_depth: usize) -> u64 {
-    let mut total = 0u64;
-    let mut stack = vec![(dir.to_path_buf(), 0usize)];
-    while let Some((cur, depth)) = stack.pop() {
-        if depth > max_depth {
-            continue;
-        }
-        let Ok(entries) = std::fs::read_dir(&cur) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let Ok(meta) = entry.metadata() else {
-                continue;
-            };
-            if meta.is_dir() {
-                stack.push((entry.path(), depth + 1));
-            } else {
-                total = total.saturating_add(meta.len());
-            }
-        }
-    }
-    total
-}
-
-pub(super) fn is_safe_app_folder_for_size(dir: &Path) -> bool {
-    if !dir.is_dir() || !is_safe_non_root_dir(dir, 2) {
-        return false;
-    }
-    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
-        return false;
-    };
-    if is_protected_name(name) {
-        return false;
-    }
-    let low = dir.to_string_lossy().to_ascii_lowercase();
-    !low.contains(r"\windows\system32") && !low.contains(r"\windows\syswow64")
-}
-
 impl UninstallerManager {
     pub fn list_installed_apps() -> CoreResult<Vec<InstalledApp>> {
         let mut apps = Vec::new();
@@ -229,4 +191,42 @@ impl UninstallerManager {
 
         sizes
     }
+}
+
+pub(super) fn dir_size_bounded(dir: &Path, max_depth: usize) -> u64 {
+    let mut total = 0u64;
+    let mut stack = vec![(dir.to_path_buf(), 0usize)];
+    while let Some((cur, depth)) = stack.pop() {
+        if depth > max_depth {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&cur) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push((entry.path(), depth + 1));
+            } else {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+pub(super) fn is_safe_app_folder_for_size(dir: &Path) -> bool {
+    if !dir.is_dir() || !is_safe_non_root_dir(dir, 2) {
+        return false;
+    }
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if is_protected_name(name) {
+        return false;
+    }
+    let low = dir.to_string_lossy().to_ascii_lowercase();
+    !low.contains(r"\windows\system32") && !low.contains(r"\windows\syswow64")
 }

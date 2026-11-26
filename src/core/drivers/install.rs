@@ -58,6 +58,33 @@ impl DriverManager {
     }
 }
 
+/// Carpeta temporal solo-admin de un paquete de drivers (`DriverCache\<kind>\<stem>_<nonce>`): se borra al soltarse
+/// (SEC-34).
+pub(super) struct ScratchDir {
+    root: PathBuf,
+    pub(super) dir: PathBuf,
+}
+
+impl ScratchDir {
+    pub(super) fn new(kind: &str, stem: &str) -> CoreResult<Self> {
+        let root = ensure_admin_only_data_dir()?.join("DriverCache").join(kind);
+        std::fs::create_dir_all(&root)?;
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = root.join(format!("{stem}_{nonce}"));
+        create_admin_only_dir(&dir)?;
+        Ok(Self { root, dir })
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = delete_tree_verified(&self.dir, &self.root, 64);
+    }
+}
+
 /// Reabre `path` comprobando de nuevo la firma sobre el handle que se ejecuta y lo corre en un Job hasta que termina.
 fn run_verified_vendor_installer(
     path: &Path,
@@ -88,33 +115,6 @@ fn run_verified_vendor_installer(
             ),
             source: None,
         })
-    }
-}
-
-/// Carpeta temporal solo-admin de un paquete de drivers (`DriverCache\<kind>\<stem>_<nonce>`): se borra al soltarse
-/// (SEC-34).
-pub(super) struct ScratchDir {
-    root: PathBuf,
-    pub(super) dir: PathBuf,
-}
-
-impl ScratchDir {
-    pub(super) fn new(kind: &str, stem: &str) -> CoreResult<Self> {
-        let root = ensure_admin_only_data_dir()?.join("DriverCache").join(kind);
-        std::fs::create_dir_all(&root)?;
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        let dir = root.join(format!("{stem}_{nonce}"));
-        create_admin_only_dir(&dir)?;
-        Ok(Self { root, dir })
-    }
-}
-
-impl Drop for ScratchDir {
-    fn drop(&mut self) {
-        let _ = delete_tree_verified(&self.dir, &self.root, 64);
     }
 }
 

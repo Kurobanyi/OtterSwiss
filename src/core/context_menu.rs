@@ -8,16 +8,6 @@ use crate::core::platform::elevation::ElevationManager;
 use crate::core::platform::folders::{program_files_dir, program_files_x86_dir};
 use crate::core::platform::safe_fs::{canonical_dos_path, path_is_strictly_under};
 
-pub struct ContextMenuManager;
-
-struct MenuEntrySpec {
-    subkey: &'static str,
-    label: &'static str,
-    cmd_template: &'static str,
-    /// Filtro AQS del verbo (`AppliesTo`); `None` = todos los archivos de la clase.
-    applies_to: Option<&'static str>,
-}
-
 const MENU_ENTRIES: &[MenuEntrySpec] = &[
     MenuEntrySpec {
         subkey: r"Software\Classes\Directory\Background\shell\OtterSwiss",
@@ -70,11 +60,14 @@ const MENU_ENTRIES: &[MenuEntrySpec] = &[
     },
 ];
 
-fn notify_shell_assoc_changed() {
-    // SAFETY: notificación sin datos (SHCNE_ASSOCCHANGED con punteros nulos).
-    unsafe {
-        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
-    }
+pub struct ContextMenuManager;
+
+struct MenuEntrySpec {
+    subkey: &'static str,
+    label: &'static str,
+    cmd_template: &'static str,
+    /// Filtro AQS del verbo (`AppliesTo`); `None` = todos los archivos de la clase.
+    applies_to: Option<&'static str>,
 }
 
 impl ContextMenuManager {
@@ -183,6 +176,13 @@ impl ContextMenuManager {
 
         notify_shell_assoc_changed();
         Ok(())
+    }
+}
+
+fn notify_shell_assoc_changed() {
+    // SAFETY: notificación sin datos (SHCNE_ASSOCCHANGED con punteros nulos).
+    unsafe {
+        SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, None, None);
     }
 }
 

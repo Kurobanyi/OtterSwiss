@@ -23,6 +23,20 @@ enum PendingInstall {
     Catalog { uid: String, title: String },
 }
 
+/// Resultado de una instalación ya confirmada: aviso, si pide reinicio y si hubo fallos parciales.
+struct InstallOutcome {
+    message: Msg,
+    reboot: bool,
+    partial: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeviceFilter {
+    All,
+    ErrorsOnly,
+    ThirdPartyOem,
+}
+
 /// Texto fijo del catálogo de Drivers como aviso que se traduce al mostrarse (IN-03).
 fn drv(text: fn(&'static DriversStrings) -> &'static str) -> Msg {
     Msg::new(move |en| text(strings(en).drivers).to_string())
@@ -44,13 +58,6 @@ fn install_message(ok: usize, failed: usize, history_warning: Option<String>) ->
         }
         text
     })
-}
-
-/// Resultado de una instalación ya confirmada: aviso, si pide reinicio y si hubo fallos parciales.
-struct InstallOutcome {
-    message: Msg,
-    reboot: bool,
-    partial: bool,
 }
 
 /// Corre en un hilo bloqueante: respaldo opcional del Driver Store y luego la instalación. Si el respaldo pedido
@@ -88,13 +95,6 @@ fn refresh_driver_history(mut history: Signal<Vec<InstalledDriverRecord>>) {
             history.set(list);
         }
     });
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeviceFilter {
-    All,
-    ErrorsOnly,
-    ThirdPartyOem,
 }
 
 fn trigger_device_scan(

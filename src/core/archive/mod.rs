@@ -18,6 +18,9 @@ use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::safe_fs::delete_verified_file;
 use paths::validate_cli_paths;
 
+/// AR-16: tope de bytes de una extracción (bomba de descompresión), igual en la ventana principal y en la mini.
+pub const DEFAULT_EXTRACT_QUOTA: u64 = 50 * 1024 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveFormat {
     Zip,
@@ -25,37 +28,11 @@ pub enum ArchiveFormat {
     TarGz,
 }
 
-/// AR-16: tope de bytes de una extracción (bomba de descompresión), igual en la ventana principal y en la mini.
-pub const DEFAULT_EXTRACT_QUOTA: u64 = 50 * 1024 * 1024 * 1024;
-
 /// CL-13: qué hace un trabajo del archivador.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArchiveMode {
     Extract,
     Compress,
-}
-
-/// Carpeta junto al archivo con su nombre sin extensión (`datos.tar.gz` → `datos`). No comprueba si existe:
-/// para eso está `resolve_extract_destination`.
-pub fn default_extract_dir(archive: &Path) -> PathBuf {
-    let parent = archive.parent().unwrap_or(archive);
-    let name = archive
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let low = name.to_ascii_lowercase();
-    let stem = if low.ends_with(".tar.gz") {
-        &name[..name.len() - ".tar.gz".len()]
-    } else {
-        archive.file_stem().and_then(|s| s.to_str()).unwrap_or("")
-    };
-    parent.join(if stem.is_empty() { "extracted" } else { stem })
-}
-
-/// `.zip` junto a la ruta, con su nombre completo (UI-15: `mi.proyecto\` da `mi.proyecto.zip`, no `mi.zip`).
-pub fn default_zip_path(src: &Path) -> PathBuf {
-    let name = src.file_name().unwrap_or_default().to_string_lossy();
-    src.parent().unwrap_or(src).join(format!("{name}.zip"))
 }
 
 pub struct ArchiveManager;
@@ -188,6 +165,29 @@ impl ArchiveManager {
         }
         (count, bytes)
     }
+}
+
+/// Carpeta junto al archivo con su nombre sin extensión (`datos.tar.gz` → `datos`). No comprueba si existe:
+/// para eso está `resolve_extract_destination`.
+pub fn default_extract_dir(archive: &Path) -> PathBuf {
+    let parent = archive.parent().unwrap_or(archive);
+    let name = archive
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let low = name.to_ascii_lowercase();
+    let stem = if low.ends_with(".tar.gz") {
+        &name[..name.len() - ".tar.gz".len()]
+    } else {
+        archive.file_stem().and_then(|s| s.to_str()).unwrap_or("")
+    };
+    parent.join(if stem.is_empty() { "extracted" } else { stem })
+}
+
+/// `.zip` junto a la ruta, con su nombre completo (UI-15: `mi.proyecto\` da `mi.proyecto.zip`, no `mi.zip`).
+pub fn default_zip_path(src: &Path) -> PathBuf {
+    let name = src.file_name().unwrap_or_default().to_string_lossy();
+    src.parent().unwrap_or(src).join(format!("{name}.zip"))
 }
 
 #[cfg(test)]

@@ -29,6 +29,85 @@ const MIN_CRITICAL_C: f32 = 20.0;
 /// Filas que se piden a la consulta de sensores de LibreHardwareMonitor.
 const MAX_LHM_SENSORS: usize = 256;
 
+impl SensorSession {
+    pub fn poll_wmi_acpi(&self) -> (Vec<SensorReading>, Option<String>) {
+        let mut readings = Vec::new();
+        // SAFETY: crea el localizador WMI; COM ya está inicializado en el hilo de sondeo (ComGuard).
+        let locator: IWbemLocator =
+            match unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER) } {
+                Ok(l) => l,
+                Err(e) => return (readings, Some(format!("WMI locator no disponible: {}", e))),
+            };
+        readings.extend(poll_external_cpu_wmi(&locator));
+
+        let zones = wmi_query(
+            &locator,
+            r"root\WMI",
+            "SELECT InstanceName, CurrentTemperature, CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
+            16,
+        );
+        for (idx, obj) in zones.iter().enumerate() {
+            let Some(c) = read_wmi_i32(obj, "CurrentTemperature").map(decikelvin_to_c) else {
+                continue;
+            };
+            if !CURRENT_TEMP_C.contains(&c) {
+                continue;
+            }
+            let crit_c = read_wmi_i32(obj, "CriticalTripPoint")
+                .map(decikelvin_to_c)
+                .filter(|v| *v >= MIN_CRITICAL_C && LIMIT_TEMP_C.contains(v));
+            let instance_name = read_wmi_string(obj, "InstanceName")
+                .unwrap_or_else(|| format!("Zona ACPI {}", idx));
+            readings.push(SensorReading {
+                name: format!("ACPI ({})", instance_name),
+                // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
+                sensor_type: "Zona térmica ACPI (WMI)".into(),
+                current_celsius: c,
+                max_celsius: crit_c,
+            });
+        }
+
+        // Respaldo en root\CIMV2 -> Win32_PerfFormattedData_Counters_ThermalZoneInformation
+        if readings.is_empty() {
+            let zones = wmi_query(
+                &locator,
+                r"root\CIMV2",
+                "SELECT Name, Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
+                16,
+            );
+            for (idx, obj) in zones.iter().enumerate() {
+                let hp = read_wmi_i32(obj, "HighPrecisionTemperature")
+                    .map(decikelvin_to_c)
+                    .filter(|c| CURRENT_TEMP_C.contains(c));
+                let std_k = read_wmi_i32(obj, "Temperature")
+                    .map(|k| k as f32 - 273.15)
+                    .filter(|c| CURRENT_TEMP_C.contains(c));
+                let Some(c) = hp.or(std_k) else {
+                    continue;
+                };
+                let zone_name =
+                    read_wmi_string(obj, "Name").unwrap_or_else(|| format!("ThermalZone {}", idx));
+                readings.push(SensorReading {
+                    name: format!("ACPI ({})", zone_name),
+                    sensor_type: "Zona térmica ACPI (PerfCounter)".into(),
+                    current_celsius: c,
+                    max_celsius: None,
+                });
+            }
+        }
+
+        let note = if readings.is_empty() {
+            Some(
+                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo (opcionalmente puedes tener abierto LibreHardwareMonitor en segundo plano)."
+                    .into(),
+            )
+        } else {
+            None
+        };
+        (readings, note)
+    }
+}
+
 /// CL-24: una propiedad de un objeto WMI convertida con `conv` (`VariantToInt32`, `VariantToDouble`…).
 fn read_wmi<T>(
     obj: &IWbemClassObject,
@@ -192,85 +271,6 @@ fn is_cpu_temperature(identifier: &str, name: &str) -> bool {
         && ["cpu", "package", "core", "tctl", "tdie", "ccd"]
             .iter()
             .any(|k| low.contains(k))
-}
-
-impl SensorSession {
-    pub fn poll_wmi_acpi(&self) -> (Vec<SensorReading>, Option<String>) {
-        let mut readings = Vec::new();
-        // SAFETY: crea el localizador WMI; COM ya está inicializado en el hilo de sondeo (ComGuard).
-        let locator: IWbemLocator =
-            match unsafe { CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER) } {
-                Ok(l) => l,
-                Err(e) => return (readings, Some(format!("WMI locator no disponible: {}", e))),
-            };
-        readings.extend(poll_external_cpu_wmi(&locator));
-
-        let zones = wmi_query(
-            &locator,
-            r"root\WMI",
-            "SELECT InstanceName, CurrentTemperature, CriticalTripPoint FROM MSAcpi_ThermalZoneTemperature",
-            16,
-        );
-        for (idx, obj) in zones.iter().enumerate() {
-            let Some(c) = read_wmi_i32(obj, "CurrentTemperature").map(decikelvin_to_c) else {
-                continue;
-            };
-            if !CURRENT_TEMP_C.contains(&c) {
-                continue;
-            }
-            let crit_c = read_wmi_i32(obj, "CriticalTripPoint")
-                .map(decikelvin_to_c)
-                .filter(|v| *v >= MIN_CRITICAL_C && LIMIT_TEMP_C.contains(v));
-            let instance_name = read_wmi_string(obj, "InstanceName")
-                .unwrap_or_else(|| format!("Zona ACPI {}", idx));
-            readings.push(SensorReading {
-                name: format!("ACPI ({})", instance_name),
-                // UI-14: es una zona térmica ACPI; no tiene por qué ser la CPU.
-                sensor_type: "Zona térmica ACPI (WMI)".into(),
-                current_celsius: c,
-                max_celsius: crit_c,
-            });
-        }
-
-        // Respaldo en root\CIMV2 -> Win32_PerfFormattedData_Counters_ThermalZoneInformation
-        if readings.is_empty() {
-            let zones = wmi_query(
-                &locator,
-                r"root\CIMV2",
-                "SELECT Name, Temperature, HighPrecisionTemperature FROM Win32_PerfFormattedData_Counters_ThermalZoneInformation",
-                16,
-            );
-            for (idx, obj) in zones.iter().enumerate() {
-                let hp = read_wmi_i32(obj, "HighPrecisionTemperature")
-                    .map(decikelvin_to_c)
-                    .filter(|c| CURRENT_TEMP_C.contains(c));
-                let std_k = read_wmi_i32(obj, "Temperature")
-                    .map(|k| k as f32 - 273.15)
-                    .filter(|c| CURRENT_TEMP_C.contains(c));
-                let Some(c) = hp.or(std_k) else {
-                    continue;
-                };
-                let zone_name =
-                    read_wmi_string(obj, "Name").unwrap_or_else(|| format!("ThermalZone {}", idx));
-                readings.push(SensorReading {
-                    name: format!("ACPI ({})", zone_name),
-                    sensor_type: "Zona térmica ACPI (PerfCounter)".into(),
-                    current_celsius: c,
-                    max_celsius: None,
-                });
-            }
-        }
-
-        let note = if readings.is_empty() {
-            Some(
-                "Esta placa base de escritorio no expone sensores de CPU en ACPI/WMI sin un driver kernel externo (opcionalmente puedes tener abierto LibreHardwareMonitor en segundo plano)."
-                    .into(),
-            )
-        } else {
-            None
-        };
-        (readings, note)
-    }
 }
 
 #[cfg(test)]

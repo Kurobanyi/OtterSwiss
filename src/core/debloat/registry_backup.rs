@@ -69,10 +69,6 @@ pub(super) struct DebloatBackupDoc {
     entries: Vec<DebloatRegSnapshot>,
 }
 
-pub(super) fn debloat_backup_path() -> CoreResult<PathBuf> {
-    Ok(ensure_admin_only_data_dir()?.join("debloat_backup.json"))
-}
-
 impl DebloaterManager {
     /// Lee `debloat_backup.json`. Si existe y no se puede leer, falla (nunca se asume vacío); si trae
     /// entradas que no son del catálogo, falla: el archivo fue manipulado.
@@ -251,6 +247,10 @@ impl DebloaterManager {
             }
         }
     }
+}
+
+pub(super) fn debloat_backup_path() -> CoreResult<PathBuf> {
+    Ok(ensure_admin_only_data_dir()?.join("debloat_backup.json"))
 }
 
 #[cfg(test)]

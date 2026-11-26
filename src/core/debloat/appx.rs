@@ -27,80 +27,6 @@ struct PsAppxEntry {
     package_name: Option<String>,
 }
 
-pub(super) fn get_powershell_path() -> CoreResult<PathBuf> {
-    let mut buf = [0u16; 260];
-    let len =
-        // SAFETY: el búfer es nuestro y la API escribe como mucho su longitud.
-        unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
-            as usize;
-    if len == 0 || len >= buf.len() {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo localizar System32 para PowerShell".into(),
-            source: None,
-        });
-    }
-    let sys_dir = String::from_utf16_lossy(&buf[..len]);
-    let ps = Path::new(&sys_dir).join(r"WindowsPowerShell\v1.0\powershell.exe");
-    if !ps.is_file() {
-        return Err(CoreError::SystemTool {
-            message: format!("No se encontró powershell.exe en '{}'", ps.display()),
-            source: None,
-        });
-    }
-    Ok(ps)
-}
-
-pub(super) fn is_valid_package_ident(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 220
-        && s.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '~'))
-}
-
-/// Ejecuta un script de PowerShell y devuelve su salida estándar. Las salidas se leen en hilos mientras el
-/// proceso corre: si solo se leyeran al final, un error largo llenaría el pipe y PowerShell se quedaría
-/// bloqueado hasta el timeout (ERR-01).
-pub(super) fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResult<String> {
-    let out = run_captured(
-        ps_path,
-        &[
-            "-NoProfile",
-            "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ],
-        Duration::from_millis(timeout_ms),
-    )?;
-    if out.success {
-        Ok(out.stdout)
-    } else {
-        Err(CoreError::SystemTool {
-            message: if out.stderr.is_empty() {
-                format!("PowerShell finalizó con código {:?}", out.code)
-            } else {
-                out.stderr
-            },
-            source: None,
-        })
-    }
-}
-
-/// `ConvertTo-Json` devuelve un objeto suelto (no una lista) cuando hay un solo elemento.
-fn parse_ps_json(txt: &str, what: &str) -> CoreResult<Vec<PsAppxEntry>> {
-    let t = txt.trim();
-    let parsed = if t.starts_with('{') {
-        serde_json::from_str::<PsAppxEntry>(t).map(|e| vec![e])
-    } else {
-        serde_json::from_str::<Vec<PsAppxEntry>>(t)
-    };
-    parsed.map_err(|e| CoreError::SystemTool {
-        message: format!("No se pudo interpretar la salida de {}: {}", what, e),
-        source: Some(Box::new(e)),
-    })
-}
-
 impl DebloaterManager {
     pub fn scan_system() -> CoreResult<DebloatScanResult> {
         // ERR-05: sin elevación `Get-AppxPackage -AllUsers` falla con acceso denegado y, con
@@ -182,6 +108,80 @@ impl DebloaterManager {
             has_reg_backup,
         })
     }
+}
+
+pub(super) fn get_powershell_path() -> CoreResult<PathBuf> {
+    let mut buf = [0u16; 260];
+    let len =
+        // SAFETY: el búfer es nuestro y la API escribe como mucho su longitud.
+        unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
+            as usize;
+    if len == 0 || len >= buf.len() {
+        return Err(CoreError::SystemTool {
+            message: "No se pudo localizar System32 para PowerShell".into(),
+            source: None,
+        });
+    }
+    let sys_dir = String::from_utf16_lossy(&buf[..len]);
+    let ps = Path::new(&sys_dir).join(r"WindowsPowerShell\v1.0\powershell.exe");
+    if !ps.is_file() {
+        return Err(CoreError::SystemTool {
+            message: format!("No se encontró powershell.exe en '{}'", ps.display()),
+            source: None,
+        });
+    }
+    Ok(ps)
+}
+
+pub(super) fn is_valid_package_ident(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 220
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '~'))
+}
+
+/// Ejecuta un script de PowerShell y devuelve su salida estándar. Las salidas se leen en hilos mientras el
+/// proceso corre: si solo se leyeran al final, un error largo llenaría el pipe y PowerShell se quedaría
+/// bloqueado hasta el timeout (ERR-01).
+pub(super) fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResult<String> {
+    let out = run_captured(
+        ps_path,
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        Duration::from_millis(timeout_ms),
+    )?;
+    if out.success {
+        Ok(out.stdout)
+    } else {
+        Err(CoreError::SystemTool {
+            message: if out.stderr.is_empty() {
+                format!("PowerShell finalizó con código {:?}", out.code)
+            } else {
+                out.stderr
+            },
+            source: None,
+        })
+    }
+}
+
+/// `ConvertTo-Json` devuelve un objeto suelto (no una lista) cuando hay un solo elemento.
+fn parse_ps_json(txt: &str, what: &str) -> CoreResult<Vec<PsAppxEntry>> {
+    let t = txt.trim();
+    let parsed = if t.starts_with('{') {
+        serde_json::from_str::<PsAppxEntry>(t).map(|e| vec![e])
+    } else {
+        serde_json::from_str::<Vec<PsAppxEntry>>(t)
+    };
+    parsed.map_err(|e| CoreError::SystemTool {
+        message: format!("No se pudo interpretar la salida de {}: {}", what, e),
+        source: Some(Box::new(e)),
+    })
 }
 
 #[cfg(test)]

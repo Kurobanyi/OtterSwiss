@@ -55,82 +55,6 @@ pub(super) const PROTECTED_DIR_NAMES: &[&str] = &[
     "realtek",
 ];
 
-pub(super) fn is_protected_name(name: &str) -> bool {
-    let clean = name.trim().to_ascii_lowercase();
-    if clean.len() < 3 {
-        return true;
-    }
-    PROTECTED_DIR_NAMES.iter().any(|&p| clean == p)
-}
-
-pub(super) fn sanitize_token(raw: &str) -> Option<String> {
-    let cleaned: String = raw
-        .trim()
-        .chars()
-        .filter(|c| !matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
-        .collect();
-    let trimmed = cleaned.trim();
-    if trimmed.len() < 3 || is_protected_name(trimmed) {
-        return None;
-    }
-    Some(trimmed.to_string())
-}
-
-pub(super) fn build_app_tokens(app: &InstalledApp) -> (Vec<String>, Option<String>) {
-    let mut names = Vec::new();
-    let mut seen = HashSet::new();
-
-    let mut push_token = |raw: &str| {
-        if let Some(tok) = sanitize_token(raw) {
-            let low = tok.to_ascii_lowercase();
-            if seen.insert(low) {
-                names.push(tok);
-            }
-        }
-    };
-
-    push_token(&app.display_name);
-
-    let stripped_parens = app
-        .display_name
-        .split('(')
-        .next()
-        .unwrap_or(&app.display_name)
-        .trim();
-    push_token(stripped_parens);
-
-    let words: Vec<&str> = stripped_parens.split_whitespace().collect();
-    if words.len() >= 2 {
-        let last = words[words.len() - 1];
-        if last.chars().next().is_some_and(|c| c.is_ascii_digit())
-            || (last.starts_with('v')
-                && last[1..].chars().next().is_some_and(|c| c.is_ascii_digit()))
-        {
-            push_token(&words[..words.len() - 1].join(" "));
-        }
-    }
-
-    if let Some(ref loc) = app.install_location
-        && let Some(folder) = loc.file_name().and_then(|n| n.to_str())
-        && !GENERIC_FOLDER_TOKENS.contains(&folder.trim().to_ascii_lowercase().as_str())
-    {
-        push_token(folder);
-    }
-
-    let pub_clean = sanitize_token(&app.publisher);
-    (names, pub_clean)
-}
-
-/// Coincidencia **exacta** (sin distinguir mayúsculas). Una subcadena marcaba datos de otras apps:
-/// «Python» coincidía con `Python312`, «Office» con `LibreOffice`, «Games» con `Epic Games`.
-pub(super) fn matches_any_token(candidate: &str, tokens: &[String]) -> bool {
-    let low = candidate.trim().to_ascii_lowercase();
-    if low.len() < 3 || is_protected_name(&low) {
-        return false;
-    }
-    tokens.iter().any(|t| low == t.to_ascii_lowercase())
-}
-
 /// Nombres de carpeta demasiado genéricos para atribuirlos a una sola app.
 pub(super) const GENERIC_FOLDER_TOKENS: &[&str] = &[
     "games",
@@ -148,87 +72,6 @@ pub(super) const GENERIC_FOLDER_TOKENS: &[&str] = &[
     "launcher",
     "client",
 ];
-
-/// Qué se marca por defecto en el modal de rastros.
-pub(super) fn is_recommended_leftover(
-    item: &LeftoverItem,
-    app_tokens: &[String],
-    publisher: Option<&str>,
-) -> bool {
-    // Datos y ajustes del usuario: se muestran, pero el usuario decide.
-    if item.category.starts_with("AppData") || item.category == "Registro HKCU\\Software" {
-        return false;
-    }
-    // Carpeta o clave de todo el fabricante (puede contener datos de otras apps suyas).
-    let leaf = item
-        .path
-        .as_ref()
-        .and_then(|p| p.file_name())
-        .map(|n| n.to_string_lossy().to_ascii_lowercase())
-        .or_else(|| {
-            item.reg_subkey
-                .as_ref()
-                .and_then(|k| k.rsplit('\\').next())
-                .map(|n| n.to_ascii_lowercase())
-        });
-    if let (Some(leaf), Some(publisher)) = (leaf, publisher)
-        && leaf == publisher
-        && !app_tokens.contains(&leaf)
-    {
-        return false;
-    }
-    true
-}
-
-pub(super) fn push_dir_candidate(
-    cat: &str,
-    dir: PathBuf,
-    seen_paths: &mut HashSet<String>,
-    items: &mut Vec<LeftoverItem>,
-) {
-    let key = path_key(&dir);
-    if !seen_paths.insert(key) {
-        return;
-    }
-    if !dir.is_dir() || !is_safe_non_root_dir(&dir, 2) {
-        return;
-    }
-    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
-        return;
-    };
-    if is_protected_name(name) {
-        return;
-    }
-    let sz = dir_size_bounded(&dir, 10);
-    items.push(LeftoverItem {
-        id: format!("dir:{}", dir.display()),
-        kind: LeftoverKind::Directory,
-        category: cat.to_string(),
-        target_display: dir.display().to_string(),
-        path: Some(dir),
-        reg_location: reg_location(false, false),
-        reg_subkey: None,
-        reg_value_name: None,
-        size_bytes: sz,
-        recommended: true,
-    });
-}
-
-/// CL-04: convierte los datos de la entrada Uninstall (por usuario, 32 bits) a una ubicación de registro.
-pub(super) fn reg_location(is_hkcu: bool, wow64_32: bool) -> RegLocation {
-    RegLocation {
-        hive: if is_hkcu {
-            RegHive::Hkcu
-        } else {
-            RegHive::Hklm
-        },
-        view: if wow64_32 && !is_hkcu {
-            RegView::Wow64_32
-        } else {
-            RegView::Native
-        },
-    }
-}
 
 impl UninstallerManager {
     pub fn scan_leftovers(app: &InstalledApp) -> CoreResult<Vec<LeftoverItem>> {
@@ -570,5 +413,162 @@ impl<'a> LeftoverScan<'a> {
                 is_recommended_leftover(item, &app_tokens_low, publisher_low.as_deref());
         }
         self.items
+    }
+}
+
+pub(super) fn is_protected_name(name: &str) -> bool {
+    let clean = name.trim().to_ascii_lowercase();
+    if clean.len() < 3 {
+        return true;
+    }
+    PROTECTED_DIR_NAMES.iter().any(|&p| clean == p)
+}
+
+pub(super) fn sanitize_token(raw: &str) -> Option<String> {
+    let cleaned: String = raw
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'))
+        .collect();
+    let trimmed = cleaned.trim();
+    if trimmed.len() < 3 || is_protected_name(trimmed) {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+pub(super) fn build_app_tokens(app: &InstalledApp) -> (Vec<String>, Option<String>) {
+    let mut names = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut push_token = |raw: &str| {
+        if let Some(tok) = sanitize_token(raw) {
+            let low = tok.to_ascii_lowercase();
+            if seen.insert(low) {
+                names.push(tok);
+            }
+        }
+    };
+
+    push_token(&app.display_name);
+
+    let stripped_parens = app
+        .display_name
+        .split('(')
+        .next()
+        .unwrap_or(&app.display_name)
+        .trim();
+    push_token(stripped_parens);
+
+    let words: Vec<&str> = stripped_parens.split_whitespace().collect();
+    if words.len() >= 2 {
+        let last = words[words.len() - 1];
+        if last.chars().next().is_some_and(|c| c.is_ascii_digit())
+            || (last.starts_with('v')
+                && last[1..].chars().next().is_some_and(|c| c.is_ascii_digit()))
+        {
+            push_token(&words[..words.len() - 1].join(" "));
+        }
+    }
+
+    if let Some(ref loc) = app.install_location
+        && let Some(folder) = loc.file_name().and_then(|n| n.to_str())
+        && !GENERIC_FOLDER_TOKENS.contains(&folder.trim().to_ascii_lowercase().as_str())
+    {
+        push_token(folder);
+    }
+
+    let pub_clean = sanitize_token(&app.publisher);
+    (names, pub_clean)
+}
+
+/// Coincidencia **exacta** (sin distinguir mayúsculas). Una subcadena marcaba datos de otras apps:
+/// «Python» coincidía con `Python312`, «Office» con `LibreOffice`, «Games» con `Epic Games`.
+pub(super) fn matches_any_token(candidate: &str, tokens: &[String]) -> bool {
+    let low = candidate.trim().to_ascii_lowercase();
+    if low.len() < 3 || is_protected_name(&low) {
+        return false;
+    }
+    tokens.iter().any(|t| low == t.to_ascii_lowercase())
+}
+
+/// Qué se marca por defecto en el modal de rastros.
+pub(super) fn is_recommended_leftover(
+    item: &LeftoverItem,
+    app_tokens: &[String],
+    publisher: Option<&str>,
+) -> bool {
+    // Datos y ajustes del usuario: se muestran, pero el usuario decide.
+    if item.category.starts_with("AppData") || item.category == "Registro HKCU\\Software" {
+        return false;
+    }
+    // Carpeta o clave de todo el fabricante (puede contener datos de otras apps suyas).
+    let leaf = item
+        .path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .or_else(|| {
+            item.reg_subkey
+                .as_ref()
+                .and_then(|k| k.rsplit('\\').next())
+                .map(|n| n.to_ascii_lowercase())
+        });
+    if let (Some(leaf), Some(publisher)) = (leaf, publisher)
+        && leaf == publisher
+        && !app_tokens.contains(&leaf)
+    {
+        return false;
+    }
+    true
+}
+
+pub(super) fn push_dir_candidate(
+    cat: &str,
+    dir: PathBuf,
+    seen_paths: &mut HashSet<String>,
+    items: &mut Vec<LeftoverItem>,
+) {
+    let key = path_key(&dir);
+    if !seen_paths.insert(key) {
+        return;
+    }
+    if !dir.is_dir() || !is_safe_non_root_dir(&dir, 2) {
+        return;
+    }
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    if is_protected_name(name) {
+        return;
+    }
+    let sz = dir_size_bounded(&dir, 10);
+    items.push(LeftoverItem {
+        id: format!("dir:{}", dir.display()),
+        kind: LeftoverKind::Directory,
+        category: cat.to_string(),
+        target_display: dir.display().to_string(),
+        path: Some(dir),
+        reg_location: reg_location(false, false),
+        reg_subkey: None,
+        reg_value_name: None,
+        size_bytes: sz,
+        recommended: true,
+    });
+}
+
+/// CL-04: convierte los datos de la entrada Uninstall (por usuario, 32 bits) a una ubicación de registro.
+pub(super) fn reg_location(is_hkcu: bool, wow64_32: bool) -> RegLocation {
+    RegLocation {
+        hive: if is_hkcu {
+            RegHive::Hkcu
+        } else {
+            RegHive::Hklm
+        },
+        view: if wow64_32 && !is_hkcu {
+            RegView::Wow64_32
+        } else {
+            RegView::Native
+        },
     }
 }

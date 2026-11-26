@@ -97,20 +97,6 @@ pub struct RollbackReport {
     pub backup_deleted: bool,
 }
 
-/// Decide si un ajuste entra en el perfil para el nivel de hardware efectivo (una sola regla para el
-/// plan que se muestra y para lo que se aplica).
-pub fn tweak_is_eligible(
-    tier: HardwareTier,
-    min_tier: HardwareTier,
-    applies_to_low_end: bool,
-) -> bool {
-    match tier {
-        HardwareTier::LowEnd => applies_to_low_end,
-        HardwareTier::MidRange => matches!(min_tier, HardwareTier::LowEnd | HardwareTier::MidRange),
-        HardwareTier::HighEnd => true,
-    }
-}
-
 pub struct OptimizationEngine {
     backup_mgr: BackupManager,
 }
@@ -707,6 +693,20 @@ impl<'a> StepRecorder<'a> {
             requires_relogon: self.requires_relogon,
             step_results: self.step_results,
         }
+    }
+}
+
+/// Decide si un ajuste entra en el perfil para el nivel de hardware efectivo (una sola regla para el
+/// plan que se muestra y para lo que se aplica).
+pub fn tweak_is_eligible(
+    tier: HardwareTier,
+    min_tier: HardwareTier,
+    applies_to_low_end: bool,
+) -> bool {
+    match tier {
+        HardwareTier::LowEnd => applies_to_low_end,
+        HardwareTier::MidRange => matches!(min_tier, HardwareTier::LowEnd | HardwareTier::MidRange),
+        HardwareTier::HighEnd => true,
     }
 }
 

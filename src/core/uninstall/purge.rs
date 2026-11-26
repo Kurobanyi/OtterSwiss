@@ -21,73 +21,6 @@ use crate::core::platform::safe_fs::{
 use crate::core::security::data_dir::get_program_data_dir;
 use crate::core::security::data_dir::reg_backups_dir;
 
-/// Exporta `subkey` con `reg.exe export` a `ProgramData\OtterSwiss\RegBackups`, para poder restaurarla
-/// con doble clic si se borró algo que no se debía.
-pub(super) fn export_registry_key(loc: RegLocation, subkey: &str) -> CoreResult<PathBuf> {
-    let dir = reg_backups_dir()?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let leaf: String = subkey
-        .rsplit('\\')
-        .next()
-        .unwrap_or("clave")
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(60)
-        .collect();
-    let file = dir.join(format!("{}_{}.reg", stamp, leaf));
-    let full_key = format!("{}\\{}", loc.hive.as_str(), subkey);
-
-    let mut args = vec![
-        "export".to_string(),
-        full_key.clone(),
-        file.to_string_lossy().into_owned(),
-        "/y".to_string(),
-    ];
-    if let Some(view) = loc.reg_exe_view_arg() {
-        args.push(view.to_string());
-    }
-    let out = run_captured(
-        &system32_dir()?.join("reg.exe"),
-        &args,
-        std::time::Duration::from_secs(60),
-    )?;
-    if !out.success || !file.is_file() {
-        return Err(CoreError::Uninstaller {
-            message: format!(
-                "No se pudo respaldar '{}' antes de borrarla; no se borró: {}",
-                full_key, out.stderr
-            ),
-            source: None,
-        });
-    }
-    Ok(file)
-}
-
-pub(super) fn is_safe_registry_subkey_to_delete(subkey: &str) -> bool {
-    let low = subkey.trim().to_ascii_lowercase();
-    if !low.starts_with("software\\") {
-        return false;
-    }
-    let rest = &low["software\\".len()..];
-    !(rest.is_empty()
-        || rest == "microsoft"
-        || rest == "classes"
-        || rest == "policies"
-        || rest == "wow6432node"
-        || rest == r"microsoft\windows\currentversion\uninstall"
-        || (rest.starts_with("microsoft\\windows\\")
-            && !rest.starts_with(r"microsoft\windows\currentversion\uninstall\")))
-}
-
 impl UninstallerManager {
     pub fn purge_leftover_items(items: &[LeftoverItem]) -> PurgeReport {
         let mut report = PurgeReport::default();
@@ -277,4 +210,71 @@ impl UninstallerManager {
     pub fn purge_leftovers(target: &Path) -> CoreResult<()> {
         Self::purge_leftovers_verified_dir(target)
     }
+}
+
+/// Exporta `subkey` con `reg.exe export` a `ProgramData\OtterSwiss\RegBackups`, para poder restaurarla
+/// con doble clic si se borró algo que no se debía.
+pub(super) fn export_registry_key(loc: RegLocation, subkey: &str) -> CoreResult<PathBuf> {
+    let dir = reg_backups_dir()?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let leaf: String = subkey
+        .rsplit('\\')
+        .next()
+        .unwrap_or("clave")
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .take(60)
+        .collect();
+    let file = dir.join(format!("{}_{}.reg", stamp, leaf));
+    let full_key = format!("{}\\{}", loc.hive.as_str(), subkey);
+
+    let mut args = vec![
+        "export".to_string(),
+        full_key.clone(),
+        file.to_string_lossy().into_owned(),
+        "/y".to_string(),
+    ];
+    if let Some(view) = loc.reg_exe_view_arg() {
+        args.push(view.to_string());
+    }
+    let out = run_captured(
+        &system32_dir()?.join("reg.exe"),
+        &args,
+        std::time::Duration::from_secs(60),
+    )?;
+    if !out.success || !file.is_file() {
+        return Err(CoreError::Uninstaller {
+            message: format!(
+                "No se pudo respaldar '{}' antes de borrarla; no se borró: {}",
+                full_key, out.stderr
+            ),
+            source: None,
+        });
+    }
+    Ok(file)
+}
+
+pub(super) fn is_safe_registry_subkey_to_delete(subkey: &str) -> bool {
+    let low = subkey.trim().to_ascii_lowercase();
+    if !low.starts_with("software\\") {
+        return false;
+    }
+    let rest = &low["software\\".len()..];
+    !(rest.is_empty()
+        || rest == "microsoft"
+        || rest == "classes"
+        || rest == "policies"
+        || rest == "wow6432node"
+        || rest == r"microsoft\windows\currentversion\uninstall"
+        || (rest.starts_with("microsoft\\windows\\")
+            && !rest.starts_with(r"microsoft\windows\currentversion\uninstall\")))
 }

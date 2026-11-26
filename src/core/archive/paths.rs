@@ -11,6 +11,10 @@ pub(super) const RESERVED_NAMES: &[&str] = &[
     "LPT9",
 ];
 
+/// Profundidad máxima de rutas dentro de un archivo comprimido. La limpieza usa el mismo límite, así que
+/// nunca queda un staging a medio borrar (ERR-08).
+pub(super) const MAX_ARCHIVE_DEPTH: usize = 48;
+
 pub fn is_reserved_windows_name(name: &str) -> bool {
     let stem = name.split('.').next().unwrap_or(name).trim();
     RESERVED_NAMES.iter().any(|&r| stem.eq_ignore_ascii_case(r))
@@ -106,10 +110,6 @@ pub(super) fn validate_cli_paths(src: &Path, dst: &Path) -> CoreResult<()> {
     }
     Ok(())
 }
-
-/// Profundidad máxima de rutas dentro de un archivo comprimido. La limpieza usa el mismo límite, así que
-/// nunca queda un staging a medio borrar (ERR-08).
-pub(super) const MAX_ARCHIVE_DEPTH: usize = 48;
 
 /// Destino real de una extracción: si `dest` ya existe, la carpeta hermana libre `dest (2)`, `dest (3)`…
 /// Extraer nunca borra ni mezcla una carpeta existente (SYS-01).

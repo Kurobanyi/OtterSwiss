@@ -12,19 +12,6 @@ use crate::core::platform::process::{Launch, run_in_job};
 use crate::core::security::download::StagedDownload;
 use crate::core::security::download::{DownloadPolicy, reopen_verified_for_exec};
 
-#[derive(Debug, Clone)]
-pub struct RuntimeDependency {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub description: &'static str,
-    pub url: &'static str,
-    pub allowed_hosts: &'static [&'static str],
-    pub expected_sha256: Option<&'static str>,
-    pub signer_cn: Option<&'static str>,
-    pub silent_args: &'static str,
-    pub max_bytes: u64,
-}
-
 static RUNTIME_CATALOG: &[RuntimeDependency] = &[
     RuntimeDependency {
         id: "vcredist_x64",
@@ -118,6 +105,19 @@ static RUNTIME_CATALOG: &[RuntimeDependency] = &[
         max_bytes: 180 * 1024 * 1024,
     },
 ];
+
+#[derive(Debug, Clone)]
+pub struct RuntimeDependency {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub description: &'static str,
+    pub url: &'static str,
+    pub allowed_hosts: &'static [&'static str],
+    pub expected_sha256: Option<&'static str>,
+    pub signer_cn: Option<&'static str>,
+    pub silent_args: &'static str,
+    pub max_bytes: u64,
+}
 
 pub struct DependencyManager;
 
