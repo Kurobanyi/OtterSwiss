@@ -1,6 +1,16 @@
-//! IN-02: textos de la ventana (aviso de actualización) y de la cola de instalación.
+//! IN-02: textos de la ventana (título, aviso de actualización), de la cola de instalación y de los diálogos
+//! nativos que salen antes de abrir Dioxus (WebView2 que falta, error inesperado).
 
 pub struct ShellStrings {
+    pub window_title: &'static str,
+    pub window_title_archiver: &'static str,
+    pub webview2_title: &'static str,
+    pub webview2_ask: &'static str,
+    pub webview2_not_detected: &'static str,
+    pub webview2_failed: fn(&dyn std::fmt::Display) -> String,
+    pub panic_title: &'static str,
+    pub panic_intro: &'static str,
+    pub panic_unknown: &'static str,
     pub download_and_install: &'static str,
     pub release_notes: &'static str,
     pub update_available_v: fn(&dyn std::fmt::Display) -> String,
@@ -12,6 +22,21 @@ pub struct ShellStrings {
 }
 
 pub static ES: ShellStrings = ShellStrings {
+    window_title: "OtterSwiss — Suite Nativa Win32",
+    window_title_archiver: "OtterSwiss — Archivador",
+    webview2_title: "OtterSwiss — Falta WebView2",
+    webview2_ask: "OtterSwiss necesita Microsoft Edge WebView2 Runtime para mostrar su ventana y no está instalado.\n\n\
+        ¿Descargarlo e instalarlo ahora desde Microsoft? (unos 2 MB, verificado antes de ejecutarse)",
+    webview2_not_detected: "WebView2 se instaló pero todavía no se detecta. Vuelve a abrir OtterSwiss.",
+    webview2_failed: |e| {
+        format!(
+            "No se pudo instalar WebView2: {e}\n\nInstálalo desde \
+             https://developer.microsoft.com/microsoft-edge/webview2/ y vuelve a abrir OtterSwiss."
+        )
+    },
+    panic_title: "OtterSwiss — Error inesperado",
+    panic_intro: "OtterSwiss se cerró por un error inesperado:",
+    panic_unknown: "error desconocido",
     download_and_install: "Descargar e instalar",
     release_notes: "Notas de la versión:",
     update_available_v: |a0| format!("Actualización disponible: v{a0}"),
@@ -25,6 +50,21 @@ pub static ES: ShellStrings = ShellStrings {
 };
 
 pub static EN: ShellStrings = ShellStrings {
+    window_title: "OtterSwiss — Native Win32 Suite",
+    window_title_archiver: "OtterSwiss — Archiver",
+    webview2_title: "OtterSwiss — WebView2 required",
+    webview2_ask: "OtterSwiss needs the Microsoft Edge WebView2 Runtime to show its window, and it is not installed.\n\n\
+        Download and install it now from Microsoft? (about 2 MB, verified before running)",
+    webview2_not_detected: "WebView2 was installed but is not detected yet. Restart OtterSwiss.",
+    webview2_failed: |e| {
+        format!(
+            "WebView2 could not be installed: {e}\n\nInstall it from \
+             https://developer.microsoft.com/microsoft-edge/webview2/ and open OtterSwiss again."
+        )
+    },
+    panic_title: "OtterSwiss — Unexpected error",
+    panic_intro: "OtterSwiss closed because of an unexpected error:",
+    panic_unknown: "unknown error",
     download_and_install: "Download and Install",
     release_notes: "Release Notes:",
     update_available_v: |a0| format!("Update available: v{a0}"),
@@ -45,7 +85,18 @@ mod tests {
     #[test]
     fn textos_completos() {
         for s in [&ES, &EN] {
-            for f in [s.download_and_install, s.release_notes] {
+            for f in [
+                s.download_and_install,
+                s.release_notes,
+                s.window_title,
+                s.window_title_archiver,
+                s.webview2_title,
+                s.webview2_ask,
+                s.webview2_not_detected,
+                s.panic_title,
+                s.panic_intro,
+                s.panic_unknown,
+            ] {
                 assert!(!f.trim().is_empty());
             }
         }

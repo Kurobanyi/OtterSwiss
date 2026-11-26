@@ -89,3 +89,9 @@ impl Lang {
 pub fn strings(en: bool) -> &'static Strings {
     if en { &strings::EN } else { &strings::ES }
 }
+
+/// Elige entre los dos textos de un dato bilingüe de core (la política de privacidad de un proveedor de DNS, la
+/// descripción de una app de la tienda): core guarda el par y la interfaz escoge según el idioma.
+pub fn pick<'a>(en: bool, es_text: &'a str, en_text: &'a str) -> &'a str {
+    if en { en_text } else { es_text }
+}

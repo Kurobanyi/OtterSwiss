@@ -780,25 +780,15 @@ pub enum AppCategory {
 }
 
 impl AppCategory {
-    pub fn label(&self, en: bool) -> &'static str {
-        if en {
-            match self {
-                Self::Gaming => "Gaming & Launchers",
-                Self::Communication => "Communication & Media",
-                Self::Utilities => "Utilities & System Tools",
-                Self::Browsers => "Web Browsers",
-                Self::Development => "Development & Editors",
-                Self::UwpRestoration => "Windows UWP & Store (Restoration)",
-            }
-        } else {
-            match self {
-                Self::Gaming => "Gaming y Launchers",
-                Self::Communication => "Comunicación y Multimedia",
-                Self::Utilities => "Utilidades y Sistema",
-                Self::Browsers => "Navegadores Web",
-                Self::Development => "Desarrollo y Editores",
-                Self::UwpRestoration => "Aplicaciones UWP y Windows (Restauración)",
-            }
+    /// Nombre en español; la interfaz lo traduce con `ui::i18n::core_text::tr` (UI-11, IN-02).
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Gaming => "Gaming y Launchers",
+            Self::Communication => "Comunicación y Multimedia",
+            Self::Utilities => "Utilidades y Sistema",
+            Self::Browsers => "Navegadores Web",
+            Self::Development => "Desarrollo y Editores",
+            Self::UwpRestoration => "Aplicaciones UWP y Windows (Restauración)",
         }
     }
 }

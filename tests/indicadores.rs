@@ -14,8 +14,8 @@ const INDICADORES: &[(&str, usize, &str)] = &[
     ),
     (
         "if en",
-        20,
-        "textos sueltos: usar el catálogo de ui/i18n (IN-02, IN-08); quedan los diálogos previos a Dioxus (main.rs, startup.rs), los datos bilingües de DNS y la tienda, y falsos positivos como `if entry`",
+        10,
+        "textos sueltos: usar el catálogo de ui/i18n (IN-02, IN-08); quedan `strings()` y `pick()` y falsos positivos como `if entry`",
     ),
     (
         "source: None",

@@ -11,7 +11,7 @@ use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource}
 use crate::core::store::dependencies::DependencyManager;
 use crate::ui::components::{AppIconBadge, Card, EmptyState, ProgressBar, StatusBanner, Tone};
 use crate::ui::i18n::core_text::tr;
-use crate::ui::i18n::{Lang, Msg, strings};
+use crate::ui::i18n::{Lang, Msg, pick, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
 };
@@ -282,7 +282,7 @@ pub fn BatchAppStoreCard() -> Element {
                     }
                     for cat in categories {
                         {
-                            let cat_label = cat.label(en);
+                            let cat_label = tr(cat.label(), en);
                             let is_selected_cat = cur_cat == Some(cat);
                             rsx! {
                                 button {
@@ -341,8 +341,8 @@ pub fn BatchAppStoreCard() -> Element {
                             let is_checked = selected.read().contains(pkg_id);
                             let is_installed = state.installed_app_ids.contains(pkg_id);
                             let st = state.app_statuses.get(pkg_id).cloned();
-                            let desc = if en { pkg.description_en } else { pkg.description_es };
-                            let cat_tag = pkg.category.label(en);
+                            let desc = pick(en, pkg.description_es, pkg.description_en);
+                            let cat_tag = tr(pkg.category.label(), en);
                             let version_label = match pkg.source {
                                 InstallSource::Store { .. } => "Microsoft Store".to_string(),
                                 InstallSource::Winget { .. } => strings(en).latest_version.to_string(),

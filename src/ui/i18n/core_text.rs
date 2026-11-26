@@ -68,6 +68,13 @@ const TEMPLATES: &[(&str, &str, &str, &str)] = &[
 
 fn english(es: &str) -> Option<&'static str> {
     Some(match es {
+        // Tienda: categorías de apps.
+        "Gaming y Launchers" => "Gaming & Launchers",
+        "Comunicación y Multimedia" => "Communication & Media",
+        "Utilidades y Sistema" => "Utilities & System Tools",
+        "Navegadores Web" => "Web Browsers",
+        "Desarrollo y Editores" => "Development & Editors",
+        "Aplicaciones UWP y Windows (Restauración)" => "Windows UWP & Store (Restoration)",
         // Motor: categorías y pasos.
         "Servicio Windows" => "Windows service",
         "Plan de Energía" => "Power plan",
@@ -294,7 +301,7 @@ mod tests {
     use super::*;
     use crate::core::debloat::{DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS, DebloatCategory};
     use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
-    use crate::core::store::app_store::{AppStoreManager, InstallSource};
+    use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource};
 
     /// Nombres de marca: se escriben igual en los dos idiomas.
     const BRAND_NAMES: &[&str] = &[
@@ -336,6 +343,16 @@ mod tests {
                 check(a.display_name);
             }
             check(a.description);
+        }
+        for c in [
+            AppCategory::Gaming,
+            AppCategory::Communication,
+            AppCategory::Utilities,
+            AppCategory::Browsers,
+            AppCategory::Development,
+            AppCategory::UwpRestoration,
+        ] {
+            check(c.label());
         }
         for p in AppStoreManager::get_catalog() {
             if matches!(p.source, InstallSource::Store { .. }) && !BRAND_NAMES.contains(&p.name) {

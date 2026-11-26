@@ -9,7 +9,7 @@ use otter_swiss::core::context_menu::ContextMenuManager;
 use otter_swiss::core::rollback::revert_all_changes;
 use otter_swiss::ui::App;
 use otter_swiss::ui::document::document_head;
-use otter_swiss::ui::i18n::Lang;
+use otter_swiss::ui::i18n::{Lang, strings};
 use otter_swiss::ui::theme::Theme;
 use otter_swiss::ui::views::mini_archive::{MiniArchiveJob, MiniArchiveView};
 
@@ -61,11 +61,7 @@ fn main() {
 
     if let Some(job) = job {
         let window = WindowBuilder::new()
-            .with_title(if en {
-                "OtterSwiss — Archiver"
-            } else {
-                "OtterSwiss — Archivador"
-            })
+            .with_title(strings(en).shell.window_title_archiver)
             .with_inner_size(LogicalSize::new(460.0, 235.0))
             .with_resizable(false);
         dioxus::LaunchBuilder::desktop()
@@ -76,11 +72,7 @@ fn main() {
     }
 
     let window = WindowBuilder::new()
-        .with_title(if en {
-            "OtterSwiss — Native Win32 Suite"
-        } else {
-            "OtterSwiss — Suite Nativa Win32"
-        })
+        .with_title(strings(en).shell.window_title)
         .with_inner_size(LogicalSize::new(1180.0, 760.0))
         .with_min_inner_size(LogicalSize::new(960.0, 600.0))
         .with_resizable(true);

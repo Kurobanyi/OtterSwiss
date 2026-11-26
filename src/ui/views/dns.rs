@@ -10,7 +10,7 @@ use crate::core::error::CoreError;
 use crate::ui::components::{
     Card, ConfirmDialog, EmptyState, ErrorState, LoadingState, StatusBanner, Tone,
 };
-use crate::ui::i18n::{Lang, Msg, plural, strings};
+use crate::ui::i18n::{Lang, Msg, pick, plural, strings};
 
 /// Estado de la lista de adaptadores: `None` mientras se lee (UI-07).
 type AdaptersState = Option<Result<Vec<NetworkAdapterInfo>, Msg>>;
@@ -196,7 +196,7 @@ pub fn DnsView() -> Element {
                 if let Some(p) = active_preset {
                     ConfirmDialog {
                         title: (strings(en).dns.apply)(&p.name),
-                        subtitle: Some(if en { p.privacy_notice_en.to_string() } else { p.privacy_notice.to_string() }),
+                        subtitle: Some(pick(en, p.privacy_notice, p.privacy_notice_en).to_string()),
                         confirm_label: apply_dns_lbl.to_string(),
                         cancel_label: strings(en).cancel.to_string(),
                         tone: Tone::Warning,
@@ -257,7 +257,7 @@ pub fn DnsView() -> Element {
                     if let Some(active_p) = active_preset {
                         div { class: "info-box text-xs",
                             p { strong { "IPv4: " } "{active_p.ipv4_primary}, {active_p.ipv4_secondary}   |   " strong { "IPv6: " } "{active_p.ipv6_primary}, {active_p.ipv6_secondary}" }
-                            p { class: "text-muted", if en { "{active_p.privacy_notice_en}" } else { "{active_p.privacy_notice}" } }
+                            p { class: "text-muted", "{pick(en, active_p.privacy_notice, active_p.privacy_notice_en)}" }
                         }
                     }
 

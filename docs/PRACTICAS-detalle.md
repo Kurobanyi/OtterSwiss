@@ -747,7 +747,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
 
 <a id="in-02"></a>
 ### IN-02 · No hay catálogo de textos: 253 `if en {…} else {…}` y `en: bool` por todas partes
-- **Prioridad**: P2 · **Esfuerzo**: L · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: L · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: 253 `if en` (Dashboard 40, desinstalador 36, Herramientas 35…), 9 `match (…, en)`, 17 campos hermanos `_es`/`_en`,
   `label(en: bool)` en core; `i18n.rs` no tiene ni una cadena. Lo bueno: el compilador garantiza que existen las dos variantes. Lo
   malo: «Cancelar» está 10 veces, un tercer idioma toca unos 280 sitios, `bool` en vez de `Lang`, y cada idioma duplica el `format!`
@@ -761,6 +761,7 @@ de contraste de texto están en `UI-18` (`docs/BUGS.md`).
   los botones comunes. Es independiente de `UI-11` (diferido).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): ui/i18n/strings.rs con garantía en compilación y 36 textos repetidos migrados; los textos únicos siguen como if en, también exigidos en los dos idiomas. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): cada vista tiene su módulo en `src/ui/i18n/` (`archiver`, `cleaner`, `dashboard`, `debloater`, `dns`, `hardware`, `sensors`, `tools`, `uninstaller`, `mini_archive` y `shell` para el aviso de actualización y la cola) y se usa como `strings(en).<vista>.<texto>`; los textos con datos son `fn(&dyn Display…)` con marcadores con nombre. `if en` baja de 216 a 20 (techo de `tests/indicadores.rs`): quedan los diálogos previos a Dioxus (`main.rs`, `startup.rs`), `AppCategory::label(en)` en core, los pares bilingües de datos (`privacy_notice_en`, `description_en`) y falsos positivos como `if entry`. Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; los textos dentro de `Msg::new(move |en| …)` usan el `en` de la clausura. Recorrido en la app sin elevar (2026-11-25): Inicio, Limpiador, Debloater, DNS, Drivers, Desinstalador, Hardware, Sensores y Herramientas y tienda en oscuro y español; las mismas en inglés y claro sin textos cortados ni mezclados. Sigue en español el detalle de errores de core (p. ej. el aviso del Debloater sin administrador), que es `AR-06`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): lo que faltaba. Los diálogos nativos de `startup.rs` (WebView2 que falta, error inesperado) y los títulos de ventana de `main.rs` salen de `ui/i18n/shell.rs`; `AppCategory::label` devuelve el español y la interfaz lo traduce con `tr` (sus 6 traducciones están en `core_text.rs` y las cubre `catalogos_de_core_traducidos`); los pares bilingües de DNS y de la tienda se eligen con `i18n::pick`. `if en` queda en 10 (techo de `tests/indicadores.rs`): `strings()`, `pick()` y falsos positivos como `if entry`. Verificado: `cargo test`, `clippy --all-targets -- -D warnings` y `fmt --check` en verde; títulos y diálogos nativos sin recorrer (el de WebView2 solo sale si falta).
 
 <a id="in-03"></a>
 ### IN-03 · El estado guarda mensajes ya traducidos
