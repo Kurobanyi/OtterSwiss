@@ -710,10 +710,12 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
-    color: var(--on-accent);
-    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-hover)));
-    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
+    /* Pedido del autor: sin relleno. El glifo de línea en color de acento con un borde fino se ve más fino que un
+       cuadro lleno de color. */
+    font-size: 26px;
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .page-title {
@@ -1465,9 +1467,10 @@ button.badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 16px;
     color: var(--accent-text);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--stroke));
 }
 
 .dash-label {
@@ -1616,9 +1619,10 @@ button.badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 16px;
     color: var(--accent-text);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--stroke));
 }
 
 .cln-badge {
@@ -1843,9 +1847,10 @@ button.badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 15px;
+    font-size: 16px;
     color: var(--accent-text);
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--stroke));
 }
 
 .tl-status {

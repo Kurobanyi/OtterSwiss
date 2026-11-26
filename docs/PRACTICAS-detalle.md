@@ -1280,4 +1280,6 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Descartado**: una tarjeta por fila (lo que no gustó de `TE-30`) y fuentes web.
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): visto en la app con navegación arriba y lateral, temas Tokyo Night y
   Claro, en las diez secciones y Configuración. `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (101)
-  en verde. Sin probar uno por uno los otros temas de color.
+  en verde. Después, a pedido del autor: iconos de página y de las fichas sin relleno (glifo de línea con borde fino), aviso de
+  permisos del Debloater como advertencia sin administrador, barra lateral contraída probada en español y los 11 temas revisados
+  uno por uno en Inicio.

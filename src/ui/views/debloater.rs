@@ -469,6 +469,8 @@ fn CategoryCard(cat: DebloatCategory, sig: DebloaterSignals) -> Element {
 #[component]
 pub fn DebloaterView() -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
+    // Sin administrador el escaneo de apps falla siempre y el shell ya lo avisa: el error es una advertencia, no un fallo.
+    let is_elevated = use_hook(|| crate::core::platform::elevation::is_elevated().unwrap_or(false));
 
     let sig = DebloaterSignals {
         scan_result: use_signal(DebloatScanResult::default),
@@ -530,7 +532,7 @@ pub fn DebloaterView() -> Element {
             }
 
             if let Some(err) = sig.error_banner.read().as_ref().map(|m| m.text(en)) {
-                StatusBanner { text: err, tone: Tone::Danger }
+                StatusBanner { text: err, tone: if is_elevated { Tone::Danger } else { Tone::Warning } }
             }
 
             if let Some(report) = sig.last_report.read().clone() {
