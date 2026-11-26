@@ -216,10 +216,7 @@ impl DnsManager {
         let _lock = NamedMutex::acquire_blocking(DNS_BACKUP_MUTEX)?;
 
         if !self.dns_backup_path.exists() {
-            return Err(CoreError::Backup {
-                message: "No existe respaldo DNS activo".into(),
-                source: None,
-            });
+            return Err(CoreError::backup_msg("No existe respaldo DNS activo"));
         }
 
         let doc = self.load_doc_unlocked()?;
@@ -259,15 +256,12 @@ impl DnsManager {
             version: doc.version,
             adapters: pending,
         })?;
-        Err(CoreError::Dns {
-            message: format!(
-                "Se restauraron {} adaptadores, pero {} fallaron y siguen en el respaldo: {}",
-                restored,
-                failures.len(),
-                failures.join("; ")
-            ),
-            source: None,
-        })
+        Err(CoreError::dns_msg(format!(
+            "Se restauraron {} adaptadores, pero {} fallaron y siguen en el respaldo: {}",
+            restored,
+            failures.len(),
+            failures.join("; ")
+        )))
     }
 
     /// Lee y valida el respaldo. Si existe y no se puede leer, falla; si trae servidores que no son
@@ -418,10 +412,10 @@ pub fn list_active_adapters() -> CoreResult<Vec<NetworkAdapterInfo>> {
             buf = AlignedBuf::zeroed(size as usize);
             continue;
         }
-        return Err(CoreError::Dns {
-            message: format!("GetAdaptersAddresses falló con código {}", ret),
-            source: None,
-        });
+        return Err(CoreError::dns_msg(format!(
+            "GetAdaptersAddresses falló con código {}",
+            ret
+        )));
     }
 
     let mut adapters = Vec::new();
@@ -630,16 +624,18 @@ fn validate_ipv6_dns(s: &str) -> CoreResult<()> {
 /// Fija IPv4 e IPv6 de forma explícita, aunque estén vacíos (= volver a automático).
 /// Si IPv6 está deshabilitado en el adaptador (87 / 1168), se omite.
 fn restore_interface_dns(interface_guid: GUID, ipv4_csv: &str, ipv6_csv: &str) -> CoreResult<()> {
-    set_family_dns(interface_guid, ipv4_csv, false).map_err(|code| CoreError::Dns {
-        message: format!("SetInterfaceDnsSettings(IPv4) falló (código {})", code),
-        source: None,
+    set_family_dns(interface_guid, ipv4_csv, false).map_err(|code| {
+        CoreError::dns_msg(format!(
+            "SetInterfaceDnsSettings(IPv4) falló (código {})",
+            code
+        ))
     })?;
     match set_family_dns(interface_guid, ipv6_csv, true) {
         Ok(()) | Err(87) | Err(1168) => Ok(()),
-        Err(code) => Err(CoreError::Dns {
-            message: format!("SetInterfaceDnsSettings(IPv6) falló (código {})", code),
-            source: None,
-        }),
+        Err(code) => Err(CoreError::dns_msg(format!(
+            "SetInterfaceDnsSettings(IPv6) falló (código {})",
+            code
+        ))),
     }
 }
 
@@ -677,10 +673,10 @@ fn apply_interface_dns_typed(
         // SAFETY: el GUID es de un adaptador existente y las cadenas de servidores terminan en NUL y viven durante la llamada.
         let err = unsafe { SetInterfaceDnsSettings(interface_guid, &settings_v4) };
         if err.0 != 0 {
-            return Err(CoreError::Dns {
-                message: format!("SetInterfaceDnsSettings(IPv4) falló (código {})", err.0),
-                source: None,
-            });
+            return Err(CoreError::dns_msg(format!(
+                "SetInterfaceDnsSettings(IPv4) falló (código {})",
+                err.0
+            )));
         }
         v4_applied = true;
     }
@@ -699,10 +695,10 @@ fn apply_interface_dns_typed(
         if err.0 != 0 {
             // Si IPv6 está deshabilitado en el adaptador (87 o 1168) y IPv4 ya se aplicó, no abortar
             if !(v4_applied && (err.0 == 87 || err.0 == 1168)) {
-                return Err(CoreError::Dns {
-                    message: format!("SetInterfaceDnsSettings(IPv6) falló (código {})", err.0),
-                    source: None,
-                });
+                return Err(CoreError::dns_msg(format!(
+                    "SetInterfaceDnsSettings(IPv6) falló (código {})",
+                    err.0
+                )));
             }
         }
     }

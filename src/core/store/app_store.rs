@@ -1055,13 +1055,10 @@ fn run_winget(args: &str, scope: WingetScope, name: &str, cancel: &AtomicBool) -
         Some(cancel),
     )?;
     if !winget_exit_is_installed(exit.exit_code) {
-        return Err(CoreError::SystemTool {
-            message: format!(
-                "winget no pudo instalar '{name}' (código {})",
-                exit.code_display()
-            ),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(format!(
+            "winget no pudo instalar '{name}' (código {})",
+            exit.code_display()
+        )));
     }
     Ok(())
 }

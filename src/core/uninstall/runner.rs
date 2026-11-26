@@ -70,13 +70,10 @@ impl UninstallerManager {
         } else {
             let is_unc = exe.starts_with(r"\\") || exe.starts_with("//");
             if !exe_path.is_absolute() || is_unc || !exe_path.is_file() {
-                return Err(CoreError::Uninstaller {
-                    message: format!(
-                        "Ruta de desinstalador no permitida (debe ser un archivo local con ruta absoluta): {}",
-                        exe
-                    ),
-                    source: None,
-                });
+                return Err(CoreError::uninstaller_msg(format!(
+                    "Ruta de desinstalador no permitida (debe ser un archivo local con ruta absoluta): {}",
+                    exe
+                )));
             }
             exe_path
         };

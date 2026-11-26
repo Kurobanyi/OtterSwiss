@@ -90,49 +90,42 @@ pub fn verify_authenticode_on_handle(
     };
 
     if status != 0 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "WinVerifyTrust rechazó la firma (código 0x{:08X})",
-                status as u32
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "WinVerifyTrust rechazó la firma (código 0x{:08X})",
+            status as u32
+        )));
     }
 
     // SAFETY: el estado viene de un WinVerifyTrust exitoso y sigue abierto.
     let prov_data = unsafe { WTHelperProvDataFromStateData(guard.trust_data.hWVTStateData) };
     if prov_data.is_null() {
-        return Err(CoreError::Trust {
-            message: "No se pudo obtener CRYPT_PROVIDER_DATA tras WinVerifyTrust".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "No se pudo obtener CRYPT_PROVIDER_DATA tras WinVerifyTrust",
+        ));
     }
 
     // SAFETY: los datos del proveedor son válidos mientras el estado siga abierto.
     let signer = unsafe { WTHelperGetProvSignerFromChain(prov_data, 0, false, 0) };
     if signer.is_null() {
-        return Err(CoreError::Trust {
-            message: "El ejecutable no contiene firmante Authenticode válido".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "El ejecutable no contiene firmante Authenticode válido",
+        ));
     }
 
     // SAFETY: el firmante es válido mientras el estado siga abierto.
     let leaf_cert = unsafe { WTHelperGetProvCertFromChain(signer, 0) };
     if leaf_cert.is_null() {
-        return Err(CoreError::Trust {
-            message: "No se pudo leer el certificado hoja del firmante".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "No se pudo leer el certificado hoja del firmante",
+        ));
     }
 
     // SAFETY: el certificado hoja no es nulo (comprobado arriba) y vive mientras el estado siga abierto.
     let cert_ctx = unsafe { (*leaf_cert).pCert };
     if cert_ctx.is_null() {
-        return Err(CoreError::Trust {
-            message: "Contexto de certificado nulo en la cadena Authenticode".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "Contexto de certificado nulo en la cadena Authenticode",
+        ));
     }
 
     let mut cn_buf = [0u16; 256];
@@ -159,13 +152,10 @@ pub fn verify_authenticode_on_handle(
         .any(|allowed| !allowed.is_empty() && actual_cn == allowed);
 
     if !cn_allowed {
-        return Err(CoreError::Trust {
-            message: format!(
-                "El certificado firmante CN='{}' no coincide con el esperado '{}'",
-                actual_cn, expected_cn
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "El certificado firmante CN='{}' no coincide con el esperado '{}'",
+            actual_cn, expected_cn
+        )));
     }
 
     verify_chain_with_machine_roots(cert_ctx)?;
@@ -184,20 +174,16 @@ pub fn verify_authenticode_on_handle(
         }
         .is_ok();
         if !ok || hash_len != 20 {
-            return Err(CoreError::Trust {
-                message: "No se pudo leer el thumbprint SHA-1 del certificado".into(),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(
+                "No se pudo leer el thumbprint SHA-1 del certificado",
+            ));
         }
         let actual_tp: String = hash.iter().map(|b| format!("{:02x}", b)).collect();
         if !actual_tp.eq_ignore_ascii_case(expected_tp.trim()) {
-            return Err(CoreError::Trust {
-                message: format!(
-                    "Thumbprint SHA-1 '{}' no coincide con '{}'",
-                    actual_tp, expected_tp
-                ),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(format!(
+                "Thumbprint SHA-1 '{}' no coincide con '{}'",
+                actual_tp, expected_tp
+            )));
         }
     }
 
@@ -257,13 +243,10 @@ fn verify_chain_with_machine_roots(cert_ctx: *const CERT_CONTEXT) -> CoreResult<
     }
     .as_bool();
     if !ok || status.dwError != 0 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "La firma no encadena a una raíz de confianza del equipo (código 0x{:08X})",
-                status.dwError
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "La firma no encadena a una raíz de confianza del equipo (código 0x{:08X})",
+            status.dwError
+        )));
     }
     Ok(())
 }

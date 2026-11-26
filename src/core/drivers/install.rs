@@ -108,13 +108,10 @@ fn run_verified_vendor_installer(
             exit.exit_code == 3010 || exit.exit_code == 1641,
         ))
     } else {
-        Err(CoreError::SystemTool {
-            message: format!(
-                "El instalador de '{title}' terminó con código {}",
-                exit.code_display()
-            ),
-            source: None,
-        })
+        Err(CoreError::system_tool_msg(format!(
+            "El instalador de '{title}' terminó con código {}",
+            exit.code_display()
+        )))
     }
 }
 
@@ -145,18 +142,16 @@ pub(super) fn download_to_file(
         }
         total += n as u64;
         if total > max_bytes {
-            return Err(CoreError::Trust {
-                message: format!("La descarga de '{url}' excede el tamaño máximo"),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(format!(
+                "La descarga de '{url}' excede el tamaño máximo"
+            )));
         }
         f.write_all(&buf[..n])?;
     }
     if resp.content_length().is_some_and(|len| len != total) {
-        return Err(CoreError::Trust {
-            message: format!("Descarga incompleta de '{url}'"),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "Descarga incompleta de '{url}'"
+        )));
     }
     f.sync_all()?;
     Ok(())

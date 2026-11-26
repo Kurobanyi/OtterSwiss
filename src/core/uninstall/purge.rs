@@ -252,13 +252,10 @@ pub(super) fn export_registry_key(loc: RegLocation, subkey: &str) -> CoreResult<
         std::time::Duration::from_secs(60),
     )?;
     if !out.success || !file.is_file() {
-        return Err(CoreError::Uninstaller {
-            message: format!(
-                "No se pudo respaldar '{}' antes de borrarla; no se borró: {}",
-                full_key, out.stderr
-            ),
-            source: None,
-        });
+        return Err(CoreError::uninstaller_msg(format!(
+            "No se pudo respaldar '{}' antes de borrarla; no se borró: {}",
+            full_key, out.stderr
+        )));
     }
     Ok(file)
 }

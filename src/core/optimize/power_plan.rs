@@ -44,10 +44,10 @@ pub fn get_active_scheme_guid() -> CoreResult<GUID> {
     // SAFETY: el GUID devuelto pasa a LocalMem.
     let err: WIN32_ERROR = unsafe { PowerGetActiveScheme(None, &mut guid_ptr) };
     if err.0 != 0 || guid_ptr.is_null() {
-        return Err(CoreError::Power {
-            message: format!("PowerGetActiveScheme falló (código {})", err.0),
-            source: None,
-        });
+        return Err(CoreError::power_msg(format!(
+            "PowerGetActiveScheme falló (código {})",
+            err.0
+        )));
     }
     let _guard = LocalMem::new(guid_ptr as _);
     // SAFETY: la API devolvió un GUID válido (comprobado arriba que no es nulo).
@@ -80,17 +80,15 @@ pub fn capture_and_prepare_power_scheme(
             if scheme_exists(&fb_guid) {
                 (fb_guid, true)
             } else {
-                return Err(CoreError::Power {
-                    message: "Ni el plan de energía objetivo ni el alternativo están disponibles"
-                        .into(),
-                    source: None,
-                });
+                return Err(CoreError::power_msg(
+                    "Ni el plan de energía objetivo ni el alternativo están disponibles",
+                ));
             }
         } else {
-            return Err(CoreError::Power {
-                message: format!("Plan de energía '{}' no disponible", target_template_guid),
-                source: None,
-            });
+            return Err(CoreError::power_msg(format!(
+                "Plan de energía '{}' no disponible",
+                target_template_guid
+            )));
         }
     };
 
@@ -114,10 +112,10 @@ pub fn capture_and_prepare_power_scheme(
     // SAFETY: el GUID de origen es de un plan existente; el GUID nuevo pasa a LocalMem.
     let dup_err = unsafe { PowerDuplicateScheme(None, &base_guid, &mut dup_ptr) };
     if dup_err.0 != 0 || dup_ptr.is_null() {
-        return Err(CoreError::Power {
-            message: format!("PowerDuplicateScheme falló (código {})", dup_err.0),
-            source: None,
-        });
+        return Err(CoreError::power_msg(format!(
+            "PowerDuplicateScheme falló (código {})",
+            dup_err.0
+        )));
     }
     let _dup_guard = LocalMem::new(dup_ptr as _);
     // SAFETY: la API devolvió un GUID válido (comprobado arriba que no es nulo).
@@ -151,22 +149,19 @@ pub fn activate_prepared_power_scheme(snap: &PowerSnapshot) -> CoreResult<String
                 let _ = PowerDeleteScheme(None, &cg);
             }
         }
-        return Err(CoreError::Power {
-            message: format!("PowerSetActiveScheme falló (código {})", set_err.0),
-            source: None,
-        });
+        return Err(CoreError::power_msg(format!(
+            "PowerSetActiveScheme falló (código {})",
+            set_err.0
+        )));
     }
 
     let verified = get_active_scheme_guid()?;
     let verified_str = format_guid(&verified);
     if !verified_str.eq_ignore_ascii_case(&snap.active_after_apply_guid) {
-        return Err(CoreError::Power {
-            message: format!(
-                "El esquema activo tras aplicar ({}) no coincide con el esperado ({})",
-                verified_str, snap.active_after_apply_guid
-            ),
-            source: None,
-        });
+        return Err(CoreError::power_msg(format!(
+            "El esquema activo tras aplicar ({}) no coincide con el esperado ({})",
+            verified_str, snap.active_after_apply_guid
+        )));
     }
 
     Ok(verified_str)
@@ -204,13 +199,10 @@ pub fn restore_power_snapshot(snap: &PowerSnapshot, force: bool) -> CoreResult<b
     // SAFETY: el GUID es de un plan existente (validado antes).
     let set_err = unsafe { PowerSetActiveScheme(None, Some(&restore_target)) };
     if set_err.0 != 0 {
-        return Err(CoreError::Power {
-            message: format!(
-                "No se pudo restaurar el plan de energía previo/Equilibrado (código {})",
-                set_err.0
-            ),
-            source: None,
-        });
+        return Err(CoreError::power_msg(format!(
+            "No se pudo restaurar el plan de energía previo/Equilibrado (código {})",
+            set_err.0
+        )));
     }
 
     delete_created_scheme(snap)?;
@@ -250,13 +242,10 @@ fn delete_created_scheme(snap: &PowerSnapshot) -> CoreResult<()> {
             // SAFETY: el GUID es de un plan que creó OtterSwiss y no está activo.
             let del_err = unsafe { PowerDeleteScheme(None, &created_guid) };
             if del_err.0 != 0 {
-                return Err(CoreError::Power {
-                    message: format!(
-                        "No se pudo eliminar el esquema temporal '{}' (código {})",
-                        created_str, del_err.0
-                    ),
-                    source: None,
-                });
+                return Err(CoreError::power_msg(format!(
+                    "No se pudo eliminar el esquema temporal '{}' (código {})",
+                    created_str, del_err.0
+                )));
             }
         }
     }

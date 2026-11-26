@@ -83,13 +83,10 @@ impl DebloaterManager {
             entries: Vec::new(),
         });
         if let Some(bad) = doc.entries.iter().find(|e| !e.is_valid()) {
-            return Err(CoreError::Backup {
-                message: format!(
-                    "debloat_backup.json contiene una entrada que no es del catálogo ({:?}\\{}\\{}); posible manipulación",
-                    bad.hive, bad.subkey, bad.value_name
-                ),
-                source: None,
-            });
+            return Err(CoreError::backup_msg(format!(
+                "debloat_backup.json contiene una entrada que no es del catálogo ({:?}\\{}\\{}); posible manipulación",
+                bad.hive, bad.subkey, bad.value_name
+            )));
         }
         Ok(doc)
     }
@@ -177,10 +174,9 @@ impl DebloaterManager {
         let _lock = NamedMutex::acquire(DEBLOAT_MUTEX)?;
         let backup_file = debloat_backup_path()?;
         if !backup_file.exists() {
-            return Err(CoreError::Backup {
-                message: "No existe respaldo de ajustes del Debloater".into(),
-                source: None,
-            });
+            return Err(CoreError::backup_msg(
+                "No existe respaldo de ajustes del Debloater",
+            ));
         }
 
         let doc = Self::load_backup_doc(&backup_file)?;
@@ -195,15 +191,12 @@ impl DebloaterManager {
         }
 
         if !failures.is_empty() {
-            return Err(CoreError::Backup {
-                message: format!(
-                    "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
-                    restored,
-                    failures.len(),
-                    failures.join("; ")
-                ),
-                source: None,
-            });
+            return Err(CoreError::backup_msg(format!(
+                "Se revirtieron {} ajustes, pero {} fallaron y el respaldo se conserva: {}",
+                restored,
+                failures.len(),
+                failures.join("; ")
+            )));
         }
 
         delete_verified_file(&backup_file)?;

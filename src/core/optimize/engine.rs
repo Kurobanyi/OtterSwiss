@@ -381,10 +381,7 @@ impl OptimizationEngine {
         };
 
         let existing_created: CoreResult<Vec<String>> = if !backup_ok {
-            Err(CoreError::Backup {
-                message: "respaldo no disponible".into(),
-                source: None,
-            })
+            Err(CoreError::backup_msg("respaldo no disponible"))
         } else {
             self.backup_mgr.load_tolerant().map(|(b, _)| {
                 b.map(|b| {
@@ -473,10 +470,9 @@ impl OptimizationEngine {
 
         let (backup_opt, load_warnings) = self.backup_mgr.load_tolerant()?;
         let Some(backup) = backup_opt else {
-            return Err(CoreError::Backup {
-                message: "No existe ningún respaldo activo para revertir".into(),
-                source: None,
-            });
+            return Err(CoreError::backup_msg(
+                "No existe ningún respaldo activo para revertir",
+            ));
         };
 
         let mut restored_registry = 0usize;

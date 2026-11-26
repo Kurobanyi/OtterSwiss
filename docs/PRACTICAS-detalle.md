@@ -135,7 +135,7 @@ Leyenda:
 
 <a id="ar-06"></a>
 ### AR-06 · `CoreError` clasifica por módulo y no por causa, y casi nunca guarda el error de origen
-- **Prioridad**: P2 · **Esfuerzo**: L · **Evidencia**: confirmado (161 `source: None`) · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: L · **Evidencia**: confirmado (161 `source: None`) · **Estado**: Hecha
 - **Qué pasa**: variantes `Trust`, `Backup`, `Archive`, `SystemTool` (52 usos, cajón de sastre) con `message: String`; 161
   `source: None`, así que se pierde el `HRESULT` o el `io::ErrorKind`. `Registry` y `Service` usan `Option<io::Error>` y el resto
   `Box<dyn Error>`. Tras un `SafeHandle::new(..)` que da `None` se llama a `CoreError::from_win32`, que lee un `last_os_error` ajeno.
@@ -147,6 +147,7 @@ Leyenda:
   `NoActiveAdapters`…) con `#[source]` siempre que lo haya; helpers `CoreError::sys(ctx)` y `invalid_handle(ctx)`; un `source` de un
   solo tipo. Gradual, módulo por módulo.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): CoreError::sys/trust guardan el source (30 sitios), invalid_handle no lee GetLastError ajeno, NoActiveAdapters tipado. Quedan unos 125 `source: None` para migrar de a poco. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre final** (2026-11-25): se revisaron los 95 source: None que quedaban. Ninguno perdía un error de origen: eran fallos de una comprobación propia (política de descarga, firma que no coincide, puntero nulo, tiempo agotado), que no tienen causa que guardar. En vez de variantes `NotFound`/`AccessDenied`/`ExitCode` (que la UI no distingue y repartirían `message` entre más enums), esos 87 sitios usan constructores `CoreError::*_msg` (`trust_msg`, `service_msg`, `power_msg`, `dns_msg`…); así un `source: None` suelto vuelve a significar «causa perdida» y el techo de `tests/indicadores.rs` baja de 95 a 10 (solo los constructores). Prueba: `source_solo_cuando_hay_error_de_origen`. Verificado: `cargo test`, `clippy --all-targets -- -D warnings` y `fmt --check` en verde. Descartado: variantes por causa, por falta de un consumidor que las use.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`, segunda pasada): Más sitios con `source`; quedan 96 `source: None`, casi todos errores propios sin causa externa. Verificado: `cargo test` (57) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): `Registry` y `Service` guardan ahora su origen como `BoxedSource` (antes `io::Error`, que no admitía un HRESULT de `windows`), y 20 sitios con el error en la mano (servicios, SetupAPI, ACL, DNS, elevación, hilos de la UI) pasan de `source: None` a `Some(Box::new(e))`. `source: None` baja de 115 a 95 (techo de `tests/indicadores.rs`); los que quedan son códigos de salida, estados de API y validaciones sin error de origen. Siguen sin hacerse las variantes por causa (`NotFound`, `AccessDenied`, `ExitCode`…). Verificado: `cargo test` (89 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 

@@ -31,10 +31,9 @@ impl DriverManager {
         cancel: &AtomicBool,
     ) -> CoreResult<Vec<DriverUpdateCandidate>> {
         if is_windows_update_service_disabled() {
-            return Err(CoreError::SystemTool {
-                message: "El servicio Windows Update (wuauserv) está deshabilitado.".into(),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(
+                "El servicio Windows Update (wuauserv) está deshabilitado.",
+            ));
         }
 
         if cancel.load(Ordering::Acquire) {
@@ -55,19 +54,15 @@ impl DriverManager {
                 Ok(result) => return result,
                 Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
                 Err(RecvTimeoutError::Timeout) => {
-                    return Err(CoreError::SystemTool {
-                        message: format!(
-                            "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
-                            WUA_SEARCH_TIMEOUT.as_secs() / 60
-                        ),
-                        source: None,
-                    });
+                    return Err(CoreError::system_tool_msg(format!(
+                        "Windows Update no respondió en {} minutos; prueba de nuevo más tarde.",
+                        WUA_SEARCH_TIMEOUT.as_secs() / 60
+                    )));
                 }
                 Err(RecvTimeoutError::Disconnected) => {
-                    return Err(CoreError::SystemTool {
-                        message: "Fallo inesperado en hilo COM de búsqueda de drivers".into(),
-                        source: None,
-                    });
+                    return Err(CoreError::system_tool_msg(
+                        "Fallo inesperado en hilo COM de búsqueda de drivers",
+                    ));
                 }
             }
         }
@@ -99,17 +94,15 @@ impl DriverManager {
         }
 
         if is_windows_update_service_disabled() {
-            return Err(CoreError::SystemTool {
-                message: "El servicio Windows Update (wuauserv) está deshabilitado.".into(),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(
+                "El servicio Windows Update (wuauserv) está deshabilitado.",
+            ));
         }
 
         let target_ids = selected_ids.to_vec();
         let handle = std::thread::spawn(move || wua_install_on_this_thread(&target_ids));
-        handle.join().map_err(|_| CoreError::SystemTool {
-            message: "Fallo inesperado en hilo COM de instalación de drivers".into(),
-            source: None,
+        handle.join().map_err(|_| {
+            CoreError::system_tool_msg("Fallo inesperado en hilo COM de instalación de drivers")
         })?
     }
 }
@@ -257,11 +250,9 @@ fn wua_install_on_this_thread(target_ids: &[String]) -> CoreResult<DriverInstall
         }
     }
     if matched == 0 {
-        return Err(CoreError::SystemTool {
-            message: "Ninguno de los drivers seleccionados sigue pendiente en Windows Update."
-                .into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "Ninguno de los drivers seleccionados sigue pendiente en Windows Update.",
+        ));
     }
 
     // SAFETY: COM de WUA sobre la sesión y la colección válidas, en este hilo STA.
@@ -278,10 +269,10 @@ fn wua_install_on_this_thread(target_ids: &[String]) -> CoreResult<DriverInstall
                 .map_err(|e| wua_error("Error descargando drivers desde Microsoft", e))?;
             let dl_code = dl_res.ResultCode().unwrap_or(orcFailed);
             if dl_code != orcSucceeded && dl_code != orcSucceededWithErrors {
-                return Err(CoreError::SystemTool {
-                    message: format!("La descarga oficial falló con estado {:?}", dl_code.0),
-                    source: None,
-                });
+                return Err(CoreError::system_tool_msg(format!(
+                    "La descarga oficial falló con estado {:?}",
+                    dl_code.0
+                )));
             }
         }
     }

@@ -207,10 +207,9 @@ impl ComGuard {
         } else if hr == RPC_E_CHANGED_MODE {
             Ok(Self { initialized: false })
         } else {
-            Err(CoreError::SystemTool {
-                message: format!("CoInitializeEx(STA) falló: {hr:?}"),
-                source: None,
-            })
+            Err(CoreError::system_tool_msg(format!(
+                "CoInitializeEx(STA) falló: {hr:?}"
+            )))
         }
     }
 }
@@ -241,10 +240,9 @@ impl DevInfoList {
             source: Some(Box::new(e)),
         })?;
         if handle.is_invalid() {
-            return Err(CoreError::SystemTool {
-                message: "Handle de dispositivo SetupAPI inválido".into(),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(
+                "Handle de dispositivo SetupAPI inválido",
+            ));
         }
         Ok(Self(handle))
     }

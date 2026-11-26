@@ -79,18 +79,13 @@ pub fn secure_download_and_verify_with_progress(
 ) -> CoreResult<File> {
     use std::sync::atomic::Ordering;
     if !policy.url.starts_with("https://") {
-        return Err(CoreError::Trust {
-            message: "Solo se permiten descargas HTTPS".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg("Solo se permiten descargas HTTPS"));
     }
 
     if policy.expected_sha256_hex.is_none() && policy.expected_signer_cn.is_none() {
-        return Err(CoreError::Trust {
-            message: "Política de descarga inválida: requiere SHA-256 o firmante Authenticode"
-                .into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "Política de descarga inválida: requiere SHA-256 o firmante Authenticode",
+        ));
     }
 
     let mut file = OpenOptions::new()
@@ -104,10 +99,9 @@ pub fn secure_download_and_verify_with_progress(
     let raw_handle = HANDLE(file.as_raw_handle() as _);
     let h_info = inspect_handle(raw_handle)?;
     if h_info.is_reparse_point || h_info.is_directory || h_info.number_of_links > 1 {
-        return Err(CoreError::Trust {
-            message: "Archivo de destino comprometido por reparse point o hardlink".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "Archivo de destino comprometido por reparse point o hardlink",
+        ));
     }
 
     let response = http::get(
@@ -123,13 +117,10 @@ pub fn secure_download_and_verify_with_progress(
 
     let content_len = response.content_length();
     if let Some(len) = content_len.filter(|&len| len > policy.max_bytes) {
-        return Err(CoreError::Trust {
-            message: format!(
-                "Content-Length ({} bytes) excede el límite del paquete ({} bytes)",
-                len, policy.max_bytes
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "Content-Length ({} bytes) excede el límite del paquete ({} bytes)",
+            len, policy.max_bytes
+        )));
     }
 
     let mut hasher = Sha256::new();
@@ -151,10 +142,10 @@ pub fn secure_download_and_verify_with_progress(
 
         total_read += bytes_read as u64;
         if total_read > policy.max_bytes {
-            return Err(CoreError::Trust {
-                message: format!("Descarga abortada: excede {} bytes", policy.max_bytes),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(format!(
+                "Descarga abortada: excede {} bytes",
+                policy.max_bytes
+            )));
         }
 
         let slice = &chunk[..bytes_read];
@@ -169,13 +160,10 @@ pub fn secure_download_and_verify_with_progress(
     }
 
     if let Some(len) = content_len.filter(|&len| len != total_read) {
-        return Err(CoreError::Trust {
-            message: format!(
-                "Descarga truncada: recibidos {} bytes de {} esperados",
-                total_read, len
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "Descarga truncada: recibidos {} bytes de {} esperados",
+            total_read, len
+        )));
     }
 
     file.sync_all()?;
@@ -183,13 +171,10 @@ pub fn secure_download_and_verify_with_progress(
     if let Some(expected_sha) = policy.expected_sha256_hex {
         let actual_sha = hex_lower(&hasher.finalize());
         if !actual_sha.eq_ignore_ascii_case(expected_sha.trim()) {
-            return Err(CoreError::Trust {
-                message: format!(
-                    "SHA-256 inválido: esperado {}, obtenido {}",
-                    expected_sha, actual_sha
-                ),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(format!(
+                "SHA-256 inválido: esperado {}, obtenido {}",
+                expected_sha, actual_sha
+            )));
         }
     }
 
@@ -214,10 +199,9 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
     use std::io::{Seek, SeekFrom};
 
     if policy.expected_sha256_hex.is_none() && policy.expected_signer_cn.is_none() {
-        return Err(CoreError::Trust {
-            message: "Política inválida: requiere SHA-256 o firmante Authenticode".into(),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(
+            "Política inválida: requiere SHA-256 o firmante Authenticode",
+        ));
     }
 
     let mut file = OpenOptions::new()
@@ -228,13 +212,10 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
     let handle = HANDLE(file.as_raw_handle() as _);
     let info = inspect_handle(handle)?;
     if info.is_reparse_point || info.is_directory || info.number_of_links > 1 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "El instalador '{}' fue reemplazado por un enlace o hardlink",
-                path.display()
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "El instalador '{}' fue reemplazado por un enlace o hardlink",
+            path.display()
+        )));
     }
 
     if let Some(expected_sha) = policy.expected_sha256_hex {
@@ -249,13 +230,10 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
         }
         let actual = hex_lower(&hasher.finalize());
         if !actual.eq_ignore_ascii_case(expected_sha.trim()) {
-            return Err(CoreError::Trust {
-                message: format!(
-                    "El instalador cambió después de verificarse (SHA-256 {})",
-                    actual
-                ),
-                source: None,
-            });
+            return Err(CoreError::trust_msg(format!(
+                "El instalador cambió después de verificarse (SHA-256 {})",
+                actual
+            )));
         }
         file.seek(SeekFrom::Start(0))?;
     }
@@ -273,12 +251,9 @@ pub fn reopen_verified_for_exec(path: &Path, policy: &DownloadPolicy<'_>) -> Cor
 }
 
 pub fn validate_https_host(url: &str, allowed_hosts: &[&str]) -> CoreResult<()> {
-    let rest = url
-        .strip_prefix("https://")
-        .ok_or_else(|| CoreError::Trust {
-            message: format!("Redirección insegura fuera de HTTPS: '{}'", url),
-            source: None,
-        })?;
+    let rest = url.strip_prefix("https://").ok_or_else(|| {
+        CoreError::trust_msg(format!("Redirección insegura fuera de HTTPS: '{}'", url))
+    })?;
     let host_port = rest.split('/').next().unwrap_or("");
     let host = host_port.split(':').next().unwrap_or("");
     let host_low = host.to_ascii_lowercase();
@@ -294,10 +269,10 @@ pub fn validate_https_host(url: &str, allowed_hosts: &[&str]) -> CoreResult<()> 
         });
 
     if !is_allowed {
-        return Err(CoreError::Trust {
-            message: format!("Host final '{}' no está en la lista blanca", host),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "Host final '{}' no está en la lista blanca",
+            host
+        )));
     }
     Ok(())
 }

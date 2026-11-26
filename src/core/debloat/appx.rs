@@ -117,18 +117,17 @@ pub(super) fn get_powershell_path() -> CoreResult<PathBuf> {
         unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
             as usize;
     if len == 0 || len >= buf.len() {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo localizar System32 para PowerShell".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se pudo localizar System32 para PowerShell",
+        ));
     }
     let sys_dir = String::from_utf16_lossy(&buf[..len]);
     let ps = Path::new(&sys_dir).join(r"WindowsPowerShell\v1.0\powershell.exe");
     if !ps.is_file() {
-        return Err(CoreError::SystemTool {
-            message: format!("No se encontró powershell.exe en '{}'", ps.display()),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(format!(
+            "No se encontró powershell.exe en '{}'",
+            ps.display()
+        )));
     }
     Ok(ps)
 }
@@ -159,14 +158,11 @@ pub(super) fn run_ps(ps_path: &Path, script: &str, timeout_ms: u64) -> CoreResul
     if out.success {
         Ok(out.stdout)
     } else {
-        Err(CoreError::SystemTool {
-            message: if out.stderr.is_empty() {
-                format!("PowerShell finalizó con código {:?}", out.code)
-            } else {
-                out.stderr
-            },
-            source: None,
-        })
+        Err(CoreError::system_tool_msg(if out.stderr.is_empty() {
+            format!("PowerShell finalizó con código {:?}", out.code)
+        } else {
+            out.stderr
+        }))
     }
 }
 

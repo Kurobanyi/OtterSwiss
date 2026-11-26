@@ -148,10 +148,10 @@ impl DriverManager {
             PNPUTIL_TIMEOUT,
         )?;
         if !exp_out.success {
-            return Err(CoreError::SystemTool {
-                message: format!("Error extrayendo .CAB: {}", exp_out.stderr.trim()),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "Error extrayendo .CAB: {}",
+                exp_out.stderr.trim()
+            )));
         }
 
         let inf_pattern = extract_dir.join("*.inf");
@@ -168,14 +168,11 @@ impl DriverManager {
         if pnp_out.success || code == 3010 {
             return Ok(DriverInstallReport::single(code == 3010));
         }
-        Err(CoreError::SystemTool {
-            message: format!(
-                "pnputil devolvió código {}: {}",
-                code,
-                pnp_out.stdout.trim()
-            ),
-            source: None,
-        })
+        Err(CoreError::system_tool_msg(format!(
+            "pnputil devolvió código {}: {}",
+            code,
+            pnp_out.stdout.trim()
+        )))
     }
 }
 
@@ -196,9 +193,10 @@ fn catalog_cab_url(update_id: &str) -> CoreResult<String> {
     validate_https_host(&resp.final_url()?, CATALOG_HOSTS)?;
     let dialog_html =
         String::from_utf8_lossy(&resp.read_to_end_capped(4 * 1024 * 1024)?).into_owned();
-    find_catalog_cab_url(&dialog_html).ok_or_else(|| CoreError::SystemTool {
-        message: "No se encontró enlace de descarga .CAB válido en Microsoft Catalog.".into(),
-        source: None,
+    find_catalog_cab_url(&dialog_html).ok_or_else(|| {
+        CoreError::system_tool_msg(
+            "No se encontró enlace de descarga .CAB válido en Microsoft Catalog.",
+        )
     })
 }
 

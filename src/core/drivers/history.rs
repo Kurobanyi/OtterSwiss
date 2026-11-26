@@ -69,14 +69,11 @@ impl DriverManager {
         )?;
         let code = out.code.unwrap_or(-1);
         if !(out.success || code == 3010) {
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "pnputil no pudo quitar '{}' (código {code}): {}",
-                    record.published_name,
-                    out.stdout.trim()
-                ),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "pnputil no pudo quitar '{}' (código {code}): {}",
+                record.published_name,
+                out.stdout.trim()
+            )));
         }
         history.entries.remove(pos);
         write_backup(&driver_history_path()?, &history)?;

@@ -249,13 +249,10 @@ impl DependencyManager {
             None,
         )?;
         if !exit.is_installed_ok() {
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "Instalador runtime finalizó con código de error {}",
-                    exit.code_display()
-                ),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "Instalador runtime finalizó con código de error {}",
+                exit.code_display()
+            )));
         }
 
         if runtime.id == "webview2" {

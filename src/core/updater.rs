@@ -182,18 +182,16 @@ pub fn check_for_updates() -> CoreResult<Option<UpdateReleaseInfo>> {
             n.contains("setup") || n.contains("installer")
         })
         .or_else(|| candidates().next())
-        .ok_or_else(|| CoreError::Trust {
-            message: "La versión nueva en GitHub no incluye un instalador (.exe) válido".into(),
-            source: None,
+        .ok_or_else(|| {
+            CoreError::trust_msg(
+                "La versión nueva en GitHub no incluye un instalador (.exe) válido",
+            )
         })?;
 
-    let sha256 = parse_sha256_digest(asset.digest.as_deref()).ok_or_else(|| CoreError::Trust {
-        message: format!(
+    let sha256 = parse_sha256_digest(asset.digest.as_deref()).ok_or_else(|| CoreError::trust_msg(format!(
             "GitHub no publicó el SHA-256 del instalador '{}'; no se puede verificar la actualización",
             asset.name
-        ),
-        source: None,
-    })?;
+        )))?;
 
     Ok(Some(UpdateReleaseInfo {
         version: release.tag_name.trim_start_matches(['v', 'V']).to_string(),

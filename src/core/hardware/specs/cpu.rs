@@ -134,10 +134,9 @@ fn read_core_topology() -> CoreResult<(usize, Option<usize>, Option<usize>, usiz
     // SAFETY: el búfer tiene la longitud que se informa en `len`; la API escribe como mucho eso.
     let _ = unsafe { GetLogicalProcessorInformationEx(RelationProcessorCore, None, &mut len) };
     if len == 0 {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo determinar el tamaño de topología CPU".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se pudo determinar el tamaño de topología CPU",
+        ));
     }
 
     let mut buf = AlignedBuf::zeroed(len as usize);

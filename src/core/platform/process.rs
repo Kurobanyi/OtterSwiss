@@ -115,10 +115,7 @@ pub fn system32_dir() -> CoreResult<PathBuf> {
         unsafe { windows::Win32::System::SystemInformation::GetSystemDirectoryW(Some(&mut buf)) }
             as usize;
     if len == 0 || len >= buf.len() {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo localizar System32".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg("No se pudo localizar System32"));
     }
     Ok(PathBuf::from(String::from_utf16_lossy(&buf[..len])))
 }
@@ -129,11 +126,9 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
     // SAFETY: función sin parámetros; devuelve un HWND o nulo.
     let shell_hwnd = unsafe { GetShellWindow() };
     if shell_hwnd.0.is_null() {
-        return Err(CoreError::SystemTool {
-            message: "No se encontró el Explorador de escritorio para ejecutar sin elevación"
-                .into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se encontró el Explorador de escritorio para ejecutar sin elevación",
+        ));
     }
     let mut shell_pid = 0u32;
     // SAFETY: `hwnd` viene de GetShellWindow y `pid` es una variable local válida.
@@ -141,10 +136,9 @@ pub fn duplicate_desktop_shell_primary_token() -> CoreResult<SafeHandle> {
         GetWindowThreadProcessId(shell_hwnd, Some(&mut shell_pid));
     }
     if shell_pid == 0 {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo obtener el PID de explorer.exe".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se pudo obtener el PID de explorer.exe",
+        ));
     }
 
     // SAFETY: solo se pide acceso de consulta; el handle devuelto pasa a SafeHandle.
@@ -184,10 +178,9 @@ pub fn user_profile_dir(token: &SafeHandle) -> CoreResult<PathBuf> {
     // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
     let _ = unsafe { GetUserProfileDirectoryW(token.raw(), None, &mut len) };
     if len == 0 || len > 4096 {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo obtener la carpeta de perfil del usuario".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se pudo obtener la carpeta de perfil del usuario",
+        ));
     }
     let mut buf = vec![0u16; len as usize];
     // SAFETY: el token es válido y el búfer tiene la longitud que se informa en `len`.
@@ -315,14 +308,11 @@ pub fn run_in_job(
         }
         if started.elapsed() >= timeout {
             job.terminate_all(1);
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "'{}' excedió el tiempo límite de {} s y se terminó",
-                    launch.application.display(),
-                    timeout.as_secs()
-                ),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "'{}' excedió el tiempo límite de {} s y se terminó",
+                launch.application.display(),
+                timeout.as_secs()
+            )));
         }
 
         if exit_code.is_none() {
@@ -405,13 +395,10 @@ pub fn run_captured<S: AsRef<std::ffi::OsStr>>(
         if started.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "Tiempo límite excedido ejecutando '{}'",
-                    program.file_name().unwrap_or_default().to_string_lossy()
-                ),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "Tiempo límite excedido ejecutando '{}'",
+                program.file_name().unwrap_or_default().to_string_lossy()
+            )));
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     };

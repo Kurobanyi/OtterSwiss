@@ -67,14 +67,11 @@ pub fn reset_to_inherited_acl(path: &Path) -> CoreResult<()> {
         )
     };
     if status.0 != 0 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "No se pudieron restablecer los permisos de '{}' (código {})",
-                path.display(),
-                status.0
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "No se pudieron restablecer los permisos de '{}' (código {})",
+            path.display(),
+            status.0
+        )));
     }
     Ok(())
 }
@@ -100,14 +97,11 @@ pub(crate) fn is_owned_by_admins(path: &Path) -> CoreResult<bool> {
     // El descriptor (y `owner`, que apunta dentro de él) se libera al salir, también en el error.
     let _psd_guard = LocalMem::new(psd.0);
     if status.0 != 0 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "No se pudo leer el dueño de '{}' (código {})",
-                path.display(),
-                status.0
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "No se pudo leer el dueño de '{}' (código {})",
+            path.display(),
+            status.0
+        )));
     }
     // SAFETY: `owner` apunta dentro del descriptor, que sigue vivo en `_psd_guard`.
     let ok = unsafe {
@@ -126,32 +120,23 @@ pub(crate) fn verify_tree_owned_by_admins(root: &Path, max_depth: usize) -> Core
             let path = entry.path();
             let ft = entry.file_type()?;
             if ft.is_symlink() {
-                return Err(CoreError::Trust {
-                    message: format!(
-                        "Se encontró un enlace o junction en la carpeta de datos: '{}'. Bórralo y vuelve a intentar.",
-                        path.display()
-                    ),
-                    source: None,
-                });
+                return Err(CoreError::trust_msg(format!(
+                    "Se encontró un enlace o junction en la carpeta de datos: '{}'. Bórralo y vuelve a intentar.",
+                    path.display()
+                )));
             }
             if !is_owned_by_admins(&path)? {
-                return Err(CoreError::Trust {
-                    message: format!(
-                        "'{}' no pertenece a Administradores ni a SYSTEM (posible manipulación). Bórralo y vuelve a intentar.",
-                        path.display()
-                    ),
-                    source: None,
-                });
+                return Err(CoreError::trust_msg(format!(
+                    "'{}' no pertenece a Administradores ni a SYSTEM (posible manipulación). Bórralo y vuelve a intentar.",
+                    path.display()
+                )));
             }
             if ft.is_dir() {
                 if depth + 1 > max_depth {
-                    return Err(CoreError::Trust {
-                        message: format!(
-                            "Carpeta de datos demasiado profunda en '{}'",
-                            path.display()
-                        ),
-                        source: None,
-                    });
+                    return Err(CoreError::trust_msg(format!(
+                        "Carpeta de datos demasiado profunda en '{}'",
+                        path.display()
+                    )));
                 }
                 stack.push((path, depth + 1));
             }
@@ -220,10 +205,10 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     // SAFETY: las entradas viven durante la llamada; la ACL devuelta pasa a LocalMem.
     let acl_status = unsafe { SetEntriesInAclW(Some(&entries), None, &mut new_dacl) };
     if acl_status.0 != 0 || new_dacl.is_null() {
-        return Err(CoreError::Trust {
-            message: format!("SetEntriesInAclW falló con código {}", acl_status.0),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "SetEntriesInAclW falló con código {}",
+            acl_status.0
+        )));
     }
 
     let _dacl_guard = LocalMem::new(new_dacl as _);
@@ -244,14 +229,11 @@ pub fn apply_admin_only_acl(path: &Path) -> CoreResult<()> {
     };
 
     if sec_status.0 != 0 {
-        return Err(CoreError::Trust {
-            message: format!(
-                "SetNamedSecurityInfoW falló en '{}' con código {}",
-                path.display(),
-                sec_status.0
-            ),
-            source: None,
-        });
+        return Err(CoreError::trust_msg(format!(
+            "SetNamedSecurityInfoW falló en '{}' con código {}",
+            path.display(),
+            sec_status.0
+        )));
     }
 
     Ok(())

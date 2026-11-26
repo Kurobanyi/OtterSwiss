@@ -11,20 +11,18 @@ pub(super) fn read_smbios_board_and_memory() -> CoreResult<(MotherboardSpecs, Me
     // SAFETY: el búfer tiene la longitud que se pasa; con longitud 0 solo informa el tamaño.
     let required = unsafe { GetSystemFirmwareTable(RSMB_PROVIDER, 0, None) };
     if required <= 8 {
-        return Err(CoreError::SystemTool {
-            message: "Tabla SMBIOS no disponible en este firmware".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "Tabla SMBIOS no disponible en este firmware",
+        ));
     }
 
     let mut raw = vec![0u8; required as usize];
     // SAFETY: el búfer tiene la longitud que se pasa; con longitud 0 solo informa el tamaño.
     let written = unsafe { GetSystemFirmwareTable(RSMB_PROVIDER, 0, Some(&mut raw)) };
     if written <= 8 {
-        return Err(CoreError::SystemTool {
-            message: "No se pudo leer el contenido completo de SMBIOS".into(),
-            source: None,
-        });
+        return Err(CoreError::system_tool_msg(
+            "No se pudo leer el contenido completo de SMBIOS",
+        ));
     }
 
     // ERR-12: si el firmware informa más bytes de los pedidos, se acota al buffer en vez de entrar en pánico.

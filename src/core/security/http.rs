@@ -151,10 +151,7 @@ impl HttpsResponse {
 }
 
 fn trust_err(message: String) -> CoreError {
-    CoreError::Trust {
-        message,
-        source: None,
-    }
+    CoreError::trust_msg(message)
 }
 
 /// Abre `url` (solo `https://`) sin caché. Los redireccionamientos los sigue WinInet: quien llama tiene que

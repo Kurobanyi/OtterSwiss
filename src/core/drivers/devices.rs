@@ -216,14 +216,11 @@ impl DriverManager {
             PNPUTIL_TIMEOUT,
         )?;
         if !out.success {
-            return Err(CoreError::SystemTool {
-                message: format!(
-                    "pnputil falló al exportar drivers (código {}): {}",
-                    out.code.unwrap_or(-1),
-                    out.stdout.trim()
-                ),
-                source: None,
-            });
+            return Err(CoreError::system_tool_msg(format!(
+                "pnputil falló al exportar drivers (código {}): {}",
+                out.code.unwrap_or(-1),
+                out.stdout.trim()
+            )));
         }
 
         Ok(backup_dir)

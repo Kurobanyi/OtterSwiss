@@ -119,6 +119,67 @@ pub enum ErrorKind {
 pub type BoxedSource = Box<dyn std::error::Error + Send + Sync>;
 
 impl CoreError {
+    /// AR-06: constructores de un fallo detectado por una comprobación propia (una política, un valor fuera de rango)
+    /// que no viene de otro error. Cuando sí viene de uno, se usa la variante con `source: Some(Box::new(e))` o
+    /// `CoreError::sys`/`CoreError::trust` para conservarlo; así un `source: None` suelto indica una causa perdida.
+    /// Igual que las demás `*_msg`, para un fallo de servicio sin error de origen.
+    pub fn service_msg(service: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::Service {
+            service: service.into(),
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn power_msg(message: impl Into<String>) -> Self {
+        Self::Power {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn dns_msg(message: impl Into<String>) -> Self {
+        Self::Dns {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn trust_msg(message: impl Into<String>) -> Self {
+        Self::Trust {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn backup_msg(message: impl Into<String>) -> Self {
+        Self::Backup {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn archive_msg(message: impl Into<String>) -> Self {
+        Self::Archive {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn uninstaller_msg(message: impl Into<String>) -> Self {
+        Self::Uninstaller {
+            message: message.into(),
+            source: None,
+        }
+    }
+
+    pub fn system_tool_msg(message: impl Into<String>) -> Self {
+        Self::SystemTool {
+            message: message.into(),
+            source: None,
+        }
+    }
+
     pub fn kind(&self) -> ErrorKind {
         match self {
             Self::Io(_) => ErrorKind::Io,
@@ -199,5 +260,26 @@ impl CoreError {
             message: format!("{}: {}", context.into(), err),
             source: Some(Box::new(err)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    /// AR-06: una comprobación propia no inventa causa, y un error de origen sí se conserva en la cadena.
+    #[test]
+    fn source_solo_cuando_hay_error_de_origen() {
+        assert!(CoreError::trust_msg("política").source().is_none());
+        assert!(
+            CoreError::service_msg("Spooler", "tiempo agotado")
+                .source()
+                .is_none()
+        );
+        let origen = io::Error::other("acceso denegado");
+        let e = CoreError::sys::<io::Error>("falló: ")(origen);
+        assert!(e.source().is_some());
+        assert_eq!(e.kind(), ErrorKind::SystemTool);
     }
 }

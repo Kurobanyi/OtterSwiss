@@ -146,10 +146,10 @@ impl<'a> QuotaCopy<'a> {
             }
             self.written = self.written.saturating_add(read_len as u64);
             if self.written > self.quota {
-                return Err(CoreError::Archive {
-                    message: format!("Límite de cuota ({} bytes) excedido", self.quota),
-                    source: None,
-                });
+                return Err(CoreError::archive_msg(format!(
+                    "Límite de cuota ({} bytes) excedido",
+                    self.quota
+                )));
             }
             out_file.write_all(&chunk[..read_len])?;
             tel.tick(Some(rel_name), self.written, files_done, false);

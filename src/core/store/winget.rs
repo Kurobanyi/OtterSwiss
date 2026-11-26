@@ -114,12 +114,9 @@ pub(super) fn user_winget(user_token: &SafeHandle) -> CoreResult<PathBuf> {
 }
 
 fn missing(detail: &str) -> CoreError {
-    CoreError::SystemTool {
-        message: format!(
-            "{detail}. Instala «App Installer» desde Microsoft Store (ms-windows-store://pdp/?productid=9NBLGGH4NNS1)."
-        ),
-        source: None,
-    }
+    CoreError::system_tool_msg(format!(
+        "{detail}. Instala «App Installer» desde Microsoft Store (ms-windows-store://pdp/?productid=9NBLGGH4NNS1)."
+    ))
 }
 
 /// Versión de un nombre completo de paquete (`Microsoft.DesktopAppInstaller_1.29.379.0_x64__8wekyb3d8bbwe`).

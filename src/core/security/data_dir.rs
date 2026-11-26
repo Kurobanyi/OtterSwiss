@@ -12,9 +12,8 @@ use crate::core::security::acl::{
 
 /// `C:\ProgramData` por `SHGetKnownFolderPath` (no por `%ProgramData%`, que un proceso sin elevar puede cambiar).
 pub fn get_program_data_dir() -> CoreResult<PathBuf> {
-    known_folder(&FOLDERID_ProgramData).ok_or_else(|| CoreError::Trust {
-        message: "No se pudo resolver la carpeta ProgramData (FOLDERID_ProgramData)".into(),
-        source: None,
+    known_folder(&FOLDERID_ProgramData).ok_or_else(|| {
+        CoreError::trust_msg("No se pudo resolver la carpeta ProgramData (FOLDERID_ProgramData)")
     })
 }
 
@@ -31,13 +30,10 @@ pub fn ensure_admin_only_data_dir() -> CoreResult<PathBuf> {
     match std::fs::symlink_metadata(&target) {
         Ok(meta) => {
             if meta.file_type().is_symlink() || !meta.is_dir() {
-                return Err(CoreError::Trust {
-                    message: format!(
-                        "Ruta crítica '{}' es un symlink o archivo no válido (posible squatting)",
-                        target.display()
-                    ),
-                    source: None,
-                });
+                return Err(CoreError::trust_msg(format!(
+                    "Ruta crítica '{}' es un symlink o archivo no válido (posible squatting)",
+                    target.display()
+                )));
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => create_admin_only_dir(&target)?,

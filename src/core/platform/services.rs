@@ -31,11 +31,8 @@ pub(crate) fn open_service(service_name: &str, access: u32) -> CoreResult<Option
             message: format!("OpenSCManagerW falló: {}", e),
             source: Some(Box::new(e)),
         })?;
-    let scm = ScHandle::new(scm_raw).ok_or_else(|| CoreError::Service {
-        service: service_name.to_string(),
-        message: "Handle SCM nulo".into(),
-        source: None,
-    })?;
+    let scm = ScHandle::new(scm_raw)
+        .ok_or_else(|| CoreError::service_msg(service_name.to_string(), "Handle SCM nulo"))?;
 
     let svc_w = to_wide_null(service_name);
     // SAFETY: el SCM es válido y el nombre termina en NUL; el handle pasa a ScHandle.
@@ -58,11 +55,10 @@ pub(crate) fn query_service_start_config(
     // SAFETY: el handle del servicio es válido y el búfer tiene la longitud que se informa.
     let _ = unsafe { QueryServiceConfigW(svc.raw(), None, 0, &mut needed) };
     if needed == 0 {
-        return Err(CoreError::Service {
-            service: service_name.to_string(),
-            message: "QueryServiceConfigW devolvió tamaño 0".into(),
-            source: None,
-        });
+        return Err(CoreError::service_msg(
+            service_name.to_string(),
+            "QueryServiceConfigW devolvió tamaño 0",
+        ));
     }
 
     let mut buf = AlignedBuf::zeroed(needed as usize);
@@ -230,12 +226,10 @@ pub(crate) fn stop_service_and_wait(
                 return Ok(());
             }
             if e.code() == ERROR_DEPENDENT_SERVICES_RUNNING.to_hresult() {
-                return Err(CoreError::Service {
-                    service: service_name.to_string(),
-                    message: "No se pudo detener porque tiene servicios dependientes activos"
-                        .into(),
-                    source: None,
-                });
+                return Err(CoreError::service_msg(
+                    service_name.to_string(),
+                    "No se pudo detener porque tiene servicios dependientes activos",
+                ));
             }
             return Err(CoreError::Service {
                 service: service_name.to_string(),
@@ -253,11 +247,10 @@ pub(crate) fn stop_service_and_wait(
         std::thread::sleep(Duration::from_millis(250));
     }
 
-    Err(CoreError::Service {
-        service: service_name.to_string(),
-        message: "Tiempo de espera agotado deteniendo el servicio".into(),
-        source: None,
-    })
+    Err(CoreError::service_msg(
+        service_name.to_string(),
+        "Tiempo de espera agotado deteniendo el servicio",
+    ))
 }
 
 pub(crate) fn start_service_and_wait(
@@ -292,9 +285,8 @@ pub(crate) fn start_service_and_wait(
         std::thread::sleep(Duration::from_millis(250));
     }
 
-    Err(CoreError::Service {
-        service: service_name.to_string(),
-        message: "Tiempo de espera agotado iniciando el servicio".into(),
-        source: None,
-    })
+    Err(CoreError::service_msg(
+        service_name.to_string(),
+        "Tiempo de espera agotado iniciando el servicio",
+    ))
 }

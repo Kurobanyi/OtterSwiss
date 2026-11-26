@@ -19,8 +19,8 @@ const INDICADORES: &[(&str, usize, &str)] = &[
     ),
     (
         "source: None",
-        95,
-        "errores sin causa: conservar el error original (AR-06, CL-20)",
+        10,
+        "errores sin causa: los fallos de una comprobación propia usan los constructores `*_msg` de `CoreError` (que son los únicos `source: None`); si hay un error de origen se conserva (AR-06, CL-20)",
     ),
 ];
 
