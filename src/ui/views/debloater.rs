@@ -13,14 +13,35 @@ use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::{run_blocking, run_with_progress};
 
-fn apply_recommended_defaults(
-    scan: &DebloatScanResult,
-    mut selected_apps: Signal<HashSet<&'static str>>,
-    mut selected_regs: Signal<HashSet<&'static str>>,
-) {
-    let (apps, regs) = scan.recommended_selection();
-    selected_apps.set(apps);
-    selected_regs.set(regs);
+/// CL-05: las señales que comparten la vista y sus tarjetas. Son `Copy`.
+#[derive(Clone, Copy, PartialEq)]
+struct DebloaterSignals {
+    scan_result: Signal<DebloatScanResult>,
+    selected_apps: Signal<HashSet<&'static str>>,
+    selected_regs: Signal<HashSet<&'static str>>,
+    is_scanning: Signal<bool>,
+    is_running: Signal<bool>,
+    progress_state: Signal<DebloatProgress>,
+    last_report: Signal<Option<DebloatReport>>,
+    status_banner: Signal<Option<(Msg, Tone)>>,
+    error_banner: Signal<Option<Msg>>,
+}
+
+impl DebloaterSignals {
+    fn busy(&self) -> bool {
+        *self.is_running.read() || *self.is_scanning.read()
+    }
+
+    /// Marca lo que el catálogo recomienda para esta PC.
+    fn apply_recommended_defaults(mut self, scan: &DebloatScanResult) {
+        let (apps, regs) = scan.recommended_selection();
+        self.selected_apps.set(apps);
+        self.selected_regs.set(regs);
+    }
+
+    fn selected_count(&self) -> usize {
+        self.selected_apps.read().len() + self.selected_regs.read().len()
+    }
 }
 
 /// UI-02 / UI-03: el aviso refleja fallos y cancelación, no solo que la tarea terminó.
@@ -42,384 +63,451 @@ fn report_banner(rep: &DebloatReport, en: bool) -> (String, Tone) {
     }
 }
 
-#[component]
-pub fn DebloaterView() -> Element {
-    let lang = use_context::<Signal<Lang>>();
-    let en = lang.read().is_en();
-    let txt = strings(en).debloater;
-
-    let mut scan_result = use_signal(DebloatScanResult::default);
-    let mut selected_apps = use_signal(HashSet::<&'static str>::new);
-    let mut selected_regs = use_signal(HashSet::<&'static str>::new);
-    let mut is_scanning = use_signal(|| true);
-    let mut is_running = use_signal(|| false);
-    let mut progress_state = use_signal(DebloatProgress::default);
-    let mut last_report = use_signal(|| Option::<DebloatReport>::None);
-    let mut status_banner = use_signal(|| Option::<(Msg, Tone)>::None);
-    let mut confirm_open = use_signal(|| false);
-    let mut error_banner = use_signal(|| Option::<Msg>::None);
-    let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
-
-    let run_scan = move || {
-        is_scanning.set(true);
-        error_banner.set(None);
-        spawn(async move {
-            let res = run_blocking(DebloaterManager::scan_system).await;
-
-            match res {
-                Ok(data) => {
-                    apply_recommended_defaults(&data, selected_apps, selected_regs);
-                    scan_result.set(data);
-                }
-                Err(e) => error_banner.set(Some(e)),
+/// Escanea el sistema (fuera del hilo de UI) y deja la selección recomendada.
+fn start_scan(sig: DebloaterSignals) {
+    let DebloaterSignals {
+        mut scan_result,
+        mut is_scanning,
+        mut error_banner,
+        ..
+    } = sig;
+    is_scanning.set(true);
+    error_banner.set(None);
+    spawn(async move {
+        match run_blocking(DebloaterManager::scan_system).await {
+            Ok(data) => {
+                sig.apply_recommended_defaults(&data);
+                scan_result.set(data);
             }
-            is_scanning.set(false);
-        });
-    };
+            Err(e) => error_banner.set(Some(e)),
+        }
+        is_scanning.set(false);
+    });
+}
 
-    use_hook(move || {
-        let mut r = run_scan;
-        r();
+/// Quita las apps y aplica los ajustes marcados, con progreso y cancelación.
+fn start_execute(sig: DebloaterSignals, cancel: Arc<AtomicBool>, en: bool) {
+    let DebloaterSignals {
+        mut scan_result,
+        selected_apps,
+        selected_regs,
+        mut is_running,
+        mut progress_state,
+        mut last_report,
+        mut status_banner,
+        mut error_banner,
+        ..
+    } = sig;
+    let sel_app_ids = selected_apps.read().clone();
+    let apps_to_remove: Vec<DetectedBloatApp> = scan_result
+        .read()
+        .apps
+        .iter()
+        .filter(|a| a.installed && sel_app_ids.contains(a.id))
+        .cloned()
+        .collect();
+
+    let sel_reg_ids: Vec<&'static str> = DEBLOAT_REG_TWEAKS
+        .iter()
+        .filter(|r| selected_regs.read().contains(r.id))
+        .map(|r| r.id)
+        .collect();
+
+    if apps_to_remove.is_empty() && sel_reg_ids.is_empty() {
+        return;
+    }
+
+    cancel.store(false, Ordering::Release);
+    is_running.set(true);
+    error_banner.set(None);
+    status_banner.set(None);
+    last_report.set(None);
+    progress_state.set(DebloatProgress {
+        current_step: 0,
+        total_steps: (apps_to_remove.len() + sel_reg_ids.len()).max(1),
+        current_label: strings(en).starting.to_string(),
+        percent: 2,
     });
 
-    let cancel_for_exec = Arc::clone(&cancel_flag);
-    let mut start_execute = move || {
-        let current_scan = scan_result.read().clone();
-        let sel_app_ids = selected_apps.read().clone();
-        let apps_to_remove: Vec<DetectedBloatApp> = current_scan
-            .apps
-            .into_iter()
-            .filter(|a| a.installed && sel_app_ids.contains(a.id))
-            .collect();
-
-        let sel_reg_ids: Vec<&'static str> = DEBLOAT_REG_TWEAKS
-            .iter()
-            .filter(|r| selected_regs.read().contains(r.id))
-            .map(|r| r.id)
-            .collect();
-
-        if apps_to_remove.is_empty() && sel_reg_ids.is_empty() {
-            return;
-        }
-
-        cancel_for_exec.store(false, Ordering::Release);
-        is_running.set(true);
-        error_banner.set(None);
-        status_banner.set(None);
-        last_report.set(None);
-        progress_state.set(DebloatProgress {
-            current_step: 0,
-            total_steps: (apps_to_remove.len() + sel_reg_ids.len()).max(1),
-            current_label: strings(en).starting.to_string(),
-            percent: 2,
-        });
-
-        let cancel_worker = Arc::clone(&cancel_for_exec);
-
-        spawn(async move {
-            let res = run_with_progress(progress_state, move |prog| {
-                DebloaterManager::execute_debloat(
-                    &apps_to_remove,
-                    &sel_reg_ids,
-                    &cancel_worker,
-                    Some(prog),
-                )
+    spawn(async move {
+        let res = run_with_progress(progress_state, move |prog| {
+            DebloaterManager::execute_debloat(&apps_to_remove, &sel_reg_ids, &cancel, Some(prog))
                 .map_err(Msg::from)
-            })
-            .await
-            .and_then(|r| r);
+        })
+        .await
+        .and_then(|r| r);
 
-            match res {
-                Ok(rep) => {
-                    let tone = report_banner(&rep, false).1;
-                    let shown = rep.clone();
-                    status_banner.set(Some((
-                        Msg::new(move |en| report_banner(&shown, en).0),
-                        tone,
-                    )));
-                    last_report.set(Some(rep));
-                    if let Ok(Ok(fresh)) =
-                        tokio::task::spawn_blocking(DebloaterManager::scan_system).await
-                    {
-                        apply_recommended_defaults(&fresh, selected_apps, selected_regs);
-                        scan_result.set(fresh);
-                    }
+        match res {
+            Ok(rep) => {
+                let tone = report_banner(&rep, false).1;
+                let shown = rep.clone();
+                status_banner.set(Some((
+                    Msg::new(move |en| report_banner(&shown, en).0),
+                    tone,
+                )));
+                last_report.set(Some(rep));
+                if let Ok(Ok(fresh)) =
+                    tokio::task::spawn_blocking(DebloaterManager::scan_system).await
+                {
+                    sig.apply_recommended_defaults(&fresh);
+                    scan_result.set(fresh);
                 }
-                Err(e) => error_banner.set(Some(e)),
             }
-            is_running.set(false);
-        });
-    };
+            Err(e) => error_banner.set(Some(e)),
+        }
+        is_running.set(false);
+    });
+}
 
-    let on_revert_reg = move |_| {
-        is_running.set(true);
-        error_banner.set(None);
-        spawn(async move {
-            let res = run_blocking(DebloaterManager::revert_registry_debloat).await;
-
-            match res {
-                Ok(count) => {
-                    status_banner.set(Some((
-                        Msg::new(move |en| {
-                            (strings(en).debloater.reverted_registry_values)(&count)
-                        }),
-                        Tone::Success,
-                    )));
-                    if let Ok(Ok(fresh)) =
-                        tokio::task::spawn_blocking(DebloaterManager::scan_system).await
-                    {
-                        scan_result.set(fresh);
-                    }
+/// Revierte los ajustes de registro del Debloater desde su respaldo.
+fn start_revert_registry(sig: DebloaterSignals) {
+    let DebloaterSignals {
+        mut scan_result,
+        mut is_running,
+        mut status_banner,
+        mut error_banner,
+        ..
+    } = sig;
+    is_running.set(true);
+    error_banner.set(None);
+    spawn(async move {
+        match run_blocking(DebloaterManager::revert_registry_debloat).await {
+            Ok(count) => {
+                status_banner.set(Some((
+                    Msg::new(move |en| (strings(en).debloater.reverted_registry_values)(&count)),
+                    Tone::Success,
+                )));
+                if let Ok(Ok(fresh)) =
+                    tokio::task::spawn_blocking(DebloaterManager::scan_system).await
+                {
+                    scan_result.set(fresh);
                 }
-                Err(e) => error_banner.set(Some(e)),
             }
-            is_running.set(false);
-        });
-    };
+            Err(e) => error_banner.set(Some(e)),
+        }
+        is_running.set(false);
+    });
+}
 
+/// SYS-20: la confirmación muestra la lista concreta y qué significa quitar para todos los usuarios.
+#[component]
+fn DebloatConfirm(
+    sig: DebloaterSignals,
+    on_cancel: EventHandler<()>,
+    on_confirm: EventHandler<()>,
+) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).debloater;
+    let scan = sig.scan_result.read();
+    let apps: Vec<&'static str> = scan
+        .apps
+        .iter()
+        .filter(|a| a.installed && sig.selected_apps.read().contains(a.id))
+        .map(|a| a.display_name)
+        .collect();
+    let regs: Vec<&'static str> = DEBLOAT_REG_TWEAKS
+        .iter()
+        .filter(|r| sig.selected_regs.read().contains(r.id))
+        .map(|r| r.label)
+        .collect();
+
+    rsx! {
+        ConfirmDialog {
+            title: txt.apply_the_debloat.to_string(),
+            subtitle: Some(txt.apps_are_removed_for_every.to_string()),
+            confirm_label: (txt.apply)(&sig.selected_count()),
+            cancel_label: strings(en).cancel.to_string(),
+            tone: Tone::Danger,
+            wide: true,
+            on_cancel: move |_| on_cancel.call(()),
+            on_confirm: move |_| on_confirm.call(()),
+            div { class: "modal-list",
+                for name in apps.iter() {
+                    div { key: "app-{name}", "• {name}" }
+                }
+                for label in regs.iter() {
+                    div { key: "reg-{label}", "• {label}" }
+                }
+            }
+        }
+    }
+}
+
+/// Botones principales (aplicar, cancelar, recomendado, limpiar, volver a escanear, revertir) y el contador.
+#[component]
+fn DebloatActions(
+    sig: DebloaterSignals,
+    on_apply: EventHandler<()>,
+    on_cancel: EventHandler<()>,
+) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).debloater;
+    let DebloaterSignals {
+        scan_result,
+        mut selected_apps,
+        mut selected_regs,
+        is_scanning,
+        is_running,
+        ..
+    } = sig;
+    let busy = sig.busy();
+    let total_selected = sig.selected_count();
     let scan = scan_result.read();
-    let total_selected = selected_apps.read().len() + selected_regs.read().len();
     let installed_count = scan.apps.iter().filter(|a| a.installed).count();
-    let prog = progress_state.read();
-    let cancel_for_btn = Arc::clone(&cancel_flag);
-    let busy = *is_running.read() || *is_scanning.read();
 
+    rsx! {
+        Card {
+            title: txt.windows_debloater.to_string(),
+            subtitle: Some(txt.remove_preinstalled_apps_and_ads.to_string()),
+            div { class: "row-between gap-3 wrap",
+                div { class: "flex gap-2 wrap",
+                    button {
+                        class: "btn btn-danger",
+                        disabled: busy || total_selected == 0,
+                        onclick: move |_| on_apply.call(()),
+                        if *is_running.read() {
+                            "{strings(en).running}"
+                        } else { "{(txt.apply)(&total_selected)}" }
+                    }
+                    if *is_running.read() {
+                        button {
+                            class: "btn btn-secondary",
+                            onclick: move |_| on_cancel.call(()),
+                            "{strings(en).cancel}"
+                        }
+                    } else {
+                        button {
+                            class: "btn btn-secondary",
+                            disabled: busy,
+                            onclick: move |_| sig.apply_recommended_defaults(&scan_result.read()),
+                            "{txt.recommended}"
+                        }
+                        button {
+                            class: "btn btn-secondary",
+                            disabled: busy,
+                            onclick: move |_| {
+                                selected_apps.write().clear();
+                                selected_regs.write().clear();
+                            },
+                            "{strings(en).clear}"
+                        }
+                        button {
+                            class: "btn btn-secondary",
+                            disabled: busy,
+                            onclick: move |_| start_scan(sig),
+                            "{txt.rescan}"
+                        }
+                        if scan.has_reg_backup {
+                            button {
+                                class: "btn btn-secondary",
+                                disabled: busy,
+                                onclick: move |_| start_revert_registry(sig),
+                                "{txt.revert_registry}"
+                            }
+                        }
+                    }
+                }
+
+                span { class: "badge badge-info",
+                    if *is_scanning.read() {
+                        "{strings(en).scanning}"
+                    } else { "{(txt.found)(&installed_count)}" }
+                }
+            }
+        }
+    }
+}
+
+/// Resultado de la última ejecución, ítem por ítem.
+#[component]
+fn DebloatReportCard(report: DebloatReport) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    rsx! {
+        Card {
+            title: strings(en).debloater.summary.to_string(),
+            subtitle: None,
+            div { class: "stack-1",
+                for item in report.outcomes.iter() {
+                    div {
+                        key: "{item.label}",
+                        class: "list-row dense text-xs",
+                        div {
+                            div { class: "fw-semibold", "{tr(&item.label, en)}" }
+                            if !item.message.is_empty() {
+                                div { class: "text-muted", "{item.message}" }
+                            }
+                        }
+                        span {
+                            class: if item.success { "badge badge-success" } else { "badge badge-danger" },
+                            if item.success { "OK" } else { "Error" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Ajustes de privacidad y anuncios (registro): una casilla por ajuste.
+#[component]
+fn RegistryTweaksCard(sig: DebloaterSignals) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let mut selected_regs = sig.selected_regs;
+    let busy = sig.busy();
+    rsx! {
+        Card {
+            title: strings(en).debloater.privacy_ad_block_registry_tweaks.to_string(),
+            subtitle: None,
+            div { class: "stack-2",
+                for spec in DEBLOAT_REG_TWEAKS {
+                    {
+                        let tid = spec.id;
+                        let checked = selected_regs.read().contains(tid);
+                        rsx! {
+                            CheckRow {
+                                key: "{tid}",
+                                class: "item-row gap-3",
+                                checked,
+                                disabled: busy,
+                                on_change: move |on| {
+                                    let mut s = selected_regs.write();
+                                    if on { s.insert(tid); } else { s.remove(tid); }
+                                },
+                                div {
+                                    div { class: "text-sm fw-semibold", "{tr(&spec.label, en)}" }
+                                    div { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Las apps de una categoría; solo se pueden marcar las que están instaladas.
+#[component]
+fn CategoryCard(cat: DebloatCategory, sig: DebloaterSignals) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).debloater;
+    let mut selected_apps = sig.selected_apps;
+    let busy = sig.busy();
+    let scan = sig.scan_result.read();
+    rsx! {
+        Card {
+            title: tr(cat.label(), en).into_owned(),
+            subtitle: None,
+            div { class: "stack-2",
+                for app in scan.apps.iter().filter(|a| a.category == cat) {
+                    {
+                        let app_id = app.id;
+                        let checked = app.installed && selected_apps.read().contains(app_id);
+                        rsx! {
+                            CheckRow {
+                                key: "{app_id}",
+                                class: "item-row gap-3",
+                                checked,
+                                disabled: busy || !app.installed,
+                                on_change: move |on| {
+                                    let mut s = selected_apps.write();
+                                    if on { s.insert(app_id); } else { s.remove(app_id); }
+                                },
+                                div { class: "grow",
+                                    span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
+                                    span { class: "text-xs text-muted", "({app.package_name})" }
+                                    div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
+                                }
+                                span {
+                                    class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
+                                    if app.installed {
+                                        "{strings(en).installed_app}"
+                                    } else { "{txt.not_installed}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+pub fn DebloaterView() -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+
+    let sig = DebloaterSignals {
+        scan_result: use_signal(DebloatScanResult::default),
+        selected_apps: use_signal(HashSet::<&'static str>::new),
+        selected_regs: use_signal(HashSet::<&'static str>::new),
+        is_scanning: use_signal(|| true),
+        is_running: use_signal(|| false),
+        progress_state: use_signal(DebloatProgress::default),
+        last_report: use_signal(|| Option::<DebloatReport>::None),
+        status_banner: use_signal(|| Option::<(Msg, Tone)>::None),
+        error_banner: use_signal(|| Option::<Msg>::None),
+    };
+    let mut confirm_open = use_signal(|| false);
+    let cancel_flag = use_hook(|| Arc::new(AtomicBool::new(false)));
+    use_hook(move || start_scan(sig));
+
+    let prog = sig.progress_state.read();
     let categories = [
         DebloatCategory::Recommended,
         DebloatCategory::OptionalApps,
         DebloatCategory::XboxGaming,
     ];
 
-    let debloat_title = txt.windows_debloater.to_string();
-    let debloat_sub = Some(txt.remove_preinstalled_apps_and_ads.to_string());
-    let prog_title = txt.debloat_progress.to_string();
-    let rep_title = txt.summary.to_string();
-    let tweaks_title = txt.privacy_ad_block_registry_tweaks.to_string();
-
-    // SYS-20: la confirmación muestra la lista concreta y qué significa quitar para todos los usuarios.
-    let confirm_apps: Vec<&'static str> = scan
-        .apps
-        .iter()
-        .filter(|a| a.installed && selected_apps.read().contains(a.id))
-        .map(|a| a.display_name)
-        .collect();
-    let confirm_regs: Vec<&'static str> = DEBLOAT_REG_TWEAKS
-        .iter()
-        .filter(|r| selected_regs.read().contains(r.id))
-        .map(|r| r.label)
-        .collect();
-
     rsx! {
         div { class: "content-body",
             if *confirm_open.read() {
-                ConfirmDialog {
-                    title: txt.apply_the_debloat.to_string(),
-                    subtitle: Some(txt.apps_are_removed_for_every.to_string()),
-                    confirm_label: (strings(en).debloater.apply)(&total_selected),
-                    cancel_label: strings(en).cancel.to_string(),
-                    tone: Tone::Danger,
-                    wide: true,
+                DebloatConfirm {
+                    sig,
                     on_cancel: move |_| confirm_open.set(false),
-                    on_confirm: move |_| {
-                        confirm_open.set(false);
-                        start_execute();
+                    on_confirm: {
+                        let cancel = Arc::clone(&cancel_flag);
+                        move |_| {
+                            confirm_open.set(false);
+                            start_execute(sig, Arc::clone(&cancel), en);
+                        }
                     },
-                    div { class: "modal-list",
-                        for name in confirm_apps.iter() {
-                            div { key: "app-{name}", "• {name}" }
-                        }
-                        for label in confirm_regs.iter() {
-                            div { key: "reg-{label}", "• {label}" }
-                        }
-                    }
                 }
             }
 
-            Card {
-                title: debloat_title,
-                subtitle: debloat_sub,
-                div { class: "row-between gap-3 wrap",
-                    div { class: "flex gap-2 wrap",
-                        button {
-                            class: "btn btn-danger",
-                            disabled: busy || total_selected == 0,
-                            onclick: move |_| confirm_open.set(true),
-                            if *is_running.read() {
-                                "{strings(en).running}"
-                            } else { "{(strings(en).debloater.apply)(&total_selected)}" }
-                        }
-                        if *is_running.read() {
-                            button {
-                                class: "btn btn-secondary",
-                                onclick: move |_| cancel_for_btn.store(true, Ordering::Release),
-                                "{strings(en).cancel}"
-                            }
-                        } else {
-                            button {
-                                class: "btn btn-secondary",
-                                disabled: busy,
-                                onclick: move |_| {
-                                    let s = scan_result.read().clone();
-                                    apply_recommended_defaults(&s, selected_apps, selected_regs);
-                                },
-                                "{txt.recommended}"
-                            }
-                            button {
-                                class: "btn btn-secondary",
-                                disabled: busy,
-                                onclick: move |_| {
-                                    selected_apps.write().clear();
-                                    selected_regs.write().clear();
-                                },
-                                "{strings(en).clear}"
-                            }
-                            button {
-                                class: "btn btn-secondary",
-                                disabled: busy,
-                                onclick: move |_| {
-                                    let mut r = run_scan;
-                                    r();
-                                },
-                                "{txt.rescan}"
-                            }
-                            if scan.has_reg_backup {
-                                button {
-                                    class: "btn btn-secondary",
-                                    disabled: busy,
-                                    onclick: on_revert_reg,
-                                    "{txt.revert_registry}"
-                                }
-                            }
-                        }
-                    }
-
-                    span { class: "badge badge-info",
-                        if *is_scanning.read() {
-                            "{strings(en).scanning}"
-                        } else { "{(strings(en).debloater.found)(&installed_count)}" }
-                    }
-                }
+            DebloatActions {
+                sig,
+                on_apply: move |_| confirm_open.set(true),
+                on_cancel: {
+                    let cancel = Arc::clone(&cancel_flag);
+                    move |_| cancel.store(true, Ordering::Release)
+                },
             }
 
-            if *is_running.read() {
+            if *sig.is_running.read() {
                 Card {
-                    title: prog_title,
+                    title: strings(en).debloater.debloat_progress.to_string(),
                     subtitle: Some(format!("{}/{} — {}", prog.current_step, prog.total_steps.max(1), tr(&prog.current_label, en))),
                     ProgressBar { percent: prog.percent }
                 }
             }
 
-            if let Some((msg, tone)) = status_banner.read().clone().map(|(m, t)| (m.text(en), t)) {
+            if let Some((msg, tone)) = sig.status_banner.read().clone().map(|(m, t)| (m.text(en), t)) {
                 StatusBanner { text: msg, tone }
             }
 
-            if let Some(err) = error_banner.read().as_ref().map(|m| m.text(en)) {
+            if let Some(err) = sig.error_banner.read().as_ref().map(|m| m.text(en)) {
                 StatusBanner { text: err, tone: Tone::Danger }
             }
 
-            if let Some(rep) = last_report.read().as_ref() {
-                Card {
-                    title: rep_title,
-                    subtitle: None,
-                    div { class: "stack-1",
-                        for item in rep.outcomes.iter() {
-                            div {
-                                key: "{item.label}",
-                                class: "list-row dense text-xs",
-                                div {
-                                    div { class: "fw-semibold", "{tr(&item.label, en)}" }
-                                    if !item.message.is_empty() {
-                                        div { class: "text-muted", "{item.message}" }
-                                    }
-                                }
-                                span {
-                                    class: if item.success { "badge badge-success" } else { "badge badge-danger" },
-                                    if item.success { "OK" } else { "Error" }
-                                }
-                            }
-                        }
-                    }
-                }
+            if let Some(report) = sig.last_report.read().clone() {
+                DebloatReportCard { report }
             }
 
-            Card {
-                title: tweaks_title,
-                subtitle: None,
-                div { class: "stack-2",
-                    for spec in DEBLOAT_REG_TWEAKS {
-                        {
-                            let tid = spec.id;
-                            let checked = selected_regs.read().contains(tid);
-                            rsx! {
-                                CheckRow {
-                                    key: "{tid}",
-                                    class: "item-row gap-3",
-                                    checked,
-                                    disabled: busy,
-                                    on_change: move |on| {
-                                        let mut s = selected_regs.write();
-                                        if on { s.insert(tid); } else { s.remove(tid); }
-                                    },
-                                    div {
-                                        div { class: "text-sm fw-semibold", "{tr(&spec.label, en)}" }
-                                        div { class: "text-xs text-muted", "{tr(&spec.description, en)}" }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            RegistryTweaksCard { sig }
 
             for cat in categories {
-                {
-                    let cat_label = match (cat, en) {
-                        (DebloatCategory::Recommended, false) => "Bloatware común y telemetría (recomendado)",
-                        (DebloatCategory::Recommended, true) => "Common Bloatware & Telemetry (Recommended)",
-                        (DebloatCategory::OptionalApps, false) => "Aplicaciones Integradas Opcionales",
-                        (DebloatCategory::OptionalApps, true) => "Optional Built-in Apps",
-                        (DebloatCategory::XboxGaming, false) => "Xbox y Gaming (NO marcar si usas Game Pass)",
-                        (DebloatCategory::XboxGaming, true) => "Xbox & Gaming (DO NOT check if you use Game Pass)",
-                    };
-                    rsx! {
-                        Card {
-                            key: "{cat_label}",
-                            title: cat_label.to_string(),
-                            subtitle: None,
-                            div { class: "stack-2",
-                                for app in scan.apps.iter().filter(|a| a.category == cat) {
-                                    {
-                                        let app_id = app.id;
-                                        let checked = app.installed && selected_apps.read().contains(app_id);
-                                        rsx! {
-                                            CheckRow {
-                                                key: "{app_id}",
-                                                class: "item-row gap-3",
-                                                checked,
-                                                disabled: busy || !app.installed,
-                                                on_change: move |on| {
-                                                    let mut s = selected_apps.write();
-                                                    if on { s.insert(app_id); } else { s.remove(app_id); }
-                                                },
-                                                div { class: "grow",
-                                                    span { class: "text-sm fw-semibold", "{tr(&app.display_name, en)} " }
-                                                    span { class: "text-xs text-muted", "({app.package_name})" }
-                                                    div { class: "text-xs text-muted", "{tr(&app.description, en)}" }
-                                                }
-                                                span {
-                                                    class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
-                                                    if app.installed {
-                                                        "{strings(en).installed_app}"
-                                                    } else { "{txt.not_installed}" }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                CategoryCard { key: "{cat.label()}", cat, sig }
             }
         }
     }

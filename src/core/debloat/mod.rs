@@ -87,7 +87,7 @@ pub struct DebloatItemOutcome {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DebloatReport {
     /// `true` si el usuario canceló: el informe incluye lo que ya se hizo antes de cancelar.
     pub cancelled: bool,
