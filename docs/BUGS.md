@@ -46,7 +46,7 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 | ID | Título | Afecta | Sev. | Estado |
 |---|---|---|---|---|
 | [`TST-01`](BUGS-detalle.md#tst-01) | El repositorio no tiene ni un test | Desarrollador | Alta | Parcial |
-| [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Parcial |
+| [`UI-11`](BUGS-detalle.md#ui-11) | Textos de core sin traducir y mezcla de idiomas | Usuario | Media | Resuelto |
 | [`ERR-24`](BUGS-detalle.md#err-24) | Argumentos silenciosos, versión e IDs de la Store dudosos en el catálogo nuevo | Usuario | Media | Parcial |
 
 ## Diferidos y pendientes de decisión

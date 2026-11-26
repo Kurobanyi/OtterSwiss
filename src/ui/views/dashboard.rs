@@ -231,7 +231,7 @@ pub fn DashboardView() -> Element {
                     subtitle: overview_sub,
                     div { class: "stack-2 text-sm",
                         p { strong { "CPU: " } "{hw.cpu_name} ({hw.logical_cores}T)" }
-                        p { strong { "{txt.board}" } "{hw.motherboard}" }
+                        p { strong { "{txt.board}" } "{tr(&hw.motherboard, en)}" }
                         p { strong { "RAM: " } "{hw.total_ram_mb} MB" }
                         for gpu in hw.gpu_names.iter() {
                             p { strong { "GPU: " } "{gpu}" }

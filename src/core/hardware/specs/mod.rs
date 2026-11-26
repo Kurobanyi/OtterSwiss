@@ -105,35 +105,7 @@ pub struct SystemSpecs {
     pub warnings: Vec<String>,
 }
 
-impl SystemSpecs {
-    pub fn to_compact_summary(&self) -> String {
-        let gpu_line = self
-            .gpus
-            .first()
-            .map(|g| format!("{} ({} MB VRAM)", g.name, g.dedicated_vram_mb))
-            .unwrap_or_else(|| "No detectada".to_string());
-
-        let ram_gb = self.memory.total_mb as f64 / 1024.0;
-        format!(
-            "OS: {} {} (Build {})\nCPU: {} ({}C/{}T)\nPlaca: {} {} (BIOS {})\nRAM: {:.0} GB {} @ {} MT/s ({}/{} slots)\nGPU: {}",
-            self.os.edition,
-            self.os.display_version,
-            self.os.build,
-            self.cpu.brand,
-            self.cpu.physical_cores,
-            self.cpu.logical_threads,
-            self.motherboard.manufacturer,
-            self.motherboard.product,
-            self.motherboard.bios_version,
-            ram_gb,
-            self.memory.memory_type,
-            self.memory.effective_speed_mts,
-            self.memory.populated_slots,
-            self.memory.total_slots,
-            gpu_line,
-        )
-    }
-}
+impl SystemSpecs {}
 
 /// Lee todo lo que se pueda: una fuente que falla deja su sección vacía y un aviso en `warnings` (UI-06).
 pub fn collect_system_specs() -> CoreResult<SystemSpecs> {

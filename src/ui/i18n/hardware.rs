@@ -14,6 +14,8 @@ pub struct HardwareStrings {
     pub some_data_could_not_be: &'static str,
     pub storage: &'static str,
     pub vendor: &'static str,
+    pub summary_board: &'static str,
+    pub summary_gpu_none: &'static str,
     pub saved: fn(&dyn std::fmt::Display) -> String,
 }
 
@@ -21,6 +23,8 @@ pub static ES: HardwareStrings = HardwareStrings {
     arch: "Arq.",
     copied: "¡Copiado!",
     copy_summary: "Copiar resumen",
+    summary_board: "Placa",
+    summary_gpu_none: "No detectada",
     cores: "Núcleos",
     could_not_read_the_hardware: "No se pudo leer el hardware",
     empty_slot: "Ranura libre",
@@ -38,6 +42,8 @@ pub static EN: HardwareStrings = HardwareStrings {
     arch: "Arch",
     copied: "Copied!",
     copy_summary: "Copy Summary",
+    summary_board: "Board",
+    summary_gpu_none: "Not detected",
     cores: "Cores",
     could_not_read_the_hardware: "Could not read the hardware",
     empty_slot: "Empty slot",

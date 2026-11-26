@@ -277,7 +277,7 @@ Leyenda:
 
 <a id="ar-17"></a>
 ### AR-17 · Textos de presentación generados en core
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `specs::to_compact_summary` tiene etiquetas en español; `win_common` usa textos de relleno como valores («Placa Base
   Estándar», «Unidad Física {}»); `AppCategory::label(en)` es bilingüe y `DebloatCategory::label()` solo español: dos estrategias de
   idioma en core. Es el diseño que hay detrás de `UI-11` (diferido); este ID solo propone la regla para el código nuevo.
@@ -287,6 +287,7 @@ Leyenda:
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): Va con UI-11 (diferido por el autor).
 - **Cierre parcial** (2026-11-25): `CoreError::kind()` y `detail()`: la UI pone el título del error en el idioma del usuario y deja el detalle técnico (decisión del autor: traducir cada detalle va con `AR-06`). Faltan los catálogos con texto en core (ajustes del motor y sus categorías, Debloater, limpiador, restos, menú contextual, rellenos de `specs`): sus informes y su progreso llevan la etiqueta en español y no el ID, así que traducirlos pide cambiar esos informes; queda para un bloque propio.
 - **Avance** (2026-11-25): `ui/i18n/core_text.rs` traduce en la UI los textos de los catálogos de core (ajustes del motor y sus categorías, apps, categorías y ajustes del Debloater, categorías del limpiador y de restos, pasos fijos del motor) más plantillas con un dato («Servicio '{}' detenido y deshabilitado»). El español de core es la clave, como en gettext: core no cambia y el test `catalogos_de_core_traducidos` recorre sus catálogos y falla si falta una traducción (comprobado quitando una). Inicio, Debloater, Limpiador y Desinstalador la usan. Siguen en español los detalles con datos que no cubren las plantillas y el detalle de cada error (`AR-06`). Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde; recorrido en la app (2026-11-25): Inicio, Debloater, Limpiador y Desinstalador en inglés se ven traducidos.
+- **Cierre final** (2026-11-25): lo que faltaba. `to_compact_summary` salió de core: la vista arma el resumen con los rótulos del idioma (`summary_board`, `summary_gpu_none`). Los rellenos en español que core pone en campos de datos («Desconocida», «N/D», «Placa Base Estándar», los tipos de sensor «Zona térmica ACPI…») se traducen al mostrarse con `core_text::tr` (vista de Hardware, Inicio, Sensores y Drivers). Ya no quedan «Latest»/«Oficial Intel» ni `describe_cm_problem` en core. Verificado: `cargo test`, `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-18"></a>
 ### AR-18 · Tres versiones del crate `windows` y dependencias duplicadas
@@ -1043,7 +1044,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-26"></a>
 ### AR-26 · Core arma textos y la UI los vuelve a leer como datos
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `describe_cm_problem(code, en)` bilingüe en core (contra `AR-17`); rellenos en un idioma dentro de campos de datos
   («Desconocida», «Sin driver», «Latest», «Oficial Intel»); `install_*` devuelve `CoreResult<String>` y la vista busca «Reinicio» en el
   texto (`ARQ-05`); en sensores, `sensor_type` y la nota larga en español.
@@ -1051,6 +1052,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
   `src/core/hardware/sensors/wmi.rs`.
 - **Propuesta**: `CmProblem(u32)` y `Option<String>` en core, textos en `strings`; `DriverInstallOutcome`; `SensorSource` enum.
 - **Cierre parcial** (2026-11-25): `describe_cm_problem` salió de core (`cm_problem` en el catálogo, `IN-08`); `DriverInstallReport` ya no trae una frase sino cantidades y `history_warning`, y la vista arma «N drivers instalados» o «Se quitó …» (`installed`, `removed`). Faltan el relleno «Desconocida» de NVIDIA y los textos de sensores. Verificado: `cargo test` (76 + 4 de integración), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; en la app sin elevar, «236 dispositivos detectados.» pasa a «236 devices detected.» al cambiar de idioma, y el error del Debloater sin admin pasa de «Administrator rights required: …» a «Hace falta ejecutar como administrador: …».
+- **Cierre final** (2026-11-25): lo que faltaba. `to_compact_summary` salió de core: la vista arma el resumen con los rótulos del idioma (`summary_board`, `summary_gpu_none`). Los rellenos en español que core pone en campos de datos («Desconocida», «N/D», «Placa Base Estándar», los tipos de sensor «Zona térmica ACPI…») se traducen al mostrarse con `core_text::tr` (vista de Hardware, Inicio, Sensores y Drivers). Ya no quedan «Latest»/«Oficial Intel» ni `describe_cm_problem` en core. Verificado: `cargo test`, `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-27"></a>
 ### AR-27 · Booleanos y centinelas donde corresponde un enum

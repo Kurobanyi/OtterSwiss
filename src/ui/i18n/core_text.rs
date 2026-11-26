@@ -68,6 +68,12 @@ const TEMPLATES: &[(&str, &str, &str, &str)] = &[
 
 fn english(es: &str) -> Option<&'static str> {
     Some(match es {
+        // Rellenos en español que core pone en campos de datos.
+        "Desconocida" => "Unknown",
+        "N/D" => "N/A",
+        "Placa Base Estándar" => "Standard motherboard",
+        "Zona térmica ACPI (WMI)" => "ACPI thermal zone (WMI)",
+        "Zona térmica ACPI (PerfCounter)" => "ACPI thermal zone (PerfCounter)",
         // Tienda: categorías de apps.
         "Gaming y Launchers" => "Gaming & Launchers",
         "Comunicación y Multimedia" => "Communication & Media",

@@ -11,6 +11,7 @@ use crate::core::drivers::{
 use crate::ui::components::{
     Card, CheckRow, ConfirmDialog, EmptyState, LoadingState, StatusBanner, Tone,
 };
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::drivers::DriversStrings;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_blocking;
@@ -491,7 +492,8 @@ fn VendorUpdatesCard(
     is_working: Signal<bool>,
     mut pending_install: Signal<Option<PendingInstall>>,
 ) -> Element {
-    let t = strings(use_context::<Signal<Lang>>().read().is_en()).drivers;
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let t = strings(en).drivers;
     let list = vendor_updates.read();
     if list.is_empty() {
         return rsx! {};
@@ -514,7 +516,7 @@ fn VendorUpdatesCard(
                                         span { class: "text-sm fw-semibold", "{v_upd.title}" }
                                     }
                                     div { class: "text-xs text-muted mt-1",
-                                        "{v_upd.current_version} → {v_upd.latest_version} • {v_upd.size_label}"
+                                        "{tr(&v_upd.current_version, en)} → {tr(&v_upd.latest_version, en)} • {v_upd.size_label}"
                                         if !v_upd.release_date.is_empty() {
                                             " • {v_upd.release_date}"
                                         }

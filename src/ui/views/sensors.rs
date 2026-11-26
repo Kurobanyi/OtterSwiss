@@ -6,6 +6,7 @@ use dioxus::prelude::*;
 
 use crate::core::hardware::sensors::{SensorMonitor, SensorReading, SystemSensorsSnapshot};
 use crate::ui::components::{Card, EmptyState};
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, strings};
 
 #[component]
@@ -137,7 +138,7 @@ fn render_sensor_section(
                     Card {
                         key: "{reading.name}",
                         title: reading.name.clone(),
-                        subtitle: Some(reading.sensor_type.clone()),
+                        subtitle: Some(tr(&reading.sensor_type, en).into_owned()),
                         div { class: "stack-2",
                             h2 {
                                 class: if reading.current_celsius >= 80.0 {

@@ -1,6 +1,7 @@
 use crate::core::hardware::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::format::capacity_mb;
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use dioxus::prelude::*;
 
@@ -65,7 +66,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                         "{txt.hardware_specifications}"
                     }
                     span { class: "text-xs text-muted",
-                        "{specs.os.edition} {specs.os.display_version} • Build {specs.os.build}"
+                        "{specs.os.edition} {tr(&specs.os.display_version, en)} • Build {tr(&specs.os.build, en)}"
                     }
                 }
                 div { class: "row",
@@ -75,7 +76,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     button {
                         class: "btn btn-secondary",
                         onclick: move |_| {
-                            let summary = specs_for_copy.to_compact_summary();
+                            let summary = compact_summary(&specs_for_copy, en);
                             let escaped = serde_json::to_string(&summary).unwrap_or_default();
                             let script = format!("navigator.clipboard.writeText({escaped});");
                             document::eval(&script);
@@ -230,4 +231,34 @@ fn SpecRow(label: String, value: String) -> Element {
             span { class: "kv-value", "{value}" }
         }
     }
+}
+
+/// Resumen en texto plano para copiar al portapapeles, con los rótulos en el idioma de la interfaz.
+fn compact_summary(specs: &SystemSpecs, en: bool) -> String {
+    let txt = strings(en).hardware;
+    let gpu_line = specs
+        .gpus
+        .first()
+        .map(|g| format!("{} ({} MB VRAM)", g.name, g.dedicated_vram_mb))
+        .unwrap_or_else(|| txt.summary_gpu_none.to_string());
+    let ram_gb = specs.memory.total_mb as f64 / 1024.0;
+    format!(
+        "OS: {} {} (Build {})\nCPU: {} ({}C/{}T)\n{}: {} {} (BIOS {})\nRAM: {:.0} GB {} @ {} MT/s ({}/{} slots)\nGPU: {}",
+        specs.os.edition,
+        tr(&specs.os.display_version, en),
+        specs.os.build,
+        specs.cpu.brand,
+        specs.cpu.physical_cores,
+        specs.cpu.logical_threads,
+        txt.summary_board,
+        specs.motherboard.manufacturer,
+        specs.motherboard.product,
+        specs.motherboard.bios_version,
+        ram_gb,
+        tr(&specs.memory.memory_type, en),
+        specs.memory.effective_speed_mts,
+        specs.memory.populated_slots,
+        specs.memory.total_slots,
+        gpu_line,
+    )
 }
