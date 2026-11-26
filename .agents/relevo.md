@@ -49,6 +49,10 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   app). Reglas nuevas en `.agents/rules/ui-temas.md` §8. Sin probar uno por uno los otros 9 temas de color.
 - Sesión del 26/11 (tarde): `TE-31`, navegación arriba por defecto (pedido del dueño) o lateral contraíble desde la nueva
   sección Configuración, estilo abierto sin cajas, portada de Inicio con la nutria. Visto en la app en ambos modos.
+- Sesión del 26/11 (noche): confirmaciones de revertir y quitar (`UI-24`), Archivos con «Abrir carpeta» (`UI-25`), cancelar
+  drivers sin liberar la vista antes de tiempo (`CON-04`), `TST-01` cerrado (tests de `SYS-06/07/10/12`), logos de marca en la
+  tienda (Simple Icons, CC0), reapertura elevada con UAC probada (`SEC-17`) y, en una VM ya borrada, proxy de máquina (`SEC-32`)
+  y otra cuenta (`SYS-24`). Falta solo instalar y quitar drivers en un equipo real.
 - **Último resultado:** `cargo test` 99 + 4 de integración (más 3 ignorados y 8 de VM), `clippy --all-targets -- -D warnings` y
   `fmt --check` en verde. Recorrido en la app sin elevar hecho (2026-11-25, oscuro y claro, español e inglés, todas las pestañas; sin diferencias salvo que el detalle de errores de core sigue en español: `AR-06`). Antes la pantalla
   estaba bloqueada. No se probaron el diálogo de confirmación de Drivers ni la lista con errores (no hay dispositivos con error).
