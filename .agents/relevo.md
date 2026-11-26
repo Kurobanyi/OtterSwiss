@@ -4,7 +4,7 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 `docs/BUGS-detalle.md` (expediente por ID, con línea **Cierre** en cada uno). Agentes en `.claude/agents/`
 (`security-auditor`, `code-auditor`, `design-challenger`, `commit-writer`).
 
-## ★ Estado actual — 2026-11-25
+## ★ Estado actual — 2026-11-26
 
 **Rama:** `auditoria/buenas-practicas`, unos 137 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
 `origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
@@ -39,21 +39,26 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   archivos reordenados con script, excepciones en `AGENTS.md`), `AR-06` parcial (`source: None` 115 → 95; `Registry` y `Service`
   guardan `BoxedSource`), `CL-11`, `CL-23`, `AR-25` (`NumericVersion`) y `AR-27` (`problem: Option<u32>`). Techos de
   `tests/indicadores.rs` bajados: `style:` 2, `if en` 20, `source: None` 95.
-- **Último resultado:** `cargo test` 92 + 4 de integración (más 3 ignorados y 7 de VM), `clippy --all-targets -- -D warnings` y
+- Sesión del 25-26/11 (cierre de todo lo diferido): `CL-05` (las seis vistas largas en subcomponentes), `AR-06`, `AR-02`, `AR-17`,
+  `AR-18`, `AR-26`, `IN-02`, `UX-02` y `UX-03` hechas; `AR-19` (nueve structs sin estado pasaron a funciones de módulo, `DnsManager`
+  sigue como struct); `SEC-17` (manifiesto `asInvoker`, aviso «Modo estándar» con «Reabrir como administrador», drivers con
+  `require_elevated`) y `SYS-24` (`elevation::shell_user_differs` + `RegLocation::ensure_writable` bloquean HKCU con otra cuenta).
+  Techos de `tests/indicadores.rs`: `style:` 2, `if en` 10, `source: None` 10. Ya no hay diferidos ni pendientes de decisión.
+- **Último resultado:** `cargo test` 99 + 4 de integración (más 3 ignorados y 7 de VM), `clippy --all-targets -- -D warnings` y
   `fmt --check` en verde. Recorrido en la app sin elevar hecho (2026-11-25, oscuro y claro, español e inglés, todas las pestañas; sin diferencias salvo que el detalle de errores de core sigue en español: `AR-06`). Antes la pantalla
   estaba bloqueada. No se probaron el diálogo de confirmación de Drivers ni la lista con errores (no hay dispositivos con error).
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- Recorrer lo que faltó en la copia sin elevar: el diálogo de confirmación de Drivers y la lista con errores (hace falta un dispositivo con problema).
-- En una VM de Hyper-V (Windows Sandbox no trae winget): instalar una app de la tienda para el equipo y una por usuario, cancelar una
-  a mitad, «Buscar actualización» con una app al día; `tests/vm_sistema.rs`; instalar y quitar un driver de cada camino; quitar una
-  app Appx; descargas detrás de un proxy de máquina (`netsh winhttp set proxy`).
-- Refactors que quedan: `CL-05` (vistas largas), `AR-06` (variantes por causa), `IN-02` (`main.rs`, `startup.rs`,
-  `AppCategory::label`), `AR-02` (snapshot del Debloater), `AR-18` y el resto de `AR-17`/`AR-26`/`UI-11`. Al bajar un indicador,
-  bajar su techo en `tests/indicadores.rs`.
-- Decisiones del autor: `AR-19`, `UX-02`, `UX-03`, `SEC-17` (con `SYS-24`).
+- Recorrer en la app, sin elevar, lo que cambió el 26/11 y no se vio: el aviso «Modo estándar», las vistas partidas por `CL-05`
+  (Uninstaller, Debloater, Dashboard, DNS, Tools, App) y `hardware`/`sensors`, en español e inglés y los dos temas. El 26/11 la
+  ventana no apareció en pantalla (la captura solo ve la sesión con el monitor virtual VDD activo): activarlo y reintentar. Y la
+  reapertura elevada con UAC, que acepta el usuario.
+- En una VM de Hyper-V (Windows Sandbox no trae winget): `tests/vm_sistema.rs`; instalar una app de la tienda para el equipo y una por
+  usuario, cancelar una a mitad, «Buscar actualización» con una app al día; instalar y quitar un driver de cada camino; quitar una app
+  Appx; descargas detrás de un proxy de máquina (`netsh winhttp set proxy`); `SYS-24` con dos cuentas. La ISO está en
+  `D:\VM\iso\win11-ent-eval-25h2.iso` (Windows 11 Enterprise Evaluation 25H2, en-us). Activar Hyper-V pide reiniciar la PC.
 - Subir la rama y abrir el PR cuando el usuario lo pida; avisar al compañero de `SEC-30`…`SEC-32`, de que LibreWolf, Rufus e Intel
-  salieron, de la tienda por winget y del cambio de paletas.
+  salieron, de la tienda por winget, del cambio de paletas y de que la app ya arranca sin administrador.
 
 ## Prompt para seguir
 
@@ -61,15 +66,13 @@ Pegar en una sesión nueva, en la carpeta del repo:
 
 > Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
 > (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
-> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Sigue con lo pendiente, en este orden: recorrer en inglés
-> las vistas con catálogos traducidos, y los refactors grandes de a un archivo (`CL-21`, `CL-25`, `TE-02`, `IN-02`, `OR-04`, `AR-06`…)
-> sin cambiar comportamiento. Sin tocar lo diferido (`SEC-17`, `SYS-24`, `UX-02`, `UX-03`) ni `AR-19`. Commitea en local por fase,
-> «Categoría: Verbo …», cerrando
-> cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida. Español neutro, respuestas breves.
+> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Lo que falta es solo verificación: el recorrido de la
+> interfaz sin elevar (aviso «Modo estándar» y vistas partidas) y las pruebas en una VM de Hyper-V. Commitea en local,
+> «Categoría: Verbo …», cerrando cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida.
+> Español neutro, respuestas breves.
 
-**VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo: VirtualBox cae a NEM, el EFI se cuelga en `DXE_AP` con 2
-núcleos y Windows 11 exige 2). La VM se borró; queda la ISO verificada `D:\VMs\Win11_Enterprise_Eval_es-es.iso`
-(SHA-256 oficial `8F344BEA…E4C584`) por decisión del usuario. Para un Windows completo: activar Hyper-V (pide reinicio).
+**VM:** VirtualBox no sirve en esta PC (el hipervisor de Windows está activo). Se usará Hyper-V (activarlo pide reinicio); la ISO
+verificada está en `D:\VM\iso\win11-ent-eval-25h2.iso`, descargada de Microsoft.
 
 **Windows Sandbox (si se reusa):** característica ya activada. Lanzar con `WindowsSandbox.exe <wsb>`. NUNCA matar sus procesos (deja VMs
 huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta el UAC dentro. El control de pantalla no ve esa ventana.
@@ -77,13 +80,14 @@ huérfanas); se cierra con la X. La prueba eleva con `RunAs`: el usuario acepta 
 ## Cómo verificar
 
 El usuario **apagó Smart App Control** el 24/11: `cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo build` y
-`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 92
+`cargo fmt` corren en Windows (PowerShell; nunca desde Git Bash, donde `link` es el de coreutils). **Último resultado: 99
 tests + 4 de integración y clippy en verde.** `.agents/scripts/check-wsl.sh` queda como alternativa desde WSL (solo compila).
 
-Para recorrer la interfaz: la app pide administrador y Windows (UIPI) no deja controlar ventanas elevadas, así que se compila
-una copia con `asInvoker` en `$env:TEMP\otter-ui-target` (cambiando `build.rs` solo para esa compilación y restaurándolo) y se
-recorre sin elevación. Recorrido hecho: todas las pestañas en oscuro, Dashboard y Limpiador en claro e inglés, diálogos con
-foco atrapado y Escape. Falta: acciones de sistema como admin (mejor en VM o Windows Sandbox) y ventana en tamaño chico.
+Para recorrer la interfaz: desde `SEC-17` el `.exe` arranca sin elevar (`asInvoker`), así que se lanza con
+`explorer.exe <ruta del exe>` para que quede en el mismo nivel que el control de pantalla (UIPI no deja controlar ventanas
+elevadas). La captura de pantalla solo ve la ventana con el monitor virtual VDD activo. Recorrido hecho el 25/11: todas las
+pestañas, oscuro y claro, español e inglés. Falta lo posterior (ver «Pendiente»), las acciones de sistema como admin (VM) y la
+ventana en tamaño chico.
 
 ## Decisiones del usuario (2026-11-25)
 

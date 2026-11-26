@@ -16,8 +16,9 @@ sin compilar ni ejecutar. Agentes para repetirla: `.claude/agents/security-audit
 
 ## Resumen
 
-Estado al 24/11/2026, rama `fix/auditoria`: `cargo test` (37 tests) y `clippy --all-targets -- -D warnings` en verde en Windows, e
-interfaz recorrida sin elevación en tema oscuro y claro, en español e inglés. **Acciones que cambian el sistema probadas como
+Estado al 26/11/2026, rama `auditoria/buenas-practicas`: `cargo test` (99 unitarios y 4 de integración, más 3 ignorados y 7 de VM) y
+`clippy --all-targets -- -D warnings` en verde en Windows. La interfaz se recorrió sin elevación en tema oscuro y claro, en español e
+inglés, el 25/11 (antes de partir las vistas de `CL-05` y de `SEC-17`). **Acciones que cambian el sistema probadas como
 administrador** en Windows Sandbox con `tests/vm_sistema.rs` (`cargo test --release --test vm_sistema -- --ignored --nocapture
 --test-threads=1`, solo en una máquina desechable): optimizar y revertir, Debloater (registro) y revertir, DNS IPv4/IPv6, limpiador con
 junction trampa, comprimir y extraer, desinstalar y purgar una app falsa, revertir todo y `--rollback`: 0 fallos. Sin probar: quitar una
@@ -25,15 +26,15 @@ app Appx (el Sandbox no trae ninguna del catálogo) y la ventana en tamaño chic
 
 | Tipo | Total | Abiertos o parciales | Diferidos | Pendientes de decisión | Resueltos |
 |---|---|---|---|---|---|
-| Seguridad (`SEC-`) | 37 | 0 | 1 | 0 | 36 |
-| Sistema y rollback (`SYS-`) | 27 | 0 | 1 | 0 | 26 |
+| Seguridad (`SEC-`) | 37 | 0 | 0 | 0 | 37 |
+| Sistema y rollback (`SYS-`) | 27 | 0 | 0 | 0 | 27 |
 | Errores y procesos (`ERR-`) | 25 | 1 | 0 | 0 | 24 |
 | Concurrencia (`CON-`) | 3 | 0 | 0 | 0 | 3 |
 | Arquitectura (`ARQ-`) | 5 | 0 | 0 | 0 | 5 |
 | Interfaz (`UI-`) | 22 | 1 | 0 | 0 | 21 |
-| Diseño y producto (`UX-`) | 4 | 0 | 1 | 1 | 2 |
+| Diseño y producto (`UX-`) | 4 | 0 | 0 | 0 | 4 |
 | Pruebas (`TST-`) | 2 | 1 | 0 | 0 | 1 |
-| **Total** | **125** | **2** | **3** | **1** | **119** |
+| **Total** | **125** | **2** | **0** | **0** | **123** |
 
 La auditoría del código de v4.2.0 (25/11, al final de `docs/BUGS-detalle.md`) abrió 28; queda abierto `ERR-24`
 (parcial: probar una instalación real de la tienda por winget en una VM); `ERR-25` (Intel) se cerró quitando esa fuente. Sin probar instalando en una VM.
@@ -51,22 +52,17 @@ Las mejoras de arquitectura, código limpio, temas, i18n y herramientas (auditor
 
 ## Diferidos y pendientes de decisión
 
-Conservan su expediente; se retoman por decisión del autor.
-
-| ID | Título | Afecta | Sev. | Estado |
-|---|---|---|---|---|
-| [`SYS-24`](BUGS-detalle.md#sys-24) | Con elevación «sobre el hombro», los tweaks HKCU van al perfil del admin | Usuario | Baja | Resuelto |
-| [`SEC-17`](BUGS-detalle.md#sec-17) | Todo el programa corre como administrador aunque la mitad de las funciones no lo necesitan | Sistema, Usuario | Media | Resuelto |
-| [`UX-02`](BUGS-detalle.md#ux-02) | «Optimizar Sistema» aplica sin confirmar tweaks sin base o mal descritos | Usuario, Sistema | Media | Resuelto |
-| [`UX-03`](BUGS-detalle.md#ux-03) | «Optimizar RAM» es una práctica desacreditada | Usuario | Media | Resuelto |
+Ninguno. Los cuatro que quedaban (`SEC-17`, `SYS-24`, `UX-02` y `UX-03`) se resolvieron el 26/11 por decisión del autor; cada
+expediente conserva el motivo del enfoque elegido y lo descartado.
 
 ## Siguiente
 
-1. `UI-11`: avisos, títulos de error y catálogos de core ya se traducen; falta recorrerlo en la app en inglés y los
-   detalles con datos del motor.
-2. En una VM: instalar dos apps de la tienda (una para el equipo y una por usuario), instalar y quitar un driver de cada camino, quitar una app Appx y la ventana en tamaño chico.
-3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. Decisiones del autor: `UX-03`, `UX-02`, `SEC-17` (con `SYS-24`).
-4. Mejoras de `docs/PRACTICAS.md`.
+1. En una VM de Hyper-V: `tests/vm_sistema.rs`, dos apps de la tienda (una para el equipo y una por usuario), instalar y quitar un
+   driver de cada camino, quitar una app Appx y la ventana en tamaño chico (`ERR-24`).
+2. Recorrer en la app lo hecho el 26/11 (aviso «Modo estándar» de `SEC-17`, y las vistas partidas por `CL-05`) en español e inglés y
+   en los dos temas, y la reapertura elevada con UAC (`SEC-17`); `UI-11` en inglés con detalles del motor.
+3. `TST-01`: tests de `SYS-06`, `SYS-07`, `SYS-10` y `SYS-12`. `SYS-24`: probar el caso «otra cuenta» con dos cuentas en la VM.
+4. Mejoras de `docs/PRACTICAS.md`: no queda ninguna pendiente.
 
 ## Patrones
 
