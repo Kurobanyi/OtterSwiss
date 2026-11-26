@@ -11,6 +11,7 @@ use crate::core::store::app_store::{AppCategory, AppStoreManager, InstallSource}
 use crate::core::store::dependencies::DependencyManager;
 use crate::core::sys_tools::{SysTools, TrimWorkingSetsReport};
 use crate::ui::components::{AppIconBadge, Card, Modal, ProgressBar, StatusBanner, Tone};
+use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::installer::{
     InstallJobRequest, InstallStatus, InstallerDispatcher, ToolsSharedState,
@@ -505,7 +506,7 @@ pub fn BatchAppStoreCard() -> Element {
                                             AppIconBadge { icon: pkg.icon }
                                             div { class: "grow",
                                                 div { class: "row wrap",
-                                                    span { class: "text-sm fw-semibold", "{pkg.name}" }
+                                                    span { class: "text-sm fw-semibold", "{tr(pkg.name, en)}" }
                                                     span { class: "badge badge-info", "{cat_tag}" }
                                                     span { class: "text-xs text-muted",
                                                         "{version_label} • © {pkg.copyright_holder}"

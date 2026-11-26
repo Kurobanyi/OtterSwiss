@@ -61,13 +61,9 @@ const TEMPLATES: &[(&str, &str, &str, &str)] = &[
     ),
     ("Servicio '", "' omitido", "Service '", "' skipped"),
     ("Activado para perfil ", "", "Enabled for profile ", ""),
-    (
-        "Restaurando servicio '",
-        "'...",
-        "Restoring service '",
-        "'…",
-    ),
-    ("Restaurando clave '", "'...", "Restoring key '", "'…"),
+    ("Restaurando servicio '", "'…", "Restoring service '", "'…"),
+    ("Restaurando clave '", "'…", "Restoring key '", "'…"),
+    ("Eliminando ", "…", "Removing ", "…"),
 ];
 
 fn english(es: &str) -> Option<&'static str> {
@@ -82,7 +78,7 @@ fn english(es: &str) -> Option<&'static str> {
         "Revertir optimizaciones del sistema" => "Revert system optimizations",
         "Configurando Plan de Energía" => "Setting up the power plan",
         "Optimización completada" => "Optimization complete",
-        "Restaurando Plan de Energía original..." => "Restoring the original power plan…",
+        "Restaurando Plan de Energía original…" => "Restoring the original power plan…",
         "Reversión completada" => "Revert complete",
         "Plan Equilibrado de Windows (estabilidad térmica)" => {
             "Windows Balanced plan (thermal stability)"
@@ -263,6 +259,13 @@ fn english(es: &str) -> Option<&'static str> {
             "Turn off Windows Copilot with a user policy"
         }
         "Fija TurnOffWindowsCopilot=1 (reversible)" => "Sets TurnOffWindowsCopilot=1 (reversible)",
+        // Tienda: apps de Microsoft Store (IN-09).
+        "Calculadora de Windows" => "Windows Calculator",
+        "App de Xbox (PC Game Pass)" => "Xbox app (PC Game Pass)",
+        "Fotos de Windows" => "Windows Photos",
+        "Herramienta Recortes" => "Snipping Tool",
+        "Paint de Windows" => "Windows Paint",
+        "Bloc de Notas Store" => "Notepad (Store)",
         // Limpiador.
         "Temporales de Usuario" => "User temporary files",
         "Temporales de Windows" => "Windows temporary files",
@@ -291,6 +294,7 @@ mod tests {
     use super::*;
     use crate::core::debloat::{DEBLOAT_APP_CATALOG, DEBLOAT_REG_TWEAKS, DebloatCategory};
     use crate::core::optimize::tweaks_catalog::{REGISTRY_TWEAKS, SERVICE_TWEAKS};
+    use crate::core::store::app_store::{AppStoreManager, InstallSource};
 
     /// Nombres de marca: se escriben igual en los dos idiomas.
     const BRAND_NAMES: &[&str] = &[
@@ -302,6 +306,7 @@ mod tests {
         "Xbox Game Bar (Win+G)",
         "Xbox Live UI",
         "Xbox Speech to Text",
+        "Windows Terminal",
     ];
 
     fn translated(es: &str) -> bool {
@@ -331,6 +336,11 @@ mod tests {
                 check(a.display_name);
             }
             check(a.description);
+        }
+        for p in AppStoreManager::get_catalog() {
+            if matches!(p.source, InstallSource::Store { .. }) && !BRAND_NAMES.contains(&p.name) {
+                check(p.name);
+            }
         }
         for c in [
             DebloatCategory::Recommended,

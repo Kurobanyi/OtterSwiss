@@ -507,7 +507,7 @@ impl OptimizationEngine {
 
         for power_snap in backup.power_history.iter().rev() {
             step_idx += 1;
-            push_rb(step_idx, "Restaurando Plan de Energía original...");
+            push_rb(step_idx, "Restaurando Plan de Energía original…");
             match restore_power_snapshot(power_snap, force_overwrite_user_changes) {
                 Ok(true) => restored_power += 1,
                 Ok(false) => skipped_user_modified += 1,
@@ -519,7 +519,7 @@ impl OptimizationEngine {
             step_idx += 1;
             push_rb(
                 step_idx,
-                &format!("Restaurando servicio '{}'...", svc_snap.service_name),
+                &format!("Restaurando servicio '{}'…", svc_snap.service_name),
             );
             match restore_service_snapshot(svc_snap, force_overwrite_user_changes) {
                 Ok(ServiceOpOutcome::Applied | ServiceOpOutcome::AppliedPendingStop(_)) => {
@@ -535,7 +535,7 @@ impl OptimizationEngine {
             step_idx += 1;
             push_rb(
                 step_idx,
-                &format!("Restaurando clave '{}'...", reg_snap.value_name),
+                &format!("Restaurando clave '{}'…", reg_snap.value_name),
             );
             match restore_registry_snapshot(reg_snap, force_overwrite_user_changes) {
                 Ok(true) => restored_registry += 1,

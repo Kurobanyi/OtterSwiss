@@ -11,6 +11,7 @@ use crate::core::drivers::{
 use crate::ui::components::{Card, ConfirmDialog, StatusBanner, Tone};
 use crate::ui::i18n::drivers::DriversStrings;
 use crate::ui::i18n::{Lang, Msg, strings};
+use crate::ui::task::run_blocking;
 
 /// SEC-37: instalación que espera confirmación del usuario.
 #[derive(Debug, Clone)]
@@ -81,9 +82,7 @@ fn execute_install(pending: PendingInstall, backup: bool) -> Result<InstallOutco
 /// SYS-26: relee el historial de drivers instalados desde OtterSwiss. Sin elevación o sin historial queda vacío.
 fn refresh_driver_history(mut history: Signal<Vec<InstalledDriverRecord>>) {
     spawn(async move {
-        if let Ok(Ok(list)) =
-            tokio::task::spawn_blocking(DriverManager::driver_install_history).await
-        {
+        if let Ok(list) = run_blocking(DriverManager::driver_install_history).await {
             history.set(list);
         }
     });
@@ -105,9 +104,9 @@ fn trigger_device_scan(
     status_msg.set(Some((drv(|t| t.scanning_devices), Tone::Info)));
 
     spawn(async move {
-        let res = tokio::task::spawn_blocking(DriverManager::list_present_devices).await;
+        let res = run_blocking(DriverManager::list_present_devices).await;
         match res {
-            Ok(Ok(list)) => {
+            Ok(list) => {
                 let count = list.len();
                 devices.set(list);
                 status_msg.set(Some((
@@ -115,8 +114,7 @@ fn trigger_device_scan(
                     Tone::Info,
                 )));
             }
-            Ok(Err(e)) => status_msg.set(Some((Msg::from(e), Tone::Danger))),
-            Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
+            Err(e) => status_msg.set(Some((e, Tone::Danger))),
         }
         is_working.set(false);
     });
@@ -160,11 +158,9 @@ pub fn DriversView() -> Element {
         is_working.set(true);
         spawn(async move {
             let name = record.published_name.clone();
-            let res =
-                tokio::task::spawn_blocking(move || DriverManager::revert_installed_driver(&name))
-                    .await;
+            let res = run_blocking(move || DriverManager::revert_installed_driver(&name)).await;
             match res {
-                Ok(Ok(rep)) => {
+                Ok(rep) => {
                     if rep.reboot_required {
                         reboot_alert.set(true);
                     }
@@ -173,14 +169,11 @@ pub fn DriversView() -> Element {
                         Msg::new(move |en| (strings(en).drivers.removed)(&title, &file)),
                         Tone::Success,
                     )));
-                    if let Ok(Ok(refreshed)) =
-                        tokio::task::spawn_blocking(DriverManager::list_present_devices).await
-                    {
+                    if let Ok(refreshed) = run_blocking(DriverManager::list_present_devices).await {
                         devices.set(refreshed);
                     }
                 }
-                Ok(Err(e)) => status_msg.set(Some((Msg::from(e), Tone::Danger))),
-                Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
+                Err(e) => status_msg.set(Some((e, Tone::Danger))),
             }
             refresh_driver_history(install_history);
             is_working.set(false);
@@ -288,9 +281,9 @@ pub fn DriversView() -> Element {
         is_working.set(true);
         status_msg.set(Some((drv(|t| t.installing), Tone::Info)));
         spawn(async move {
-            let res = tokio::task::spawn_blocking(move || execute_install(pending, backup)).await;
+            let res = run_blocking(move || execute_install(pending, backup)).await;
             match res {
-                Ok(Ok(outcome)) => {
+                Ok(outcome) => {
                     if outcome.reboot {
                         reboot_alert.set(true);
                     }
@@ -305,15 +298,12 @@ pub fn DriversView() -> Element {
                         wua_updates.write().clear();
                         selected_wua.write().clear();
                     }
-                    if let Ok(Ok(refreshed)) =
-                        tokio::task::spawn_blocking(DriverManager::list_present_devices).await
-                    {
+                    if let Ok(refreshed) = run_blocking(DriverManager::list_present_devices).await {
                         devices.set(refreshed);
                     }
                     refresh_driver_history(install_history);
                 }
-                Ok(Err(msg)) => status_msg.set(Some((msg, Tone::Danger))),
-                Err(e) => status_msg.set(Some((thread_error(e), Tone::Danger))),
+                Err(e) => status_msg.set(Some((e, Tone::Danger))),
             }
             is_working.set(false);
         });
@@ -324,21 +314,16 @@ pub fn DriversView() -> Element {
         status_msg.set(Some((drv(|t| t.exporting_backup), Tone::Info)));
 
         spawn(async move {
-            let res = tokio::task::spawn_blocking(DriverManager::export_driver_store_backup).await;
+            let res = run_blocking(DriverManager::export_driver_store_backup).await;
             match res {
-                Ok(Ok(path)) => {
+                Ok(path) => {
                     let path = path.display().to_string();
                     status_msg.set(Some((
                         Msg::new(move |en| (strings(en).drivers.backup_saved)(&path)),
                         Tone::Success,
                     )));
                 }
-                Ok(Err(e)) => {
-                    status_msg.set(Some((Msg::from(e), Tone::Danger)));
-                }
-                Err(e) => {
-                    status_msg.set(Some((thread_error(e), Tone::Danger)));
-                }
+                Err(e) => status_msg.set(Some((e, Tone::Danger))),
             }
             is_working.set(false);
         });
@@ -816,22 +801,17 @@ pub fn DriversView() -> Element {
                                                         let shown = q_id.clone();
                                                         status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.searching_catalog)(&shown)), Tone::Info)));
                                                         spawn(async move {
-                                                            let res = tokio::task::spawn_blocking(move || {
+                                                            let res = run_blocking(move || {
                                                                 DriverManager::search_microsoft_catalog(&q_id)
                                                             })
                                                             .await;
                                                             match res {
-                                                                Ok(Ok(list)) => {
+                                                                Ok(list) => {
                                                                     let n = list.len();
                                                                     catalog_matches.set(list);
                                                                     status_msg.set(Some((Msg::new(move |en| (strings(en).drivers.catalog_found)(n)), Tone::Info)));
                                                                 }
-                                                                Ok(Err(e)) => {
-                                                                    status_msg.set(Some((Msg::from(e), Tone::Danger)));
-                                                                }
-                                                                Err(e) => {
-                                                                    status_msg.set(Some((thread_error(e), Tone::Danger)));
-                                                                }
+                                                                Err(e) => status_msg.set(Some((e, Tone::Danger))),
                                                             }
                                                             is_working.set(false);
                                                         });

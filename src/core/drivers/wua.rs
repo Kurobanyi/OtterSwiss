@@ -125,10 +125,11 @@ fn is_windows_update_service_disabled() -> bool {
     false
 }
 
+/// CL-20: el HRESULT original queda en `source`.
 fn wua_error(what: &str, e: windows::core::Error) -> CoreError {
     CoreError::SystemTool {
         message: format!("{what}: {e}"),
-        source: None,
+        source: Some(Box::new(e)),
     }
 }
 

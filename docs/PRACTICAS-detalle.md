@@ -1064,10 +1064,11 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-29"></a>
 ### AR-29 · La vista de drivers repite el ciclo de tareas en vez de usar `ui::task::run_blocking`
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: 9 `spawn_blocking` directos, cada uno con su `match` y un «Error de hilo: {}» fijo en español.
 - **Dónde**: `src/ui/views/drivers.rs:36`, `104`, `187`, `201`, `233`, `552`, `613`, `623`, `844`.
 - **Propuesta**: `run_blocking` y un helper local que maneje `is_working` y el aviso.
+- **Cierre** (2026-11-25): los 8 trabajos de la vista de drivers que devuelven `Result` usan `ui::task::run_blocking` (error ya convertido en `Msg`); queda `spawn_blocking` solo en la búsqueda completa, que no devuelve `Result`, con `thread_error`. Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="cl-19"></a>
 ### CL-19 · 65 `unsafe` sin `// SAFETY:` tapados por un `#[allow]` con motivo obsoleto
@@ -1080,10 +1081,11 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-20"></a>
 ### CL-20 · 46 `source: None` nuevos en `drivers.rs`
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (96 → 142) · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado (96 → 142) · **Estado**: Hecha
 - **Qué pasa**: 25 tienen el error en la mano y lo pierden; `SystemTool` como cajón de sastre (37 veces); `Trust` para errores HTTP.
 - **Dónde**: `src/core/drivers.rs` (por ejemplo `764-767`, `901-931`, `1037-1167`, `1607-1616`).
 - **Propuesta**: `CoreError::sys`/`trust` (`AR-06`), `Validation` para IDs inválidos.
+- **Cierre** (2026-11-25): `source: None` en `core/drivers/` baja de 46 a 15 (cliente HTTPS común en `AR-21`, Intel fuera en `ERR-25`); `wua_error` conserva el HRESULT en `source`. Los que quedan son errores de validación o de herramientas sin un error de origen. Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="cl-21"></a>
 ### CL-21 · Funciones largas y bloques copiados (`DriversView` de 825 líneas)
@@ -1195,19 +1197,21 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="in-09"></a>
 ### IN-09 · Textos en un solo idioma o mezclados
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: «Error de hilo» (7 veces), «FIRMWARE / BIOS», «OK», «MS Store» fijos; textos de core en los dos idiomas (`AR-26`); los 15
   nombres UWP solo en español; avisos guardados con el idioma del momento (`IN-03`).
 - **Dónde**: `src/ui/views/drivers.rs`; `src/core/store/app_store.rs:999-1357`; `src/ui/views/tools.rs:590`.
 - **Propuesta**: todo en `strings`; `name_en` para las UWP.
+- **Cierre** (2026-11-25): «Error de hilo» pasó al catálogo (`IN-08`), «MS Store» a «Microsoft Store», y los 15 nombres de apps de la Store se traducen con `core_text::tr` (el test exige su traducción, salvo nombres de marca). «OK» y «FIRMWARE / BIOS» se dejan iguales en los dos idiomas a propósito. Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="in-10"></a>
 ### IN-10 · «...», «(s)», mayúsculas de título y «drivers/controladores»
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: 18 `...`, 10 plurales con `(s)` (`IN-04`), mayúsculas de título («Escaneo Completo de Drivers», «App Store Silenciosa y
   Restaurador UWP»…), «drivers» y «controladores» mezclados, anglicismos sin explicar («Feeds», «WHQL», «Backup»).
 - **Dónde**: `src/ui/views/drivers.rs:26-466`; `src/core/store/app_store.rs:55-74`; `src/ui/views/tools.rs:464-489`.
 - **Propuesta**: corregir al mover a `strings` y elegir un término.
+- **Cierre** (2026-11-25): sin «...» en textos visibles (core y archivador pasan a «…»; los catálogos tienen test), sin plurales con «(s)» (`plural()`), y la pestaña Drivers usa «drivers» y frases en minúscula inicial. Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="he-14"></a>
 ### HE-14 · Nada frena las regresiones de una fusión

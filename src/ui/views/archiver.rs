@@ -142,7 +142,7 @@ pub fn ArchiverView() -> Element {
                         (false, true) => "Compressing…".to_string(),
                         (false, false) => "Comprimiendo…".to_string(),
                     },
-                    subtitle: Some(if prog.current_file.is_empty() { "...".to_string() } else { prog.current_file.clone() }),
+                    subtitle: Some(if prog.current_file.is_empty() { "…".to_string() } else { prog.current_file.clone() }),
                     on_close: move |_| {},
                         ProgressBar { percent: prog.percent }
                         div { style: "display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-muted);",

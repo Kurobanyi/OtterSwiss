@@ -125,7 +125,7 @@ impl DebloaterManager {
             step_idx += 1;
             push_prog(
                 step_idx.saturating_sub(1),
-                &format!("Eliminando {}...", app.display_name),
+                &format!("Eliminando {}…", app.display_name),
             );
 
             if !DEBLOAT_APP_CATALOG
