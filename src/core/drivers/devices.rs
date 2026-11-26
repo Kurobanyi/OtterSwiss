@@ -60,7 +60,7 @@ impl InstalledDriverDevice {
     }
 
     /// `(fabricante, dispositivo, subsistema)` del Hardware ID (VEN/DEV o VID/PID).
-    pub fn extract_ven_dev(&self) -> Option<(String, String, Option<String>)> {
+    pub(crate) fn extract_ven_dev(&self) -> Option<(String, String, Option<String>)> {
         ven_dev_of(self.hardware_id.as_deref()?)
     }
 

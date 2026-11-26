@@ -35,12 +35,9 @@ pub struct DriverUpdateCandidate {
     pub id: String,
     pub title: String,
     pub driver_class: String,
-    pub driver_model: String,
-    pub driver_manufacturer: String,
     pub driver_provider: String,
     pub hardware_id: String,
     pub size_mb: i32,
-    pub is_downloaded: bool,
     pub is_firmware: bool,
     pub is_optional: bool,
 }
@@ -71,8 +68,6 @@ impl DriverInstallReport {
 pub struct CatalogDriverMatch {
     pub update_id: String,
     pub title: String,
-    pub products: String,
-    pub classification: String,
     pub last_updated: String,
     pub version: String,
     pub size_str: String,

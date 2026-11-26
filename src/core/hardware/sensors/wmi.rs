@@ -20,10 +20,25 @@ use crate::core::platform::wide::to_wide_null;
 pub(super) const RPC_C_AUTHN_WINNT: u32 = 10;
 pub(super) const RPC_C_AUTHZ_NONE: u32 = 0;
 
-pub(super) fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
+/// CL-24: temperatura actual creíble en °C; fuera de este rango la lectura es basura del sensor.
+const CURRENT_TEMP_C: std::ops::RangeInclusive<f32> = 1.0..=125.0;
+/// Máximo o punto crítico creíble en °C.
+const LIMIT_TEMP_C: std::ops::RangeInclusive<f32> = 1.0..=150.0;
+/// Punto crítico ACPI creíble: por debajo de esto el firmware no lo informó de verdad.
+const MIN_CRITICAL_C: f32 = 20.0;
+/// Filas que se piden a la consulta de sensores de LibreHardwareMonitor.
+const MAX_LHM_SENSORS: usize = 256;
+
+/// CL-24: una propiedad de un objeto WMI convertida con `conv` (`VariantToInt32`, `VariantToDouble`…).
+fn read_wmi<T>(
+    obj: &IWbemClassObject,
+    prop: &str,
+    conv: unsafe fn(*const VARIANT) -> windows::core::Result<T>,
+) -> Option<T> {
     let w = to_wide_null(prop);
     let mut var = VARIANT::default();
-    // SAFETY: `w` termina en NUL y vive hasta el final; `var` es un VARIANT inicializado que se libera abajo.
+    // SAFETY: `w` termina en NUL y vive hasta el final; `var` es un VARIANT inicializado que `conv` solo lee y que
+    // se libera abajo.
     unsafe {
         if obj
             .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
@@ -31,27 +46,18 @@ pub(super) fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
         {
             return None;
         }
-        let val = VariantToInt32(&var).ok();
+        let val = conv(&var).ok();
         let _ = VariantClear(&mut var);
         val
     }
 }
 
+pub(super) fn read_wmi_i32(obj: &IWbemClassObject, prop: &str) -> Option<i32> {
+    read_wmi(obj, prop, VariantToInt32)
+}
+
 fn read_wmi_f32(obj: &IWbemClassObject, prop: &str) -> Option<f32> {
-    let w = to_wide_null(prop);
-    let mut var = VARIANT::default();
-    // SAFETY: `w` termina en NUL y vive hasta el final; `var` es un VARIANT inicializado que se libera abajo.
-    unsafe {
-        if obj
-            .Get(PCWSTR(w.as_ptr()), 0, &mut var, None, None)
-            .is_err()
-        {
-            return None;
-        }
-        let val = VariantToDouble(&var).ok().map(|v| v as f32);
-        let _ = VariantClear(&mut var);
-        val
-    }
+    read_wmi(obj, prop, VariantToDouble).map(|v| v as f32)
 }
 
 pub(super) fn read_wmi_string(obj: &IWbemClassObject, prop: &str) -> Option<String> {
@@ -141,7 +147,7 @@ fn poll_external_cpu_wmi(locator: &IWbemLocator) -> Vec<SensorReading> {
             locator,
             namespace,
             "SELECT Name, Identifier, Value, Max FROM Sensor WHERE SensorType = 'Temperature'",
-            256,
+            MAX_LHM_SENSORS,
         );
         let out: Vec<SensorReading> = sensors
             .iter()
@@ -151,12 +157,12 @@ fn poll_external_cpu_wmi(locator: &IWbemLocator) -> Vec<SensorReading> {
                 if !is_cpu_temperature(&identifier, &name) {
                     return None;
                 }
-                let current = read_wmi_f32(obj, "Value").filter(|v| *v > 1.0 && *v < 125.0)?;
+                let current = read_wmi_f32(obj, "Value").filter(|v| CURRENT_TEMP_C.contains(v))?;
                 Some(SensorReading {
                     name,
                     sensor_type: label.into(),
                     current_celsius: current,
-                    max_celsius: read_wmi_f32(obj, "Max").filter(|v| *v > 1.0 && *v < 150.0),
+                    max_celsius: read_wmi_f32(obj, "Max").filter(|v| LIMIT_TEMP_C.contains(v)),
                 })
             })
             .collect();
@@ -209,12 +215,12 @@ impl SensorSession {
             let Some(c) = read_wmi_i32(obj, "CurrentTemperature").map(decikelvin_to_c) else {
                 continue;
             };
-            if c <= 1.0 || c >= 125.0 {
+            if !CURRENT_TEMP_C.contains(&c) {
                 continue;
             }
             let crit_c = read_wmi_i32(obj, "CriticalTripPoint")
                 .map(decikelvin_to_c)
-                .filter(|&v| v > 20.0 && v < 150.0);
+                .filter(|v| *v >= MIN_CRITICAL_C && LIMIT_TEMP_C.contains(v));
             let instance_name = read_wmi_string(obj, "InstanceName")
                 .unwrap_or_else(|| format!("Zona ACPI {}", idx));
             readings.push(SensorReading {
@@ -237,10 +243,10 @@ impl SensorSession {
             for (idx, obj) in zones.iter().enumerate() {
                 let hp = read_wmi_i32(obj, "HighPrecisionTemperature")
                     .map(decikelvin_to_c)
-                    .filter(|&c| c > 1.0 && c < 125.0);
+                    .filter(|c| CURRENT_TEMP_C.contains(c));
                 let std_k = read_wmi_i32(obj, "Temperature")
                     .map(|k| k as f32 - 273.15)
-                    .filter(|&c| c > 1.0 && c < 125.0);
+                    .filter(|c| CURRENT_TEMP_C.contains(c));
                 let Some(c) = hp.or(std_k) else {
                     continue;
                 };

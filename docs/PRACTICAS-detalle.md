@@ -970,10 +970,11 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="or-07"></a>
 ### OR-07 · Los iconos de la tienda viven dentro de `tools.rs`
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `render_generic_icon` (85 líneas, 20 trazados SVG) es una `fn -> Element` dentro de la vista, estilada inline.
 - **Dónde**: `src/ui/views/tools.rs:19-103`.
 - **Propuesta**: `ui/components/icon.rs` con `#[component] AppIconBadge`, trazados en una tabla `const` y clase `.app-icon`.
+- **Cierre** (2026-11-25): `ui/components/app_icon.rs` con `#[component] AppIconBadge` y `icon_paths`; el estilo pasa a `.app-icon` en el CSS (el trazo usa `--accent-text`, que cumple contraste en los 10 temas). Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ar-21"></a>
 ### AR-21 · `drivers.rs` reimplementa el cliente HTTPS
@@ -1053,12 +1054,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-28"></a>
 ### AR-28 · API pública de drivers más ancha de lo que usa la UI, y campos muertos
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `check_nvidia_updates`, `check_intel_updates`, `search_driver_updates` y `extract_ven_dev` son `pub` sin uso fuera;
   `driver_model`, `driver_manufacturer`, `is_downloaded`, `is_optional`, `products`, `classification` y `succeeded_count` no se leen;
   `notes` siempre está vacío.
 - **Dónde**: `src/core/drivers.rs:112`, `205-264`, `889`, `1427`, `1522`, `1720`.
 - **Propuesta**: `pub(crate)` solo para la fachada; borrar o mostrar los campos.
+- **Cierre** (2026-11-25): fuera `driver_model`, `driver_manufacturer`, `is_downloaded` (WUA), `products` y `classification` (Catálogo), que no se leían; `search_driver_updates` y `check_nvidia_updates` pasan a privadas del módulo y `extract_ven_dev` a `pub(crate)`. `succeeded_count` y `notes` ya se usan (`AR-26`, `ERR-20`); `check_intel_updates` se fue con Intel (`ERR-25`). Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="ar-29"></a>
 ### AR-29 · La vista de drivers repite el ciclo de tareas en vez de usar `ui::task::run_blocking`
@@ -1117,11 +1119,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-24"></a>
 ### CL-24 · `read_wmi_f32` copia `read_wmi_i32`; umbrales mágicos y filtro de sensor por nombre
-- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P3 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: dos lectores con el mismo cuerpo; rangos `1.0..125.0`, `..150.0` y tope 256 sueltos; filtro por subcadena del nombre
   (`UI-22`) aunque LHM expone `Identifier`.
 - **Dónde**: `src/core/hardware/sensors/wmi.rs`.
 - **Propuesta**: `read_wmi<T>(obj, prop, conv)`, constantes con nombre y filtro por `Identifier`.
+- **Cierre** (2026-11-25): `read_wmi<T>` con el conversor (`VariantToInt32`, `VariantToDouble`) reemplaza los dos lectores copiados; los umbrales tienen nombre (`CURRENT_TEMP_C`, `LIMIT_TEMP_C`, `MIN_CRITICAL_C`, `MAX_LHM_SENSORS`). El filtro de CPU ya miraba `Identifier` (`UI-22`). Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="cl-25"></a>
 ### CL-25 · Componentes y clases que ya existen no se usan
@@ -1143,11 +1146,12 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="te-26"></a>
 ### TE-26 · `px` y colores derivados escritos en Rust
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Pendiente
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `min-width: 240px`, `max-height: 460px`/`480px`, `28px`, `16px`, `1px solid` y `color-mix(…)` inline (regla §2 de
   `ui-temas.md`).
 - **Dónde**: `src/ui/views/drivers.rs:524-794`; `src/ui/views/tools.rs:90-92`, `519`, `580`, `626`.
 - **Propuesta**: `.app-icon`, `.list-scroll` con token de alto y `--control-min-width`.
+- **Cierre** (2026-11-25): los `px` y `color-mix` de drivers y de la tienda pasaron a clases (`.item-row`, `.grow-wide`, `.modal-list.tall` en `TE-25`; `.app-icon` en `OR-07`). Queda en `tools.rs` la tarjeta de progreso, anterior a la fusión (`TE-02`). `style:` baja de 47 a 45. Verificado: `cargo test` (78 + 4) y `clippy --all-targets -- -D warnings` en verde.
 
 <a id="te-27"></a>
 ### TE-27 · Texto de error de la tienda con `--danger` (regresión de UI-18)

@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 25/11/2026: **89 hechas, 13 parciales, 11 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 25/11/2026: **93 hechas, 13 parciales, 7 pendientes y 1 descartada** de 114. Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -55,12 +55,10 @@ dependencias directas se usan.
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
 | [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Parcial |
 | [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Parcial |
-| [`AR-28`](PRACTICAS-detalle.md#ar-28) | API pública de drivers más ancha de lo que usa la UI, y campos muertos | S | Pendiente |
 | [`AR-29`](PRACTICAS-detalle.md#ar-29) | La vista de drivers repite el ciclo de tareas en vez de usar `ui::task::run_blocking` | S | Pendiente |
 | [`CL-20`](PRACTICAS-detalle.md#cl-20) | 46 `source: None` nuevos en `drivers.rs` | S | Pendiente |
 | [`CL-23`](PRACTICAS-detalle.md#cl-23) | Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID | S | Parcial |
 | [`CL-25`](PRACTICAS-detalle.md#cl-25) | Componentes y clases que ya existen no se usan | S | Pendiente |
-| [`TE-26`](PRACTICAS-detalle.md#te-26) | `px` y colores derivados escritos en Rust | S | Pendiente |
 | [`IN-09`](PRACTICAS-detalle.md#in-09) | Textos en un solo idioma o mezclados | S | Pendiente |
 
 ## P3
@@ -69,8 +67,6 @@ dependencias directas se usan.
 |---|---|---|---|
 | [`AR-19`](PRACTICAS-detalle.md#ar-19) | Tres estilos de API en core | M | Pendiente |
 | [`HE-11`](PRACTICAS-detalle.md#he-11) | rustfmt no formatea `rsx!` | S | Descartada |
-| [`OR-07`](PRACTICAS-detalle.md#or-07) | Los iconos de la tienda viven dentro de `tools.rs` | S | Pendiente |
-| [`CL-24`](PRACTICAS-detalle.md#cl-24) | `read_wmi_f32` copia `read_wmi_i32`; umbrales mágicos y filtro de sensor por nombre | S | Pendiente |
 | [`IN-10`](PRACTICAS-detalle.md#in-10) | «...», «(s)», mayúsculas de título y «drivers/controladores» | S | Pendiente |
 
 ## Siguiente

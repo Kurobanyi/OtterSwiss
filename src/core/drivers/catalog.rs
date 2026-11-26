@@ -79,8 +79,6 @@ impl DriverManager {
                 if title.is_empty() {
                     continue;
                 }
-                let classification = cells[3].clone();
-                let products = cells[2].clone();
                 let last_updated = cells[4].clone();
                 let version = cells[5].clone();
                 let size_str = cells[6].clone();
@@ -88,8 +86,6 @@ impl DriverManager {
                 matches.push(CatalogDriverMatch {
                     update_id: guid.to_string(),
                     title,
-                    products,
-                    classification,
                     last_updated,
                     version,
                     size_str,

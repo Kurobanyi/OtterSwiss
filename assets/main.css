@@ -760,6 +760,28 @@ button.badge {
     background: var(--surface);
 }
 
+/* OR-07, TE-26: icono de una app de la tienda (AppIconBadge). */
+.app-icon {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
+
+.app-icon svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: var(--accent-text);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 /* Barra de progreso (ProgressBar) */
 .progress {
     width: 100%;

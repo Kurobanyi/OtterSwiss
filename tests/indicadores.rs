@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 const INDICADORES: &[(&str, usize, &str)] = &[
     (
         "style:",
-        47,
+        45,
         "estilos inline: usar clases de assets/main.css (TE-02, TE-25)",
     ),
     (

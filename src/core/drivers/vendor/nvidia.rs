@@ -44,7 +44,7 @@ struct NvidiaDriverAttrs {
 }
 
 impl DriverManager {
-    pub fn check_nvidia_updates(
+    pub(in crate::core::drivers) fn check_nvidia_updates(
         devices: &[InstalledDriverDevice],
     ) -> CoreResult<Vec<VendorDriverUpdate>> {
         let mut results = Vec::new();

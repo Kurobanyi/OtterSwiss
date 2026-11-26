@@ -27,7 +27,9 @@ const CANCEL_POLL: Duration = Duration::from_millis(250);
 
 impl DriverManager {
     /// Drivers pendientes en Windows Update. `cancel` deja de esperar la búsqueda (`CoreError::Cancelled`).
-    pub fn search_driver_updates(cancel: &AtomicBool) -> CoreResult<Vec<DriverUpdateCandidate>> {
+    pub(super) fn search_driver_updates(
+        cancel: &AtomicBool,
+    ) -> CoreResult<Vec<DriverUpdateCandidate>> {
         if is_windows_update_service_disabled() {
             return Err(CoreError::SystemTool {
                 message: "El servicio Windows Update (wuauserv) está deshabilitado.".into(),
@@ -172,10 +174,9 @@ fn wua_update_id(update: &IUpdate) -> Option<String> {
 /// Lo que la vista muestra de un driver pendiente de WUA.
 fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
     // SAFETY: lecturas de propiedades COM sobre una actualización válida, en el hilo STA que la obtuvo.
-    let (title, is_downloaded, is_optional, size_mb, driver) = unsafe {
+    let (title, is_optional, size_mb, driver) = unsafe {
         (
             bstr_text(update.Title()),
-            variant_flag(update.IsDownloaded(), false),
             variant_flag(
                 update.cast::<IUpdate3>().and_then(|u3| u3.BrowseOnly()),
                 false,
@@ -186,8 +187,6 @@ fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
                 .map(|drv| {
                     [
                         bstr_text(drv.DriverClass()),
-                        bstr_text(drv.DriverModel()),
-                        bstr_text(drv.DriverManufacturer()),
                         bstr_text(drv.DriverProvider()),
                         bstr_text(drv.DriverHardwareID()),
                     ]
@@ -195,13 +194,7 @@ fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
                 .unwrap_or_default(),
         )
     };
-    let [
-        driver_class,
-        driver_model,
-        driver_manufacturer,
-        driver_provider,
-        hardware_id,
-    ] = driver;
+    let [driver_class, driver_provider, hardware_id] = driver;
     let low_title = title.to_ascii_lowercase();
     let is_firmware = driver_class.to_ascii_lowercase().contains("firmware")
         || low_title.contains("firmware")
@@ -211,12 +204,9 @@ fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
         id: wua_update_id(update).unwrap_or_else(|| format!("drv_{idx}")),
         title,
         driver_class,
-        driver_model,
-        driver_manufacturer,
         driver_provider,
         hardware_id,
         size_mb,
-        is_downloaded,
         is_firmware,
         is_optional,
     }
