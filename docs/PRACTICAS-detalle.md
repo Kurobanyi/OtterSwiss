@@ -372,7 +372,7 @@ Leyenda:
 
 <a id="cl-05"></a>
 ### CL-05 · Funciones de unas 400 líneas
-- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P1 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecho
 - **Qué pasa**: `apply_profile_inner` (387 líneas; el bloque «resultado → push → progreso» 15 veces y el booleano `backup_failed`
   consultado en tres sitios), `scan_leftovers` (389, nueve niveles de anidamiento, el literal `LeftoverItem` tres veces),
   `AdlSession::poll` (199), `execute_debloat`, `poll_wmi_acpi`, `secure_download_and_verify_with_progress` (261). Las vistas
@@ -384,6 +384,7 @@ Leyenda:
   `scan_*` por fuente de restos; las vistas en subcomponentes (resultados, modal de restos, lista de apps).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): apply_profile_inner (StepRecorder) y scan_leftovers (LeftoverScan, salida idéntica en todas las apps de esta PC) partidos. Las vistas largas siguen igual. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
 - **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): la mayor de las vistas, `DriversView`, pasó de 825 a 303 líneas (`CL-21`); quedan `UninstallerView`, `DashboardView`, `DebloaterView`, `DnsView`, `App` y `ToolsView`, que no se tocaron en esta sesión.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): las seis vistas restantes quedaron en subcomponentes, cada una en su commit: `UninstallerView`, `DebloaterView` y `DashboardView` con un `…Signals` (`Copy`, `PartialEq`) que lleva las señales y funciones `start_*` para las tareas asíncronas; `DnsView` igual (`DnsSignals`, `start_benchmark`/`start_apply`/`start_restore`, `ApplyConfirm`, `OptimizerCard`, `AdaptersCard`); `App` en `TitleBar`, `UpdateModal` y `TabViews`, con el estado de la descarga dentro del modal; `ToolsView` en `ContextMenuCard`, `RuntimesCard` y la tienda (`StoreFilters`, `StoreActions`, `StoreRow`), con `toggle_context_menu` como función. `CuratedPackage` deriva `PartialEq` para viajar como propiedad. Medido: la mayor de esas seis es `UninstallerView` con 124 líneas (antes 524) y `UpdateModal` con 110; en `src/ui` solo `DriversView` (302, `CL-21`), `ArchiverView` (216), `CleanerView` (206) y `HardwareView` (203) superan las 200, y no estaban en el alcance de `CL-05`. Descartado: pasar las rotulaciones de pestañas a `i18n` (solo movía un `match` bilingüe a otro archivo; ver `STD-025`). Verificado: `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (97 + 6) en verde tras cada commit; el recorrido visual de las vistas partidas va al final (pendiente).
 
 <a id="cl-06"></a>
 ### CL-06 · Helpers Win32 escritos varias veces
