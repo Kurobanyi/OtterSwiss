@@ -1241,3 +1241,24 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Propuesta**: script en `.agents/scripts/` (o test) que cuente `style:`, `if en` y `source: None` y falle si suben del umbral;
   `clippy::too_many_lines` en `warn` para core.
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `tests/indicadores.rs` (corre en `cargo test` y en el CI) cuenta en `src/` `style:` (techo 47), `if en` (217) y `source: None` (118) y falla si alguno sube; otro test falla si algún archivo vuelve a eximirse de `undocumented_unsafe_blocks` (`CL-19`). `clippy::too_many_lines` queda en `warn` solo para core, con techo 180 en `clippy.toml` (la mayor hoy tiene 176; `CL-05` las va partiendo). No se cubre el borrado de comentarios con ID: no hay forma mecánica fiable de distinguirlo de una limpieza. Verificado: con un `style:` de más, con la exención agregada y con el techo en 170, cada freno falla; sin eso, `cargo test` (70 + 2), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
+
+<a id="te-30"></a>
+### TE-30 · Rediseño de la interfaz con el lenguaje visual de Windows 11 (Fluent)
+- **Prioridad**: P2 · **Esfuerzo**: L · **Evidencia**: pedido del autor (26/11/2026) · **Estado**: Hecho
+- **Decisión del autor**: estilo nativo de Windows 11, cambio de sistema y de layout (no solo piel), se conservan los 11 temas y
+  se trabaja vista por vista con un agente por vista (Sonnet) sobre un sistema base común.
+- **Qué se hizo**: barra de título con marca, idioma, tema y botones de ventana con glifos de Segoe Fluent Icons; panel de
+  navegación lateral (solo iconos a 1100 px o menos, lo que también cierra `UI-23` de otra forma); encabezado de página (título y
+  descripción por sección) pintado por el shell; aviso de modo estándar como `InfoBar` (componente nuevo); tokens Fluent
+  (rampa 12/14/20/28, controles de 32 px con radio 4, tarjetas y filas con radio 8, capas `--layer`/`--stroke`/`--control-fill*`
+  derivadas del tema). Cada vista se reorganizó: acción principal arriba, grupos con `.section-title` y filas `.item-row` tipo
+  Configuración, listas largas en paneles con barra de herramientas pegada, estados con texto además de color. Reglas en
+  `.agents/rules/ui-temas.md` §8.
+- **Descartado**: fuentes web (la app es de escritorio y sin red; Segoe UI Variable ya está en Windows 11), Mica real (WebView2 no
+  la expone al contenido) y reducir los temas a tres (el autor prefirió conservarlos).
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): verificado en la app sin elevar a 1400 px y al mínimo de 960 px, en
+  español e inglés, temas Tokyo Night (oscuro) y Claro: todas las secciones. En el repaso salieron y se corrigieron: banner de
+  éxito del Limpiador aunque se cancelara, nombres de sensores cortados, notas de diagnóstico y operaciones de administrador sin
+  traducir (ahora `Msg` traduce el detalle con `core_text`), mayúsculas de las categorías del Debloater y textos fijos
+  («FIRMWARE / BIOS», «OK/Error»). `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (99) en verde.
+  Sin probar: los otros 9 temas de color uno por uno y el diálogo de restos del Desinstalador con datos reales.

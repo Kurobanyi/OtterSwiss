@@ -54,3 +54,25 @@ description: "Reglas de arquitectura de UI, tokens CSS, componentes y gestión d
 ## 7. Textos
 - Los textos de la interfaz van en `ui/i18n/strings.rs` (`Strings`, un `static` por idioma); si falta uno, no compila.
 - Español con mayúscula solo inicial, «…» en vez de «...», plurales con `plural()`.
+
+## 8. Lenguaje visual (Windows 11 / Fluent, decidido el 26/11/2026)
+- **Estructura de la ventana**: barra de título (marca, idioma, tema, botones de ventana) → panel de navegación lateral
+  (`.nav-pane`, solo iconos a 1100 px o menos) → capa de contenido (`.main-content-full`, fondo `--layer`, esquina superior
+  izquierda redondeada). El shell (`src/ui/app.rs`) ya pinta el título y la descripción de cada página (`.page-header`) y el
+  aviso de modo estándar: una vista **no** repite su nombre en una tarjeta de cabecera.
+- **Jerarquía de una página**: encabezado del shell → acciones principales de la página → grupos con `.section-title`
+  (texto 14 seminegrita) y debajo tarjetas o filas. Como Configuración de Windows: filas `.item-row` (icono, título, descripción
+  y control a la derecha) en lugar de tarjetas para todo.
+- **Tamaños**: 12 (pie, metadatos), 14 (cuerpo y títulos de tarjeta), 20 (título de diálogo, cifras destacadas), 28 (título de
+  página). Pesos 400 y 600. Nada de MAYÚSCULAS en etiquetas.
+- **Controles**: altura 32 (`.btn`, `.input`), 28 en `.btn-sm`; radio 4 en controles y 8 en tarjetas, filas y diálogos.
+  Un solo botón de acento (`.btn-primary`) por grupo: la acción principal. El resto, `.btn` estándar. Lo destructivo, `.btn-danger`
+  y siempre con confirmación.
+- **Superficies**: `--layer` (fondo de página), `--surface` (tarjeta, fila), `--stroke` (trazo y separadores), `--control-fill*`
+  (relleno de controles), `--subtle-fill-*` (hover de elementos sin fondo). Se derivan del tema: no hace falta definirlas en
+  cada tema.
+- **Avisos**: `InfoBar` (componente) para lo persistente de una página (permisos, estado); `StatusBanner` para el resultado de
+  una acción; `badge-*` para estados cortos de una fila.
+- **Iconos**: glifos de Segoe Fluent Icons con `.fluent-icon` y `aria-hidden`; cada botón solo-icono lleva `aria-label`.
+- **CSS de una vista**: lo que no sea un componente común va en la sección «8 · Vistas» de `assets/main.css`, con un
+  comentario por vista; antes de crear una clase, reutiliza las comunes.

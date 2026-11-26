@@ -44,6 +44,9 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   sigue como struct); `SEC-17` (manifiesto `asInvoker`, aviso «Modo estándar» con «Reabrir como administrador», drivers con
   `require_elevated`) y `SYS-24` (`elevation::shell_user_differs` + `RegLocation::ensure_writable` bloquean HKCU con otra cuenta).
   Techos de `tests/indicadores.rs`: `style:` 2, `if en` 10, `source: None` 10. Ya no hay diferidos ni pendientes de decisión.
+- Sesión del 26/11 (mañana): rediseño de la interfaz al estilo Windows 11 (`TE-30`, decisión del autor): navegación lateral,
+  encabezado de página en el shell, `InfoBar`, tokens Fluent y las diez vistas rehechas (un agente Sonnet por vista, revisadas en la
+  app). Reglas nuevas en `.agents/rules/ui-temas.md` §8. Sin probar uno por uno los otros 9 temas de color.
 - **Último resultado:** `cargo test` 99 + 4 de integración (más 3 ignorados y 8 de VM), `clippy --all-targets -- -D warnings` y
   `fmt --check` en verde. Recorrido en la app sin elevar hecho (2026-11-25, oscuro y claro, español e inglés, todas las pestañas; sin diferencias salvo que el detalle de errores de core sigue en español: `AR-06`). Antes la pantalla
   estaba bloqueada. No se probaron el diálogo de confirmación de Drivers ni la lista con errores (no hay dispositivos con error).
