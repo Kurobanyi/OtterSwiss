@@ -75,13 +75,7 @@ fn start_scan(app: InstalledApp, sig: UninstallerSignals) {
     is_working.set(true);
     let name = app.display_name.clone();
     status_msg.set(Some((
-        Msg::new(move |en| {
-            if en {
-                format!("Scanning leftovers for '{name}'…")
-            } else {
-                format!("Buscando restos de '{name}'…")
-            }
-        }),
+        Msg::new(move |en| (strings(en).uninstaller.scanning_leftovers_for)(&name)),
         Tone::Info,
     )));
 
@@ -92,23 +86,11 @@ fn start_scan(app: InstalledApp, sig: UninstallerSignals) {
 
         match res {
             Err(err) => status_msg.set(Some((
-                Msg::new(move |en| {
-                    if en {
-                        format!("Could not scan '{name}': {}", err.text(en))
-                    } else {
-                        format!("No se pudo escanear '{name}': {}", err.text(en))
-                    }
-                }),
+                Msg::new(move |en| (strings(en).uninstaller.could_not_scan)(&name, &err.text(en))),
                 Tone::Danger,
             ))),
             Ok(found) if found.is_empty() => status_msg.set(Some((
-                Msg::new(move |en| {
-                    if en {
-                        format!("No leftovers found for '{name}'.")
-                    } else {
-                        format!("No quedaron restos de '{name}'.")
-                    }
-                }),
+                Msg::new(move |en| (strings(en).uninstaller.no_leftovers_found_for)(&name)),
                 Tone::Success,
             ))),
             Ok(found) => {
@@ -117,11 +99,7 @@ fn start_scan(app: InstalledApp, sig: UninstallerSignals) {
                 status_msg.set(Some((
                     Msg::new(move |en| {
                         let leftovers = plural(count, strings(en).leftover);
-                        if en {
-                            format!("Found {leftovers} for '{name}'.")
-                        } else {
-                            format!("{leftovers} de '{name}'.")
-                        }
+                        (strings(en).uninstaller.found_for)(&leftovers, &name)
                     }),
                     Tone::Info,
                 )));
@@ -147,13 +125,7 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
     purge_summary.set(None);
     let name = app.display_name.clone();
     status_msg.set(Some((
-        Msg::new(move |en| {
-            if en {
-                format!("Uninstalling '{name}'…")
-            } else {
-                format!("Desinstalando '{name}'…")
-            }
-        }),
+        Msg::new(move |en| (strings(en).uninstaller.uninstalling)(&name)),
         Tone::Info,
     )));
 
@@ -165,43 +137,19 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
         let (text, tone) = match res {
             Err(err) => (
                 Msg::new(move |en| {
-                    if en {
-                        format!("Could not uninstall '{}': {}", name, err.text(en))
-                    } else {
-                        format!("No se pudo desinstalar '{}': {}", name, err.text(en))
-                    }
+                    (strings(en).uninstaller.could_not_uninstall)(&name, &err.text(en))
                 }),
                 Tone::Danger,
             ),
             Ok(UninstallOutcome::Failed { code }) => (
                 Msg::new(move |en| {
-                    if en {
-                        format!(
-                            "The uninstaller of '{}' ended with code {}; leftovers were not scanned.",
-                            name, code
-                        )
-                    } else {
-                        format!(
-                            "El desinstalador de '{}' terminó con el código {}; no se buscaron restos.",
-                            name, code
-                        )
-                    }
+                    (strings(en).uninstaller.the_uninstaller_of_ended_with)(&name, &code)
                 }),
                 Tone::Danger,
             ),
             Ok(UninstallOutcome::StillRegistered) => (
                 Msg::new(move |en| {
-                    if en {
-                        format!(
-                            "'{}' is still installed; its uninstaller may need a restart or your input.",
-                            name
-                        )
-                    } else {
-                        format!(
-                            "'{}' sigue instalada; su desinstalador puede necesitar un reinicio o tu intervención.",
-                            name
-                        )
-                    }
+                    (strings(en).uninstaller.is_still_installed_its_uninstaller)(&name)
                 }),
                 Tone::Warning,
             ),
@@ -219,38 +167,20 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
                         {
                             let err = Msg::plain(err);
                             Msg::new(move |en| {
-                                if en {
-                                    format!(
-                                        "'{}' uninstalled, but its leftovers could not be scanned: {}",
-                                        name,
-                                        err.text(en)
-                                    )
-                                } else {
-                                    format!(
-                                        "'{}' desinstalada, pero no se pudieron buscar sus restos: {}",
-                                        name,
-                                        err.text(en)
-                                    )
-                                }
+                                (strings(en).uninstaller.uninstalled_but_its_leftovers_could)(
+                                    &name,
+                                    &err.text(en),
+                                )
                             })
                         },
                         Tone::Warning,
                     ),
                     Ok(found) if found.is_empty() => (
                         Msg::new(move |en| {
-                            if en {
-                                format!(
-                                    "'{}' uninstalled; no leftovers found.{}",
-                                    name,
-                                    reboot_note(en)
-                                )
-                            } else {
-                                format!(
-                                    "'{}' desinstalada; no se encontraron restos.{}",
-                                    name,
-                                    reboot_note(en)
-                                )
-                            }
+                            (strings(en).uninstaller.uninstalled_no_leftovers_found)(
+                                &name,
+                                &reboot_note(en),
+                            )
                         }),
                         Tone::Success,
                     ),
@@ -259,19 +189,10 @@ fn start_uninstall_and_scan(app: InstalledApp, sig: UninstallerSignals) {
                         leftovers_modal.set(Some((app, found)));
                         (
                             Msg::new(move |en| {
-                                if en {
-                                    format!(
-                                        "'{}' uninstalled; review its leftovers.{}",
-                                        name,
-                                        reboot_note(en)
-                                    )
-                                } else {
-                                    format!(
-                                        "'{}' desinstalada; revisa sus restos.{}",
-                                        name,
-                                        reboot_note(en)
-                                    )
-                                }
+                                (strings(en).uninstaller.uninstalled_review_its_leftovers)(
+                                    &name,
+                                    &reboot_note(en),
+                                )
                             }),
                             Tone::Success,
                         )
@@ -307,6 +228,7 @@ async fn reload_apps(
 pub fn UninstallerView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).uninstaller;
 
     // UI-05: el inventario se lee fuera del hilo de UI.
     let mut apps = use_signal(Vec::<InstalledApp>::new);
@@ -344,11 +266,7 @@ pub fn UninstallerView() -> Element {
                 }
                 Err(err) => status_msg.set(Some((
                     Msg::new(move |en| {
-                        if en {
-                            format!("Could not read the installed apps: {}", err.text(en))
-                        } else {
-                            format!("No se pudieron leer las apps instaladas: {}", err.text(en))
-                        }
+                        (strings(en).uninstaller.could_not_read_the_installed)(&err.text(en))
                     }),
                     Tone::Danger,
                 ))),
@@ -398,23 +316,12 @@ pub fn UninstallerView() -> Element {
             };
             status_msg.set(Some((
                 Msg::new(move |en| {
-                    if en {
-                        format!(
-                            "Cleaned '{}': {} removed, {} failed ({} freed).",
-                            app.display_name,
-                            report.removed_count,
-                            report.failed_count,
-                            format_size_mb(report.bytes_freed)
-                        )
-                    } else {
-                        format!(
-                            "Purga de '{}': {} eliminados, {} con error ({} liberados).",
-                            app.display_name,
-                            report.removed_count,
-                            report.failed_count,
-                            format_size_mb(report.bytes_freed)
-                        )
-                    }
+                    (strings(en).uninstaller.cleaned_removed_failed_freed)(
+                        &app.display_name,
+                        &report.removed_count,
+                        &report.failed_count,
+                        &format_size_mb(report.bytes_freed),
+                    )
                 }),
                 tone,
             )));
@@ -472,60 +379,18 @@ pub fn UninstallerView() -> Element {
         }
     }
 
-    let locked_title = if en {
-        "Locked items"
-    } else {
-        "Elementos en uso"
-    }
-    .to_string();
-    let uninstaller_title = if en {
-        "Deep Uninstaller"
-    } else {
-        "Desinstalador profundo"
-    }
-    .to_string();
-    let uninstaller_sub = Some(
-        (if en {
-            "Uninstall apps and purge leftover files & registry"
-        } else {
-            "Desinstala y purga archivos y registro residual"
-        })
-        .to_string(),
-    );
-    let installed_title = if en {
-        "Installed Applications"
-    } else {
-        "Aplicaciones instaladas"
-    }
-    .to_string();
+    let locked_title = txt.locked_items.to_string();
+    let uninstaller_title = txt.deep_uninstaller.to_string();
+    let uninstaller_sub = Some(txt.uninstall_apps_and_purge_leftover.to_string());
+    let installed_title = txt.installed_applications.to_string();
 
-    let search_placeholder = if en {
-        "Search app or publisher…"
-    } else {
-        "Buscar aplicación o fabricante…"
-    };
+    let search_placeholder = txt.search_app_or_publisher;
     let refresh_lbl = strings(en).reload_list;
-    let sort_lbl = if en { "Sort:" } else { "Orden:" };
-    let sort_largest_lbl = if en {
-        "Size (Largest)"
-    } else {
-        "Tamaño (mayor)"
-    };
-    let sort_smallest_lbl = if en {
-        "Size (Smallest)"
-    } else {
-        "Tamaño (menor)"
-    };
-    let update_lbl = if en {
-        "Check for update"
-    } else {
-        "Buscar actualización"
-    };
-    let scan_lbl = if en {
-        "Scan Leftovers"
-    } else {
-        "Escanear restos"
-    };
+    let sort_lbl = txt.sort;
+    let sort_largest_lbl = txt.size_largest;
+    let sort_smallest_lbl = txt.size_smallest;
+    let update_lbl = txt.check_for_update;
+    let scan_lbl = txt.scan_leftovers;
     let uninst_lbl = strings(en).uninstall;
 
     rsx! {
@@ -539,28 +404,12 @@ pub fn UninstallerView() -> Element {
                         .map(|i| i.size_bytes)
                         .sum();
 
-                    let modal_title = if en {
-                        format!("Leftovers for '{}'", modal_app.display_name)
-                    } else {
-                        format!("Rastros de '{}'", modal_app.display_name)
-                    };
-                    let modal_sub = if en {
-                        "Only the items marked as safe are preselected. Review the rest before purging."
-                    } else {
-                        "Solo vienen marcados los restos seguros. Revisa el resto antes de eliminar."
-                    };
-                    let warn_lbl = if en {
-                        "Files and folders are deleted permanently (not to the Recycle Bin). Registry keys are exported first to ProgramData\\OtterSwiss\\RegBackups."
-                    } else {
-                        "Los archivos y carpetas se borran de forma permanente (no van a la Papelera). Las claves de registro se exportan antes a ProgramData\\OtterSwiss\\RegBackups."
-                    };
-                    let review_lbl = if en { "Review" } else { "Revisar" };
+                    let modal_title = (strings(en).uninstaller.leftovers_for)(&modal_app.display_name);
+                    let modal_sub = txt.only_the_items_marked_as;
+                    let warn_lbl = txt.files_and_folders_are_deleted;
+                    let review_lbl = txt.review;
                     let close_lbl = strings(en).close;
-                    let purge_lbl = if en {
-                        format!("Delete permanently ({})", sel_count)
-                    } else {
-                        format!("Borrar de forma permanente ({})", sel_count)
-                    };
+                    let purge_lbl = (strings(en).uninstaller.delete_permanently)(&sel_count);
 
                     rsx! {
                         Modal {
@@ -647,16 +496,8 @@ pub fn UninstallerView() -> Element {
             // UX-01: desinstalar pide confirmación y avisa que corre en modo silencioso.
             if let Some(target) = confirm_uninstall.read().clone() {
                 {
-                    let title = if en {
-                        format!("Uninstall '{}'?", target.display_name)
-                    } else {
-                        format!("¿Desinstalar '{}'?", target.display_name)
-                    };
-                    let body = if en {
-                        "Its uninstaller will run silently, without asking for confirmation. Afterwards you can review its leftovers before deleting anything."
-                    } else {
-                        "Su desinstalador se ejecutará en modo silencioso, sin pedir confirmación. Después podrás revisar sus restos antes de borrar nada."
-                    };
+                    let title = (strings(en).uninstaller.uninstall)(&target.display_name);
+                    let body = txt.its_uninstaller_will_run_silently;
                     rsx! {
                         ConfirmDialog {
                             title,
@@ -750,7 +591,7 @@ pub fn UninstallerView() -> Element {
                 div { class: "stack-2",
                     if !*apps_loaded.read() {
                         LoadingState {
-                            message: if en { "Reading installed apps…".to_string() } else { "Leyendo las apps instaladas…".to_string() },
+                            message: txt.reading_installed_apps.to_string(),
                         }
                     }
                     for app in filtered.into_iter() {

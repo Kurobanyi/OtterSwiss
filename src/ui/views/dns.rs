@@ -40,6 +40,7 @@ fn spawn_refresh(mut adapters: Signal<AdaptersState>, mut has_backup: Signal<boo
 pub fn DnsView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).dns;
 
     let adapters = use_signal(|| AdaptersState::None);
     let has_backup = use_signal(|| false);
@@ -56,14 +57,7 @@ pub fn DnsView() -> Element {
     let on_benchmark = move |_| {
         is_benchmarking.set(true);
         status_msg.set(Some((
-            Msg::new(move |en| {
-                if en {
-                    "Measuring ping…"
-                } else {
-                    "Midiendo el ping…"
-                }
-                .to_string()
-            }),
+            Msg::new(move |en| strings(en).dns.measuring_ping.to_string()),
             Tone::Info,
         )));
 
@@ -92,27 +86,14 @@ pub fn DnsView() -> Element {
                 if let Some(p) = DNS_PRESETS.iter().find(|x| x.id == best_id) {
                     // UI-15: es ping ICMP al servidor, no tiempo de resolución DNS.
                     status_msg.set(Some((
-                        Msg::new(move |en| {
-                            if en {
-                                format!("Lowest ping: {} ({} ms)", p.name, best_ms)
-                            } else {
-                                format!("Menor ping: {} ({} ms)", p.name, best_ms)
-                            }
-                        }),
+                        Msg::new(move |en| (strings(en).dns.lowest_ping_ms)(&p.name, &best_ms)),
                         Tone::Success,
                     )));
                 }
             } else {
                 best_preset_id.set(None);
                 status_msg.set(Some((
-                    Msg::new(move |en| {
-                        if en {
-                            "No server answered the ping."
-                        } else {
-                            "Ningún servidor respondió al ping."
-                        }
-                        .to_string()
-                    }),
+                    Msg::new(move |en| strings(en).dns.no_server_answered_the_ping.to_string()),
                     Tone::Danger,
                 )));
             }
@@ -140,31 +121,13 @@ pub fn DnsView() -> Element {
             status_msg.set(Some(match res {
                 Ok(count) => (
                     Msg::new(move |en| {
-                        if en {
-                            format!(
-                                "{} applied to {}.",
-                                p_name,
-                                plural(count, strings(true).adapter)
-                            )
-                        } else {
-                            format!(
-                                "{} aplicado a {}.",
-                                p_name,
-                                plural(count, strings(false).adapter)
-                            )
-                        }
+                        let adapters = plural(count, strings(en).adapter);
+                        (strings(en).dns.preset_applied)(&p_name, &adapters)
                     }),
                     Tone::Success,
                 ),
                 Err(CoreError::NoActiveAdapters) => (
-                    Msg::new(move |en| {
-                        if en {
-                            "There are no active physical adapters."
-                        } else {
-                            "No hay adaptadores físicos activos."
-                        }
-                        .to_string()
-                    }),
+                    Msg::new(move |en| strings(en).dns.there_are_no_active_physical.to_string()),
                     Tone::Danger,
                 ),
                 Err(e) => (Msg::from(e), Tone::Danger),
@@ -187,17 +150,8 @@ pub fn DnsView() -> Element {
             status_msg.set(Some(match res {
                 Ok(count) => (
                     Msg::new(move |en| {
-                        if en {
-                            format!(
-                                "Previous DNS restored on {}.",
-                                plural(count, strings(true).adapter)
-                            )
-                        } else {
-                            format!(
-                                "DNS anterior restaurado en {}.",
-                                plural(count, strings(false).adapter)
-                            )
-                        }
+                        let adapters = plural(count, strings(en).adapter);
+                        (strings(en).dns.previous_dns_restored)(&adapters)
                     }),
                     Tone::Success,
                 ),
@@ -221,42 +175,19 @@ pub fn DnsView() -> Element {
         _ => Vec::new(),
     };
 
-    let optimizer_card_title = if en {
-        "DNS Optimizer"
-    } else {
-        "Optimizador DNS"
-    }
-    .to_string();
-    let optimizer_card_sub = Some(
-        if en {
-            "Public DNS servers and ping test"
-        } else {
-            "Servidores DNS públicos y prueba de ping"
-        }
-        .to_string(),
-    );
-    let adapters_card_title = if en {
-        "Network Adapters"
-    } else {
-        "Adaptadores de Red"
-    }
-    .to_string();
+    let optimizer_card_title = txt.dns_optimizer.to_string();
+    let optimizer_card_sub = Some(txt.public_dns_servers_and_ping.to_string());
+    let adapters_card_title = txt.network_adapters.to_string();
 
     let ping_btn_text = if *is_benchmarking.read() {
-        if en { "Pinging…" } else { "Midiendo…" }
-    } else if en {
-        "Test Ping"
+        txt.pinging
     } else {
-        "Probar Ping"
+        txt.test_ping
     };
 
-    let apply_dns_lbl = if en { "Apply DNS" } else { "Aplicar DNS" };
-    let restore_dns_lbl = if en {
-        "Restore Previous"
-    } else {
-        "Restaurar DNS"
-    };
-    let physical_lbl = if en { "Physical" } else { "Físico" };
+    let apply_dns_lbl = txt.apply_dns;
+    let restore_dns_lbl = txt.restore_previous;
+    let physical_lbl = txt.physical;
 
     rsx! {
         div { class: "content-body",
@@ -264,7 +195,7 @@ pub fn DnsView() -> Element {
             if *confirm_apply.read() {
                 if let Some(p) = active_preset {
                     ConfirmDialog {
-                        title: if en { format!("Apply {}?", p.name) } else { format!("¿Aplicar {}?", p.name) },
+                        title: (strings(en).dns.apply)(&p.name),
                         subtitle: Some(if en { p.privacy_notice_en.to_string() } else { p.privacy_notice.to_string() }),
                         confirm_label: apply_dns_lbl.to_string(),
                         cancel_label: strings(en).cancel.to_string(),
@@ -275,11 +206,7 @@ pub fn DnsView() -> Element {
                             start_apply();
                         },
                         p { class: "text-xs",
-                            if en {
-                                "It replaces the DNS of these adapters. On a company network or with your own DNS (Pi-hole, router) some names may stop resolving; «Restore DNS» brings back the previous one."
-                            } else {
-                                "Reemplaza el DNS de estos adaptadores. En una red de empresa o con un DNS propio (Pi-hole, router) algunos nombres pueden dejar de resolverse; «Restaurar DNS» vuelve al anterior."
-                            }
+                            "{txt.it_replaces_the_dns_of}"
                         }
                         div { class: "modal-list",
                             for name in physical.iter() {
@@ -364,18 +291,18 @@ pub fn DnsView() -> Element {
                 div { class: "stack-2",
                     match adapters_state.as_ref() {
                         None => rsx! {
-                            LoadingState { message: if en { "Reading network adapters…".to_string() } else { "Leyendo los adaptadores de red…".to_string() } }
+                            LoadingState { message: txt.reading_network_adapters.to_string() }
                         },
                         Some(Err(err)) => rsx! {
                             ErrorState {
-                                title: if en { "Could not read the adapters".to_string() } else { "No se pudieron leer los adaptadores".to_string() },
+                                title: txt.could_not_read_the_adapters.to_string(),
                                 error_msg: err.text(en),
                             }
                         },
                         Some(Ok(list)) if list.is_empty() => rsx! {
                             EmptyState {
-                                title: if en { "No active adapters".to_string() } else { "Sin adaptadores activos".to_string() },
-                                description: if en { "Connect to a network and refresh this tab.".to_string() } else { "Conéctate a una red y vuelve a abrir esta pestaña.".to_string() },
+                                title: txt.no_active_adapters.to_string(),
+                                description: txt.connect_to_a_network_and.to_string(),
                             }
                         },
                         Some(Ok(list)) => rsx! {
@@ -387,7 +314,7 @@ pub fn DnsView() -> Element {
                                         div { class: "text-sm fw-semibold", "{adapter.friendly_name}" }
                                         div { class: "text-xs text-muted",
                                             "IPv4: "
-                                            {if adapter.current_ipv4_dns.is_empty() { if en { "automatic (DHCP)" } else { "automático (DHCP)" } } else { adapter.current_ipv4_dns.as_str() }}
+                                            {if adapter.current_ipv4_dns.is_empty() { "{txt.automatic_dhcp}" } else { adapter.current_ipv4_dns.as_str() }}
                                             if !adapter.current_ipv6_dns.is_empty() {
                                                 " | IPv6: {adapter.current_ipv6_dns}"
                                             }

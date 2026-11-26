@@ -25,37 +25,19 @@ fn apply_recommended_defaults(
 
 /// UI-02 / UI-03: el aviso refleja fallos y cancelación, no solo que la tarea terminó.
 fn report_banner(rep: &DebloatReport, en: bool) -> (String, Tone) {
-    let counts = if en {
-        format!(
-            "{} apps removed, {} tweaks applied, {} errors",
-            rep.removed_apps, rep.applied_reg_tweaks, rep.failed_count
-        )
-    } else {
-        format!(
-            "{} apps quitadas, {} ajustes aplicados, {} errores",
-            rep.removed_apps, rep.applied_reg_tweaks, rep.failed_count
-        )
-    };
+    let counts = (strings(en).debloater.apps_removed_tweaks_applied_errors)(
+        &rep.removed_apps,
+        &rep.applied_reg_tweaks,
+        &rep.failed_count,
+    );
     if rep.cancelled {
-        let text = if en {
-            format!("Cancelled. Done before cancelling: {}.", counts)
-        } else {
-            format!("Cancelado. Hecho antes de cancelar: {}.", counts)
-        };
+        let text = (strings(en).debloater.cancelled_done_before_cancelling)(&counts);
         (text, Tone::Warning)
     } else if rep.failed_count > 0 {
-        let text = if en {
-            format!("Finished with errors: {}. See the summary.", counts)
-        } else {
-            format!("Terminado con errores: {}. Mira el resumen.", counts)
-        };
+        let text = (strings(en).debloater.finished_with_errors_see_the)(&counts);
         (text, Tone::Danger)
     } else {
-        let text = if en {
-            format!("Done: {}.", counts)
-        } else {
-            format!("Listo: {}.", counts)
-        };
+        let text = (strings(en).debloater.done)(&counts);
         (text, Tone::Success)
     }
 }
@@ -64,6 +46,7 @@ fn report_banner(rep: &DebloatReport, en: bool) -> (String, Tone) {
 pub fn DebloaterView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).debloater;
 
     let mut scan_result = use_signal(DebloatScanResult::default);
     let mut selected_apps = use_signal(HashSet::<&'static str>::new);
@@ -178,11 +161,7 @@ pub fn DebloaterView() -> Element {
                 Ok(count) => {
                     status_banner.set(Some((
                         Msg::new(move |en| {
-                            if en {
-                                format!("Reverted {count} registry values.")
-                            } else {
-                                format!("Revertidos {count} valores de registro.")
-                            }
+                            (strings(en).debloater.reverted_registry_values)(&count)
                         }),
                         Tone::Success,
                     )));
@@ -211,28 +190,11 @@ pub fn DebloaterView() -> Element {
         DebloatCategory::XboxGaming,
     ];
 
-    let debloat_title = if en {
-        "Windows Debloater"
-    } else {
-        "Debloater de Windows"
-    }
-    .to_string();
-    let debloat_sub = Some(
-        (if en {
-            "Remove preinstalled apps and ads (Store and Winget stay protected)"
-        } else {
-            "Quita apps preinstaladas y anuncios (la Store y Winget quedan protegidas)"
-        })
-        .to_string(),
-    );
-    let prog_title = if en { "Debloat Progress" } else { "Progreso" }.to_string();
-    let rep_title = if en { "Summary" } else { "Resumen" }.to_string();
-    let tweaks_title = if en {
-        "Privacy & Ad-Block Registry Tweaks"
-    } else {
-        "Ajustes Anti-Publicidad (Reversibles)"
-    }
-    .to_string();
+    let debloat_title = txt.windows_debloater.to_string();
+    let debloat_sub = Some(txt.remove_preinstalled_apps_and_ads.to_string());
+    let prog_title = txt.debloat_progress.to_string();
+    let rep_title = txt.summary.to_string();
+    let tweaks_title = txt.privacy_ad_block_registry_tweaks.to_string();
 
     // SYS-20: la confirmación muestra la lista concreta y qué significa quitar para todos los usuarios.
     let confirm_apps: Vec<&'static str> = scan
@@ -251,13 +213,9 @@ pub fn DebloaterView() -> Element {
         div { class: "content-body",
             if *confirm_open.read() {
                 ConfirmDialog {
-                    title: if en { "Apply the debloat?".to_string() } else { "¿Aplicar el Debloater?".to_string() },
-                    subtitle: Some(if en {
-                        "Apps are removed for every user of this PC and from the Windows image. You can reinstall them from Microsoft Store. Registry tweaks can be reverted.".to_string()
-                    } else {
-                        "Las apps se quitan para todos los usuarios de este equipo y de la imagen de Windows. Se pueden reinstalar desde Microsoft Store. Los ajustes de registro se pueden revertir.".to_string()
-                    }),
-                    confirm_label: if en { format!("Apply ({})", total_selected) } else { format!("Aplicar ({})", total_selected) },
+                    title: txt.apply_the_debloat.to_string(),
+                    subtitle: Some(txt.apps_are_removed_for_every.to_string()),
+                    confirm_label: (strings(en).debloater.apply)(&total_selected),
                     cancel_label: strings(en).cancel.to_string(),
                     tone: Tone::Danger,
                     wide: true,
@@ -288,11 +246,7 @@ pub fn DebloaterView() -> Element {
                             onclick: move |_| confirm_open.set(true),
                             if *is_running.read() {
                                 "{strings(en).running}"
-                            } else if en {
-                                "Apply ({total_selected})"
-                            } else {
-                                "Aplicar ({total_selected})"
-                            }
+                            } else { "{(strings(en).debloater.apply)(&total_selected)}" }
                         }
                         if *is_running.read() {
                             button {
@@ -308,7 +262,7 @@ pub fn DebloaterView() -> Element {
                                     let s = scan_result.read().clone();
                                     apply_recommended_defaults(&s, selected_apps, selected_regs);
                                 },
-                                if en { "Recommended" } else { "Recomendados" }
+                                "{txt.recommended}"
                             }
                             button {
                                 class: "btn btn-secondary",
@@ -326,14 +280,14 @@ pub fn DebloaterView() -> Element {
                                     let mut r = run_scan;
                                     r();
                                 },
-                                if en { "Rescan" } else { "Volver a escanear" }
+                                "{txt.rescan}"
                             }
                             if scan.has_reg_backup {
                                 button {
                                     class: "btn btn-secondary",
                                     disabled: busy,
                                     onclick: on_revert_reg,
-                                    if en { "Revert Registry" } else { "Revertir registro" }
+                                    "{txt.revert_registry}"
                                 }
                             }
                         }
@@ -342,11 +296,7 @@ pub fn DebloaterView() -> Element {
                     span { class: "badge badge-info",
                         if *is_scanning.read() {
                             "{strings(en).scanning}"
-                        } else if en {
-                            "{installed_count} found"
-                        } else {
-                            "{installed_count} detectadas"
-                        }
+                        } else { "{(strings(en).debloater.found)(&installed_count)}" }
                     }
                 }
             }
@@ -460,11 +410,7 @@ pub fn DebloaterView() -> Element {
                                                     class: if app.installed { "badge badge-warning" } else { "badge badge-success" },
                                                     if app.installed {
                                                         "{strings(en).installed_app}"
-                                                    } else if en {
-                                                        "Not installed"
-                                                    } else {
-                                                        "No instalada"
-                                                    }
+                                                    } else { "{txt.not_installed}" }
                                                 }
                                             }
                                         }

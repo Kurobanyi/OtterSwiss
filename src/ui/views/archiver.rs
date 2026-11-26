@@ -17,6 +17,7 @@ use crate::ui::task::run_with_progress;
 pub fn ArchiverView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).archiver;
 
     let mut mode = use_signal(|| ArchiveMode::Extract);
     let mut src_path = use_signal(String::new);
@@ -42,14 +43,7 @@ pub fn ArchiverView() -> Element {
 
         if !src.exists() {
             status_msg.set(Some((
-                Msg::new(|en| {
-                    if en {
-                        "Source path does not exist."
-                    } else {
-                        "La ruta de origen no existe."
-                    }
-                    .to_string()
-                }),
+                Msg::new(|en| strings(en).archiver.source_path_does_not_exist.to_string()),
                 Tone::Danger,
             )));
             return;
@@ -90,15 +84,7 @@ pub fn ArchiverView() -> Element {
             match res {
                 Ok(bytes) => {
                     let text = Msg::new(move |en| {
-                        if en {
-                            format!("Done ({} processed) → {}", bytes_mb(bytes), dest_display)
-                        } else {
-                            format!(
-                                "Completado ({} procesados) → {}",
-                                bytes_mb(bytes),
-                                dest_display
-                            )
-                        }
+                        (strings(en).archiver.done_processed)(&bytes_mb(bytes), &dest_display)
                     });
                     status_msg.set(Some((text, Tone::Success)));
                 }
@@ -116,20 +102,8 @@ pub fn ArchiverView() -> Element {
     let mb_total = mb_1(prog.total_bytes);
     let eta_txt = eta(prog.eta_seconds);
 
-    let card_title = if en {
-        "Secure Archiver (ZIP / 7Z / TAR.GZ)"
-    } else {
-        "Archivador Seguro (ZIP / 7Z / TAR.GZ)"
-    }
-    .to_string();
-    let card_sub = Some(
-        (if en {
-            "100% open-source Rust compression & extraction"
-        } else {
-            "Compresión y extracción libre 100% Rust"
-        })
-        .to_string(),
-    );
+    let card_title = txt.secure_archiver_zip_7z_tar.to_string();
+    let card_sub = Some(txt.n_100_open_source_rust_compression.to_string());
 
     rsx! {
         div { class: "content-body",
@@ -169,26 +143,22 @@ pub fn ArchiverView() -> Element {
                             "aria-pressed": if *mode.read() == ArchiveMode::Extract { "true" } else { "false" },
                             disabled: *is_working.read(),
                             onclick: move |_| mode.set(ArchiveMode::Extract),
-                            if en { "Extract" } else { "Descomprimir" }
+                            "{txt.extract}"
                         }
                         button {
                             class: "btn btn-secondary",
                             "aria-pressed": if *mode.read() == ArchiveMode::Compress { "true" } else { "false" },
                             disabled: *is_working.read(),
                             onclick: move |_| mode.set(ArchiveMode::Compress),
-                            if en { "Compress" } else { "Comprimir" }
+                            "{txt.compress}"
                         }
                     }
 
                     div { class: "stack-2",
                         label { class: "text-xs text-muted",
                             if *mode.read() == ArchiveMode::Extract {
-                                if en { "Archive path (.zip, .7z, .tar, .tar.gz):" } else { "Archivo comprimido (.zip, .7z, .tar, .tar.gz):" }
-                            } else if en {
-                                "Source file or folder:"
-                            } else {
-                                "Archivo o carpeta origen:"
-                            }
+                                "{txt.archive_path_zip_7z_tar}"
+                            } else { "{txt.source_file_or_folder}" }
                         }
                         input {
                             r#type: "text",
@@ -201,12 +171,8 @@ pub fn ArchiverView() -> Element {
 
                         label { class: "text-xs text-muted",
                             if *mode.read() == ArchiveMode::Extract {
-                                if en { "Output folder:" } else { "Carpeta destino:" }
-                            } else if en {
-                                "Output archive file:"
-                            } else {
-                                "Archivo destino:"
-                            }
+                                "{txt.output_folder}"
+                            } else { "{txt.output_archive_file}" }
                         }
                         input {
                             r#type: "text",
@@ -219,7 +185,7 @@ pub fn ArchiverView() -> Element {
 
                         if *mode.read() == ArchiveMode::Compress {
                             div { class: "row mt-1",
-                                span { class: "text-xs text-muted", if en { "Format:" } else { "Formato:" } }
+                                span { class: "text-xs text-muted", "{txt.format}" }
                                 button {
                                     class: "btn btn-secondary",
                             "aria-pressed": if *selected_format.read() == ArchiveFormat::Zip { "true" } else { "false" },
@@ -250,12 +216,8 @@ pub fn ArchiverView() -> Element {
                                 disabled: *is_working.read() || src_path.read().trim().is_empty() || dest_path.read().trim().is_empty(),
                                 onclick: on_execute,
                                 if *mode.read() == ArchiveMode::Extract {
-                                    if en { "Extract Now" } else { "Descomprimir" }
-                                } else if en {
-                                    "Compress Now"
-                                } else {
-                                    "Comprimir"
-                                }
+                                    "{txt.extract_now}"
+                                } else { "{txt.compress_now}" }
                             }
                         }
                     }

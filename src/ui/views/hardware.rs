@@ -1,7 +1,7 @@
 use crate::core::hardware::specs::SystemSpecs;
 use crate::ui::components::{ErrorState, LoadingState, StatusBanner, Tone};
 use crate::ui::format::capacity_mb;
-use crate::ui::i18n::{Lang, Msg};
+use crate::ui::i18n::{Lang, Msg, strings};
 use dioxus::prelude::*;
 
 #[derive(Props, Clone, PartialEq)]
@@ -21,20 +21,21 @@ pub struct HardwareViewProps {
 pub fn HardwareView(props: HardwareViewProps) -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).hardware;
     let mut status_msg = use_signal(|| None::<Msg>);
 
     let Some(specs) = props.specs.clone() else {
         if let Some(err) = props.error {
             return rsx! {
                 ErrorState {
-                    title: if en { "Could not read the hardware".to_string() } else { "No se pudo leer el hardware".to_string() },
+                    title: txt.could_not_read_the_hardware.to_string(),
                     error_msg: err,
                 }
             };
         }
         return rsx! {
             LoadingState {
-                message: if en { "Scanning CPU, SMBIOS & DXGI…".to_string() } else { "Analizando CPU, SMBIOS y DXGI…".to_string() },
+                message: txt.scanning_cpu_smbios_dxgi.to_string(),
             }
         };
     };
@@ -61,7 +62,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                 class: "card card-bar",
                 div {
                     h3 { class: "heading-flat",
-                        if en { "Hardware Specifications" } else { "Especificaciones del sistema" }
+                        "{txt.hardware_specifications}"
                     }
                     span { class: "text-xs text-muted",
                         "{specs.os.edition} {specs.os.display_version} • Build {specs.os.build}"
@@ -78,9 +79,9 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                             let escaped = serde_json::to_string(&summary).unwrap_or_default();
                             let script = format!("navigator.clipboard.writeText({escaped});");
                             document::eval(&script);
-                            status_msg.set(Some(Msg::new(|en| if en { "Copied!".to_string() } else { "¡Copiado!".to_string() })));
+                            status_msg.set(Some(Msg::new(|en| strings(en).hardware.copied.to_string())));
                         },
-                        if en { "Copy Summary" } else { "Copiar resumen" }
+                        "{txt.copy_summary}"
                     }
                     button {
                         class: "btn btn-primary",
@@ -88,16 +89,12 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                             match crate::core::hardware::specs::export_to_desktop(&specs_for_export) {
                                 Ok(path) => {
                                     let path = path.display().to_string();
-                                    status_msg.set(Some(Msg::new(move |en| if en {
-                                        format!("Saved: {path}")
-                                    } else {
-                                        format!("Guardado: {path}")
-                                    })));
+                                    status_msg.set(Some(Msg::new(move |en| (strings(en).hardware.saved)(&path))));
                                 }
                                 Err(e) => status_msg.set(Some(Msg::from(e))),
                             }
                         },
-                        if en { "Export JSON" } else { "Exportar JSON" }
+                        "{txt.export_json}"
                     }
                 }
             }
@@ -106,7 +103,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                 StatusBanner {
                     text: format!(
                         "{}\n{}",
-                        if en { "Some data could not be read:" } else { "Algunos datos no se pudieron leer:" },
+                        txt.some_data_could_not_be,
                         specs.warnings.join("\n")
                     ),
                     tone: Tone::Warning,
@@ -123,11 +120,11 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                     }
                     div { class: "text-md fw-semibold mb-2", "{specs.cpu.brand}" }
                     SpecRow {
-                        label: if en { "Arch".to_string() } else { "Arq.".to_string() },
+                        label: txt.arch.to_string(),
                         value: format!("{} • F:{:X}h M:{:X}h S:{}", specs.cpu.vendor, specs.cpu.family, specs.cpu.model, specs.cpu.stepping),
                     }
                     SpecRow {
-                        label: if en { "Cores".to_string() } else { "Núcleos".to_string() },
+                        label: txt.cores.to_string(),
                         value: cores_label,
                     }
                     SpecRow {
@@ -142,7 +139,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
 
                 div { class: "card",
                     div { class: "mb-2",
-                        strong { class: "text-accent", if en { "MOTHERBOARD & BIOS" } else { "PLACA BASE Y BIOS" } }
+                        strong { class: "text-accent", "{txt.motherboard_bios}" }
                     }
                     div { class: "text-md fw-semibold mb-2", "{specs.motherboard.manufacturer} {specs.motherboard.product}" }
                     SpecRow {
@@ -150,7 +147,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                         value: format!("{} ({})", specs.motherboard.bios_version, specs.motherboard.bios_date),
                     }
                     SpecRow {
-                        label: if en { "Vendor".to_string() } else { "Fabricante".to_string() },
+                        label: txt.vendor.to_string(),
                         value: specs.motherboard.bios_vendor.clone(),
                     }
                     SpecRow {
@@ -184,7 +181,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
 
                 div { class: "card",
                     div { class: "mb-2",
-                        strong { class: "text-accent", if en { "STORAGE" } else { "ALMACENAMIENTO" } }
+                        strong { class: "text-accent", "{txt.storage}" }
                     }
                     for drive in &specs.storage {
                         div { key: "{drive.device_index}", class: "mb-2",
@@ -215,7 +212,7 @@ pub fn HardwareView(props: HardwareViewProps) -> Element {
                                 div { class: "text-sm", "{capacity_mb(module.capacity_mb)} {module.memory_type} • {module.speed_mts} MT/s" }
                                 div { class: "text-xs text-muted", "{module.manufacturer} ({module.part_number})" }
                             } else {
-                                div { class: "text-xs text-muted", if en { "Empty slot" } else { "Ranura libre" } }
+                                div { class: "text-xs text-muted", "{txt.empty_slot}" }
                             }
                         }
                     }

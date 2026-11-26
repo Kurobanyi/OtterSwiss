@@ -23,6 +23,7 @@ use crate::ui::installer::{
 pub fn ToolsView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).tools;
 
     let mut context_menu_active =
         use_signal(|| ContextMenuManager::is_installed().unwrap_or(false));
@@ -34,13 +35,7 @@ pub fn ToolsView() -> Element {
     let on_trim_ram = move |_| {
         local_working.set(true);
         tools_state.write().tool_log = Some((
-            Msg::new(|en| {
-                if en {
-                    "Trimming RAM working sets…".to_string()
-                } else {
-                    "Optimizando memoria RAM…".to_string()
-                }
-            }),
+            Msg::new(|en| strings(en).tools.trimming_ram_working_sets.to_string()),
             Tone::Info,
         ));
 
@@ -59,11 +54,7 @@ pub fn ToolsView() -> Element {
                     let (trimmed, skipped) = (report.processes_trimmed, report.processes_skipped);
                     tools_state.write().tool_log = Some((
                         Msg::new(move |en| {
-                            if en {
-                                format!("RAM trimmed: {trimmed} processes, {skipped} skipped.")
-                            } else {
-                                format!("RAM optimizada: {trimmed} procesos, {skipped} omitidos.")
-                            }
+                            (strings(en).tools.ram_trimmed_processes_skipped)(&trimmed, &skipped)
                         }),
                         Tone::Success,
                     ));
@@ -143,59 +134,19 @@ pub fn ToolsView() -> Element {
     let state = tools_state.read();
     let any_busy = state.is_working || *local_working.read();
 
-    let ram_title = if en {
-        "RAM Optimizer"
-    } else {
-        "Optimización de RAM"
-    }
-    .to_string();
-    let ram_sub = Some(
-        (if en {
-            "Move idle pages to Windows Standby list"
-        } else {
-            "Mueve páginas inactivas a Standby"
-        })
-        .to_string(),
-    );
-    let ctx_title = if en {
-        "Explorer Context Menu"
-    } else {
-        "Menú contextual"
-    }
-    .to_string();
-    let ctx_sub = Some(
-        (if en {
-            "Right-click Compress (.zip) & Extract"
-        } else {
-            "Comprimir (.zip) y extraer en clic derecho"
-        })
-        .to_string(),
-    );
-    let runtimes_title = if en {
-        "Gaming Runtimes"
-    } else {
-        "Dependencias para juegos"
-    }
-    .to_string();
-    let runtimes_sub = Some(
-        (if en {
-            "Essential official Windows libraries"
-        } else {
-            "Bibliotecas oficiales esenciales"
-        })
-        .to_string(),
-    );
+    let ram_title = txt.ram_optimizer.to_string();
+    let ram_sub = Some(txt.move_idle_pages_to_windows.to_string());
+    let ctx_title = txt.explorer_context_menu.to_string();
+    let ctx_sub = Some(txt.right_click_compress_zip_extract.to_string());
+    let runtimes_title = txt.gaming_runtimes.to_string();
+    let runtimes_sub = Some(txt.essential_official_windows_libraries.to_string());
 
     rsx! {
         div { class: "content-body",
             if let Some(report) = ram_report_modal.read().clone() {
                 Modal {
-                    title: if en { "RAM Working Sets Trimmed".to_string() } else { "Optimización de RAM Completada".to_string() },
-                    subtitle: Some(if en {
-                        format!("Trimmed: {} | Skipped: {}", report.processes_trimmed, report.processes_skipped)
-                    } else {
-                        format!("Procesados: {} | Omitidos: {}", report.processes_trimmed, report.processes_skipped)
-                    }),
+                    title: txt.ram_working_sets_trimmed.to_string(),
+                    subtitle: Some((strings(en).tools.trimmed_skipped)(&report.processes_trimmed, &report.processes_skipped)),
                     on_close: move |_| ram_report_modal.set(None),
                     div { class: "modal-list",
                         for proc_name in report.trimmed_processes.iter() {
@@ -217,7 +168,7 @@ pub fn ToolsView() -> Element {
                     class: "card card-warning",
                     div { class: "stack-2",
                         strong { class: "text-warning",
-                            if en { "Installing — Please keep OtterSwiss open until finished." } else { "Instalando — No cierres OtterSwiss hasta que finalice." }
+                            "{txt.installing_please_keep_otterswiss_open}"
                         }
                         if let Some(lbl) = state.progress_label.as_ref() {
                             div { class: "text-sm", "{lbl} ({state.progress_percent}%)" }
@@ -243,12 +194,8 @@ pub fn ToolsView() -> Element {
                         disabled: any_busy,
                         onclick: on_trim_ram,
                         if *local_working.read() {
-                            if en { "Trimming…" } else { "Procesando…" }
-                        } else if en {
-                            "Trim RAM Now"
-                        } else {
-                            "Optimizar RAM"
-                        }
+                            "{txt.trimming}"
+                        } else { "{txt.trim_ram_now}" }
                     }
                 }
 
@@ -260,11 +207,7 @@ pub fn ToolsView() -> Element {
                             class: if *context_menu_active.read() { "badge badge-success" } else { "badge badge-warning" },
                             if *context_menu_active.read() {
                                 "{strings(en).installed_runtime}"
-                            } else if en {
-                                "Not Installed"
-                            } else {
-                                "No Instalado"
-                            }
+                            } else { "{txt.not_installed}" }
                         }
                         button {
                             class: if *context_menu_active.read() { "btn btn-danger" } else { "btn btn-primary" },
@@ -272,11 +215,7 @@ pub fn ToolsView() -> Element {
                             onclick: on_toggle_context_menu,
                             if *context_menu_active.read() {
                                 "{strings(en).uninstall}"
-                            } else if en {
-                                "Install"
-                            } else {
-                                "Instalar"
-                            }
+                            } else { "{txt.install}" }
                         }
                     }
                 }
@@ -303,11 +242,7 @@ pub fn ToolsView() -> Element {
                                             class: if installed { "badge badge-success" } else { "badge badge-warning" },
                                             if installed {
                                                 "{strings(en).installed_runtime}"
-                                            } else if en {
-                                                "Missing"
-                                            } else {
-                                                "Faltante"
-                                            }
+                                            } else { "{txt.missing}" }
                                         }
                                         if !installed {
                                             button {
@@ -316,7 +251,7 @@ pub fn ToolsView() -> Element {
                                                 onclick: move |_| {
                                                     let _ = tx.send(InstallJobRequest::InstallRuntime(dep_id));
                                                 },
-                                                if en { "Install" } else { "Instalar" }
+                                                "{txt.install}"
                                             }
                                         }
                                     }
@@ -445,11 +380,7 @@ pub fn BatchAppStoreCard() -> Element {
                             onclick: on_install_selected,
                             if is_running {
                                 "{strings(en).installing}"
-                            } else if en {
-                                "Install Selected ({selected_count})"
-                            } else {
-                                "Instalar ({selected_count})"
-                            }
+                            } else { "{(strings(en).tools.install_selected)(&selected_count)}" }
                         }
                         if is_running {
                             button {

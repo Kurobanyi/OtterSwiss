@@ -13,6 +13,7 @@ use crate::ui::task::run_with_progress;
 pub fn CleanerView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).cleaner;
 
     let mut is_cleaning = use_signal(|| false);
     let mut results = use_signal(Vec::<CategoryCleanResult>::new);
@@ -54,7 +55,7 @@ pub fn CleanerView() -> Element {
             .await
             .unwrap_or_else(|e| {
                 vec![CategoryCleanResult {
-                    category: if en { "Cleanup" } else { "Limpieza" }.to_string(),
+                    category: txt.cleanup.to_string(),
                     error: Some(e.text(en)),
                     ..Default::default()
                 }]
@@ -70,46 +71,20 @@ pub fn CleanerView() -> Element {
     let prog = progress_state.read();
     let cancel_for_btn = Arc::clone(&cancel_flag);
 
-    let cleaner_title = if en {
-        "System Cleaner"
-    } else {
-        "Limpiador de Sistema"
-    }
-    .to_string();
-    let cleaner_sub = Some(
-        (if en {
-            "Safe temp & cache purge"
-        } else {
-            "Purga segura de temporales y caché"
-        })
-        .to_string(),
-    );
-    let prog_title = if en { "Cleanup Progress" } else { "Progreso" }.to_string();
-    let freed_title = if en {
-        "Space Freed"
-    } else {
-        "Espacio Liberado"
-    }
-    .to_string();
-    let files_title = if en {
-        "Files Removed"
-    } else {
-        "Archivos Borrados"
-    }
-    .to_string();
-    let details_title = if en { "Details" } else { "Detalle" }.to_string();
+    let cleaner_title = txt.system_cleaner.to_string();
+    let cleaner_sub = Some(txt.safe_temp_cache_purge.to_string());
+    let prog_title = txt.cleanup_progress.to_string();
+    let freed_title = txt.space_freed.to_string();
+    let files_title = txt.files_removed.to_string();
+    let details_title = txt.details.to_string();
 
     rsx! {
         div { class: "content-body",
             if *show_confirm_modal.read() {
                 ConfirmDialog {
-                    title: if en { "Before cleaning".to_string() } else { "Antes de limpiar".to_string() },
-                    subtitle: Some(if en {
-                        "Close open apps except OtterSwiss to avoid locked files.".to_string()
-                    } else {
-                        "Cierra las apps abiertas, menos OtterSwiss, para evitar archivos en uso.".to_string()
-                    }),
-                    confirm_label: if en { "Clean now".to_string() } else { "Limpiar ahora".to_string() },
+                    title: txt.before_cleaning.to_string(),
+                    subtitle: Some(txt.close_open_apps_except_otterswiss.to_string()),
+                    confirm_label: txt.clean_now.to_string(),
                     cancel_label: strings(en).cancel.to_string(),
                     tone: if *clean_recycle.read() { Tone::Danger } else { Tone::Warning },
                     on_cancel: move |_| show_confirm_modal.set(false),
@@ -119,11 +94,7 @@ pub fn CleanerView() -> Element {
                     },
                     if *clean_recycle.read() {
                         StatusBanner {
-                            text: if en {
-                                "The Recycle Bin will be emptied: its files cannot be recovered afterwards.".to_string()
-                            } else {
-                                "Se vaciará la Papelera: sus archivos no se podrán recuperar después.".to_string()
-                            },
+                            text: txt.the_recycle_bin_will_be.to_string(),
                             tone: Tone::Warning,
                         }
                     }
@@ -139,26 +110,22 @@ pub fn CleanerView() -> Element {
                             checked: *clean_recycle.read(),
                             disabled: *is_cleaning.read(),
                             on_change: move |on| clean_recycle.set(on),
-                            span { if en { "Empty Recycle Bin (permanent)" } else { "Vaciar Papelera (permanente)" } }
+                            span { "{txt.empty_recycle_bin_permanent}" }
                         }
 
                         CheckRow {
                             checked: *clean_all_temps.read(),
                             disabled: *is_cleaning.read(),
                             on_change: move |on| clean_all_temps.set(on),
-                            span { if en { "All temp files (skip 24h wait)" } else { "Todo el directorio (sin espera de 24h)" } }
+                            span { "{txt.all_temp_files_skip_24h}" }
                         }
                     }
 
                     div { class: "row gap-3 wrap",
                         span { class: "badge badge-info",
                             if *clean_all_temps.read() {
-                                if en { "Mode: Full (0h)" } else { "Modo: Total (0h)" }
-                            } else if en {
-                                "Mode: Safe (> 24h)"
-                            } else {
-                                "Modo: Seguro (> 24h)"
-                            }
+                                "{txt.mode_full_0h}"
+                            } else { "{txt.mode_safe_24h}" }
                         }
 
                         button {
@@ -166,12 +133,8 @@ pub fn CleanerView() -> Element {
                             disabled: *is_cleaning.read(),
                             onclick: move |_| show_confirm_modal.set(true),
                             if *is_cleaning.read() {
-                                if en { "Cleaning…" } else { "Limpiando…" }
-                            } else if en {
-                                "Start Cleanup"
-                            } else {
-                                "Iniciar Limpieza"
-                            }
+                                "{txt.cleaning}"
+                            } else { "{txt.start_cleanup}" }
                         }
 
                         if *is_cleaning.read() {
@@ -198,7 +161,7 @@ pub fn CleanerView() -> Element {
                     div { class: "stack-2",
                         div { class: "text-xs text-muted",
                             "{prog.percent}% • {prog.files_removed_so_far} "
-                            {if en { "files" } else { "archivos" }}
+                            {"{txt.files}"}
                         }
                         ProgressBar { percent: prog.percent }
                     }
@@ -207,11 +170,7 @@ pub fn CleanerView() -> Element {
 
             if !results.read().is_empty() && error_count > 0 {
                 StatusBanner {
-                    text: if en {
-                        format!("{} categories could not be cleaned. See the details.", error_count)
-                    } else {
-                        format!("{} categorías no se pudieron limpiar. Mira el detalle.", error_count)
-                    },
+                    text: (strings(en).cleaner.categories_could_not_be_cleaned)(&error_count),
                     tone: Tone::Warning,
                 }
             }
@@ -241,11 +200,7 @@ pub fn CleanerView() -> Element {
                                 div {
                                     div { class: "fw-semibold", "{tr(&item.category, en)}" }
                                     div { class: "text-xs text-muted",
-                                        if en {
-                                            "Removed: {item.files_removed} | Skipped: {item.skipped_recent_or_locked}"
-                                        } else {
-                                            "Borrados: {item.files_removed} | Omitidos: {item.skipped_recent_or_locked}"
-                                        }
+                                        "{(strings(en).cleaner.removed_skipped)(&item.files_removed, &item.skipped_recent_or_locked)}"
                                     }
                                     // ERR-07 / SYS-23: lo omitido o fallido se dice (p. ej. Windows Update activo).
                                     if let Some(err) = item.error.as_ref() {

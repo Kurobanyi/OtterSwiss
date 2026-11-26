@@ -1,7 +1,18 @@
+pub mod archiver;
+pub mod cleaner;
 pub mod core_text;
+pub mod dashboard;
+pub mod debloater;
+pub mod dns;
 pub mod drivers;
+pub mod hardware;
+pub mod mini_archive;
 pub mod msg;
+pub mod sensors;
+pub mod shell;
 pub mod strings;
+pub mod tools;
+pub mod uninstaller;
 
 use serde::{Deserialize, Serialize};
 

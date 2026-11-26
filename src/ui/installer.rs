@@ -82,13 +82,7 @@ pub(super) fn run_installer_worker(
                         s.progress_percent = 30;
                         s.progress_label = Some(format!("{}…", dep_id));
                         s.tool_log = Some((
-                            Msg::new(move |en| {
-                                if en {
-                                    format!("Installing '{dep_id}'…")
-                                } else {
-                                    format!("Instalando '{dep_id}'…")
-                                }
-                            }),
+                            Msg::new(move |en| (strings(en).shell.installing_dep)(&dep_id)),
                             Tone::Info,
                         ));
                     }
@@ -121,13 +115,7 @@ pub(super) fn run_installer_worker(
                     match res {
                         Ok(()) => {
                             s.tool_log = Some((
-                                Msg::new(move |en| {
-                                    if en {
-                                        format!("'{dep_id}' installed.")
-                                    } else {
-                                        format!("'{dep_id}' instalado.")
-                                    }
-                                }),
+                                Msg::new(move |en| (strings(en).shell.dep_installed)(&dep_id)),
                                 Tone::Success,
                             ))
                         }
@@ -149,11 +137,7 @@ pub(super) fn run_installer_worker(
                         s.progress_label = Some(format!("0/{}", total));
                         s.summary_msg = Some(Msg::new(move |en| {
                             let apps = plural(total, strings(en).app);
-                            if en {
-                                format!("Queue: {apps}…")
-                            } else {
-                                format!("Cola: {apps}…")
-                            }
+                            (strings(en).shell.queue_apps)(&apps)
                         }));
                         s.app_statuses.clear();
                         for &id in &ids {

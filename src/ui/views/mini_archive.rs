@@ -56,6 +56,7 @@ pub fn MiniArchiveView() -> Element {
     let theme = use_hook(Theme::load_persisted);
     let lang = use_hook(Lang::load_persisted);
     let en = lang.is_en();
+    let txt = strings(en).mini_archive;
 
     let progress = use_signal(ArchiveProgress::default);
     let mut is_running = use_signal(|| true);
@@ -118,17 +119,11 @@ pub fn MiniArchiveView() -> Element {
         title_txt
     } else if err_opt.is_some() {
         "Error"
-    } else if en {
-        "Completed"
     } else {
-        "Completado"
+        txt.completed
     };
     let current_file_lbl = if prog.current_file.is_empty() {
-        if en {
-            "Preparing files…".to_string()
-        } else {
-            "Preparando archivos…".to_string()
-        }
+        txt.preparing_files.to_string()
     } else {
         prog.current_file.clone()
     };

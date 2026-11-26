@@ -18,6 +18,7 @@ use crate::ui::task::run_with_progress;
 pub fn DashboardView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).dashboard;
 
     // UI-05: la detección de hardware (WMI) corre fuera del hilo de UI.
     let mut hw_profile = use_signal(|| Option::<HardwareProfile>::None);
@@ -47,23 +48,17 @@ pub fn DashboardView() -> Element {
     let mut start_optimize = move || {
         is_running.set(true);
         active_action_label.set(Msg::new(|en| {
-            if en {
-                "Applying system optimizations".to_string()
-            } else {
-                "Aplicando optimizaciones".to_string()
-            }
+            strings(en)
+                .dashboard
+                .applying_system_optimizations
+                .to_string()
         }));
         error_banner.set(None);
         last_rollback.set(None);
         progress_state.set(EngineProgress {
             current_step: 0,
             total_steps: 0,
-            current_label: if en {
-                "Creating backup…"
-            } else {
-                "Creando respaldo…"
-            }
-            .to_string(),
+            current_label: txt.creating_backup.to_string(),
             percent: 5,
             completed_steps: Vec::new(),
         });
@@ -98,23 +93,14 @@ pub fn DashboardView() -> Element {
     let on_rollback = move |_| {
         is_running.set(true);
         active_action_label.set(Msg::new(|en| {
-            if en {
-                "Reverting from backup".to_string()
-            } else {
-                "Revirtiendo desde respaldo".to_string()
-            }
+            strings(en).dashboard.reverting_from_backup.to_string()
         }));
         error_banner.set(None);
         last_report.set(None);
         progress_state.set(EngineProgress {
             current_step: 0,
             total_steps: 0,
-            current_label: if en {
-                "Reading backup…"
-            } else {
-                "Leyendo respaldo…"
-            }
-            .to_string(),
+            current_label: txt.reading_backup.to_string(),
             percent: 5,
             completed_steps: Vec::new(),
         });
@@ -158,7 +144,7 @@ pub fn DashboardView() -> Element {
         return rsx! {
             div { class: "content-body",
                 LoadingState {
-                    message: if en { "Detecting hardware…".to_string() } else { "Detectando el hardware…".to_string() },
+                    message: txt.detecting_hardware.to_string(),
                 }
             }
         };
@@ -171,80 +157,30 @@ pub fn DashboardView() -> Element {
         .collect();
     let prog = progress_state.read();
 
-    let overview_title = if en {
-        "System Overview"
-    } else {
-        "Resumen del equipo"
-    }
-    .to_string();
-    let overview_sub = Some(
-        (if en {
-            "Native Win32 detection"
-        } else {
-            "Detección nativa Win32"
-        })
-        .to_string(),
-    );
-    let power_title = if en {
-        "Active Power Plan"
-    } else {
-        "Plan de energía"
-    }
-    .to_string();
-    let power_sub = Some(
-        (if en {
-            "Current Windows scheme"
-        } else {
-            "Esquema activo Win32"
-        })
-        .to_string(),
-    );
-    let opt_title = if en { "Optimizer" } else { "Optimizador" }.to_string();
+    let overview_title = txt.system_overview.to_string();
+    let overview_sub = Some(txt.native_win32_detection.to_string());
+    let power_title = txt.active_power_plan.to_string();
+    let power_sub = Some(txt.current_windows_scheme.to_string());
+    let opt_title = txt.optimizer.to_string();
     // UI-01: sin «transaccional»; el respaldo permite revertir, pero no garantiza todo o nada.
-    let opt_sub = Some(
-        (if en {
-            "Backs up each value before changing it, so it can be reverted"
-        } else {
-            "Respalda cada valor antes de cambiarlo para poder revertirlo"
-        })
-        .to_string(),
-    );
-    let planned_title = if en {
-        format!("Planned Tweaks ({:?})", hw.tier)
-    } else {
-        format!("Ajustes del Perfil ({:?})", hw.tier)
-    };
-    let planned_sub = Some(
-        (if en {
-            "Backed up before applying"
-        } else {
-            "Respaldo previo automático"
-        })
-        .to_string(),
-    );
+    let opt_sub = Some(txt.backs_up_each_value_before.to_string());
+    let planned_title = (strings(en).dashboard.planned_tweaks)(&format!("{:?}", hw.tier));
+    let planned_sub = Some(txt.backed_up_before_applying.to_string());
 
     rsx! {
         div { class: "content-body",
             // UI-13: basta cerrar sesión o reiniciar; reiniciar ahora cierra las apps abiertas.
             if *show_reboot_modal.read() {
                 ConfirmDialog {
-                    title: if en { "Sign out or restart to finish".to_string() } else { "Cierra sesión o reinicia para terminar".to_string() },
-                    subtitle: Some(if en {
-                        "Some changes take effect after signing out or restarting Windows.".to_string()
-                    } else {
-                        "Algunos cambios se aplican al cerrar sesión o al reiniciar Windows.".to_string()
-                    }),
-                    confirm_label: if en { "Restart now".to_string() } else { "Reiniciar ahora".to_string() },
+                    title: txt.sign_out_or_restart_to.to_string(),
+                    subtitle: Some(txt.some_changes_take_effect_after.to_string()),
+                    confirm_label: txt.restart_now.to_string(),
                     cancel_label: strings(en).later.to_string(),
                     tone: Tone::Warning,
                     on_cancel: move |_| show_reboot_modal.set(false),
                     on_confirm: move |_| on_reboot_now(),
                     p { class: "text-xs",
-                        if en {
-                            "Restarting closes every open app; save your work first."
-                        } else {
-                            "Reiniciar cierra todas las apps abiertas; guarda tu trabajo antes."
-                        }
+                        "{txt.restarting_closes_every_open_app}"
                     }
                 }
             }
@@ -252,13 +188,9 @@ pub fn DashboardView() -> Element {
             // UX-02: optimizar muestra antes el plan concreto que se va a aplicar.
             if *confirm_optimize.read() {
                 ConfirmDialog {
-                    title: if en { "Apply these optimizations?".to_string() } else { "¿Aplicar estas optimizaciones?".to_string() },
-                    subtitle: Some(if en {
-                        "Each value is backed up first; «Revert» restores it.".to_string()
-                    } else {
-                        "Cada valor se respalda antes; «Revertir» lo restaura.".to_string()
-                    }),
-                    confirm_label: if en { format!("Apply ({})", eligible_items.len()) } else { format!("Aplicar ({})", eligible_items.len()) },
+                    title: txt.apply_these_optimizations.to_string(),
+                    subtitle: Some(txt.each_value_is_backed_up.to_string()),
+                    confirm_label: (strings(en).dashboard.apply)(&eligible_items.len()),
                     cancel_label: strings(en).cancel.to_string(),
                     wide: true,
                     on_cancel: move |_| confirm_optimize.set(false),
@@ -283,13 +215,13 @@ pub fn DashboardView() -> Element {
                 div { class: "card",
                     div { class: "card-header",
                         div {
-                            h3 { class: "card-title", if en { "Admin Rights Required" } else { "Se requiere administrador" } }
-                            p { class: "card-subtitle", if en { "Elevate to modify services, registry & power." } else { "Eleva para ajustar registro, servicios y energía." } }
+                            h3 { class: "card-title", "{txt.admin_rights_required}" }
+                            p { class: "card-subtitle", "{txt.elevate_to_modify_services_registry}" }
                         }
                         button {
                             class: "btn btn-primary",
                             onclick: on_relaunch_admin,
-                            if en { "Relaunch as Admin" } else { "Ejecutar como administrador" }
+                            "{txt.relaunch_as_admin}"
                         }
                     }
                 }
@@ -301,13 +233,13 @@ pub fn DashboardView() -> Element {
                     subtitle: overview_sub,
                     div { class: "stack-2 text-sm",
                         p { strong { "CPU: " } "{hw.cpu_name} ({hw.logical_cores}T)" }
-                        p { strong { if en { "Board: " } else { "Placa: " } } "{hw.motherboard}" }
+                        p { strong { "{txt.board}" } "{hw.motherboard}" }
                         p { strong { "RAM: " } "{hw.total_ram_mb} MB" }
                         for gpu in hw.gpu_names.iter() {
                             p { strong { "GPU: " } "{gpu}" }
                         }
                         for drive in hw.storage_drives.iter() {
-                            p { strong { if en { "Disk: " } else { "Disco: " } } "{drive}" }
+                            p { strong { "{txt.disk}" } "{drive}" }
                         }
                         div { class: "mt-1",
                             span {
@@ -330,7 +262,7 @@ pub fn DashboardView() -> Element {
                             "{active_scheme.read()}"
                         }
                         p { class: "text-xs text-muted",
-                            if en { "Auto-selects optimal plan for desktop or laptop." } else { "Selecciona el plan óptimo según PC o portátil." }
+                            "{txt.auto_selects_optimal_plan_for}"
                         }
                     }
                 }
@@ -344,18 +276,14 @@ pub fn DashboardView() -> Element {
                             disabled: *is_running.read() || eligible_items.is_empty(),
                             onclick: move |_| confirm_optimize.set(true),
                             if *is_running.read() {
-                                if en { "Processing…" } else { "Procesando…" }
-                            } else if en {
-                                "Optimize System"
-                            } else {
-                                "Optimizar sistema"
-                            }
+                                "{txt.processing}"
+                            } else { "{txt.optimize_system}" }
                         }
                         button {
                             class: "btn btn-secondary",
                             disabled: *is_running.read(),
                             onclick: on_rollback,
-                            if en { "Revert (Rollback)" } else { "Revertir (Rollback)" }
+                            "{txt.revert_rollback}"
                         }
                     }
                 }
@@ -397,17 +325,17 @@ pub fn DashboardView() -> Element {
                             title: title.to_string(),
                             subtitle: Some(backup_note.to_string()),
                             div { class: "flex gap-3 wrap",
-                                span { class: "badge badge-success", if en { "Registry: {rb.restored_registry}" } else { "Registro: {rb.restored_registry}" } }
-                                span { class: "badge badge-success", if en { "Services: {rb.restored_services}" } else { "Servicios: {rb.restored_services}" } }
-                                span { class: "badge badge-success", if en { "Power: {rb.restored_power}" } else { "Energía: {rb.restored_power}" } }
+                                span { class: "badge badge-success", "{(strings(en).dashboard.registry)(&rb.restored_registry)}" }
+                                span { class: "badge badge-success", "{(strings(en).dashboard.services)(&rb.restored_services)}" }
+                                span { class: "badge badge-success", "{(strings(en).dashboard.power)(&rb.restored_power)}" }
                                 if rb.skipped_user_modified > 0 {
                                     span { class: "badge badge-warning",
-                                        if en { "Kept (changed by you later): {rb.skipped_user_modified}" } else { "Conservados (los cambiaste después): {rb.skipped_user_modified}" }
+                                        "{(strings(en).dashboard.kept_changed_by_you_later)(&rb.skipped_user_modified)}"
                                     }
                                 }
                                 if !rb.failed_items.is_empty() {
                                     span { class: "badge badge-danger",
-                                        if en { "Failed: {rb.failed_items.len()}" } else { "Con error: {rb.failed_items.len()}" }
+                                        "{(strings(en).dashboard.failed)(&rb.failed_items.len())}"
                                     }
                                 }
                             }
@@ -421,12 +349,8 @@ pub fn DashboardView() -> Element {
 
             if let Some(rep) = last_report.read().as_ref() {
                 Card {
-                    title: if en { format!("Results — {}", rep.profile_name) } else { format!("Resultados — {}", rep.profile_name) },
-                    subtitle: Some(if en {
-                        format!("Applied: {} • Skipped: {} • Errors: {}", rep.applied_count, rep.skipped_count, rep.failed_items.len())
-                    } else {
-                        format!("Aplicados: {} • Omitidos: {} • Errores: {}", rep.applied_count, rep.skipped_count, rep.failed_items.len())
-                    }),
+                    title: (strings(en).dashboard.results)(&rep.profile_name),
+                    subtitle: Some((strings(en).dashboard.applied_skipped_errors)(&rep.applied_count, &rep.skipped_count, &rep.failed_items.len())),
                     div { class: "stack-2",
                         // UI-01: fallos y advertencias del motor, no solo los contadores.
                         if !rep.failed_items.is_empty() {
@@ -482,12 +406,8 @@ pub fn DashboardView() -> Element {
                                 span {
                                     class: if item.eligible { "badge badge-success" } else { "badge badge-info" },
                                     if item.eligible {
-                                        if en { "Included" } else { "Incluido" }
-                                    } else if en {
-                                        "Skipped"
-                                    } else {
-                                        "Omitido"
-                                    }
+                                        "{txt.included}"
+                                    } else { "{txt.skipped}" }
                                 }
                             }
                         }

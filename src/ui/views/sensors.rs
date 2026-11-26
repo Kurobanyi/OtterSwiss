@@ -6,12 +6,13 @@ use dioxus::prelude::*;
 
 use crate::core::hardware::sensors::{SensorMonitor, SensorReading, SystemSensorsSnapshot};
 use crate::ui::components::{Card, EmptyState};
-use crate::ui::i18n::Lang;
+use crate::ui::i18n::{Lang, strings};
 
 #[component]
 pub fn SensorsView() -> Element {
     let lang = use_context::<Signal<Lang>>();
     let en = lang.read().is_en();
+    let txt = strings(en).sensors;
 
     let monitor = use_hook(|| Arc::new(SensorMonitor::new(SensorMonitor::DEFAULT_POLL_MS)));
     let mut snapshot = use_signal(SystemSensorsSnapshot::default);
@@ -52,54 +53,22 @@ pub fn SensorsView() -> Element {
         || !snap.gpu_temperatures.is_empty()
         || !snap.storage_temperatures.is_empty();
 
-    let thermal_title = if en {
-        "Thermal Monitor"
-    } else {
-        "Monitor Térmico"
-    }
-    .to_string();
-    let thermal_sub = Some(
-        if en {
-            "Live GPU, NVMe & ACPI readings"
-        } else {
-            "Lecturas en vivo de GPU, NVMe y ACPI"
-        }
-        .to_string(),
-    );
-    let reset_peaks_lbl = if en { "Reset Peaks" } else { "Reiniciar picos" };
+    let thermal_title = txt.thermal_monitor.to_string();
+    let thermal_sub = Some(txt.live_gpu_nvme_acpi_readings.to_string());
+    let reset_peaks_lbl = txt.reset_peaks;
     let pause_lbl = if *paused.read() {
-        if en { "Resume" } else { "Reanudar" }
-    } else if en {
-        "Pause"
+        txt.resume
     } else {
-        "Pausar"
+        txt.pause
     };
 
-    let empty_title = if en {
-        "Waiting for sensors…"
-    } else {
-        "Esperando sensores…"
-    }
-    .to_string();
-    let empty_desc = if en {
-        "Checking NVML, ADL2, WMI & NVMe."
-    } else {
-        "Comprobando NVML, ADL2, WMI y NVMe."
-    }
-    .to_string();
+    let empty_title = txt.waiting_for_sensors.to_string();
+    let empty_desc = txt.checking_nvml_adl2_wmi_nvme.to_string();
 
     // UI-14: son zonas térmicas ACPI; no siempre miden la CPU.
-    let cpu_section_lbl = if en {
-        "ACPI thermal zones"
-    } else {
-        "Zonas térmicas ACPI"
-    };
-    let storage_section_lbl = if en {
-        "Storage (NVMe / SSD)"
-    } else {
-        "Almacenamiento (NVMe / SSD)"
-    };
-    let diagnostics_title = if en { "Diagnostics" } else { "Diagnóstico" }.to_string();
+    let cpu_section_lbl = txt.acpi_thermal_zones;
+    let storage_section_lbl = txt.storage_nvme_ssd;
+    let diagnostics_title = txt.diagnostics.to_string();
 
     rsx! {
         div { class: "content-body",
@@ -182,10 +151,10 @@ fn render_sensor_section(
                             }
                             div { class: "flex gap-3 text-xs text-muted",
                                 if let Some(pk) = peaks.get(&reading.name) {
-                                    span { if en { "Peak: {pk:.1} °C" } else { "Pico: {pk:.1} °C" } }
+                                    span { "{(strings(en).sensors.peak_c)(&pk)}" }
                                 }
                                 if let Some(max_t) = reading.max_celsius {
-                                    span { if en { "Max: {max_t:.0} °C" } else { "Máx: {max_t:.0} °C" } }
+                                    span { "{(strings(en).sensors.max_c)(&max_t)}" }
                                 }
                             }
                         }

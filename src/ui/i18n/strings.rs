@@ -1,10 +1,22 @@
 //! IN-02: catálogo de textos de la interfaz. Un campo por texto y un `static` por idioma: si a un idioma le falta un
 //! campo, no compila, así que se conserva la garantía de que no hay textos sin traducir.
 //!
-//! Regla para textos nuevos: van aquí, no como `if en { … } else { … }` en la vista. Los que tienen parámetros son
-//! métodos de `Strings` con argumentos con nombre (el orden de los argumentos no puede desordenarse en un solo idioma).
+//! Regla para textos nuevos: van aquí, no como `if en { … } else { … }` en la vista. Cada vista tiene su módulo
+//! (`archiver`, `cleaner`, `dashboard`…) y `strings(en).<vista>.<texto>`. Los que llevan datos son `fn(&dyn Display…)`: cada
+//! idioma arma la frase con sus propios marcadores `{nombre}`, así el orden de los datos puede cambiar entre idiomas.
 
+use super::archiver::{self, ArchiverStrings};
+use super::cleaner::{self, CleanerStrings};
+use super::dashboard::{self, DashboardStrings};
+use super::debloater::{self, DebloaterStrings};
+use super::dns::{self, DnsStrings};
 use super::drivers::{self, DriversStrings};
+use super::hardware::{self, HardwareStrings};
+use super::mini_archive::{self, MiniArchiveStrings};
+use super::sensors::{self, SensorsStrings};
+use super::shell::{self, ShellStrings};
+use super::tools::{self, ToolsStrings};
+use super::uninstaller::{self, UninstallerStrings};
 use crate::core::error::ErrorKind;
 
 /// Textos fijos de la interfaz.
@@ -45,6 +57,17 @@ pub struct Strings {
     pub latest_version: &'static str,
     /// IN-08: pestaña Drivers.
     pub drivers: &'static DriversStrings,
+    pub mini_archive: &'static MiniArchiveStrings,
+    pub shell: &'static ShellStrings,
+    pub archiver: &'static ArchiverStrings,
+    pub cleaner: &'static CleanerStrings,
+    pub dashboard: &'static DashboardStrings,
+    pub debloater: &'static DebloaterStrings,
+    pub dns: &'static DnsStrings,
+    pub hardware: &'static HardwareStrings,
+    pub sensors: &'static SensorsStrings,
+    pub tools: &'static ToolsStrings,
+    pub uninstaller: &'static UninstallerStrings,
     /// UI-11: título de un error de core según su tipo; el detalle técnico va detrás.
     pub error_title: fn(ErrorKind) -> &'static str,
 }
@@ -83,6 +106,17 @@ pub static ES: Strings = Strings {
     all_categories: "Todas las categorías",
     latest_version: "última versión",
     drivers: &drivers::ES,
+    mini_archive: &mini_archive::ES,
+    shell: &shell::ES,
+    archiver: &archiver::ES,
+    cleaner: &cleaner::ES,
+    dashboard: &dashboard::ES,
+    debloater: &debloater::ES,
+    dns: &dns::ES,
+    hardware: &hardware::ES,
+    sensors: &sensors::ES,
+    tools: &tools::ES,
+    uninstaller: &uninstaller::ES,
     error_title: |kind| match kind {
         ErrorKind::Io => "Error de lectura o escritura",
         ErrorKind::NotElevated => "Hace falta ejecutar como administrador",
@@ -137,6 +171,17 @@ pub static EN: Strings = Strings {
     all_categories: "All categories",
     latest_version: "latest version",
     drivers: &drivers::EN,
+    mini_archive: &mini_archive::EN,
+    shell: &shell::EN,
+    archiver: &archiver::EN,
+    cleaner: &cleaner::EN,
+    dashboard: &dashboard::EN,
+    debloater: &debloater::EN,
+    dns: &dns::EN,
+    hardware: &hardware::EN,
+    sensors: &sensors::EN,
+    tools: &tools::EN,
+    uninstaller: &uninstaller::EN,
     error_title: |kind| match kind {
         ErrorKind::Io => "Read or write error",
         ErrorKind::NotElevated => "Administrator rights required",

@@ -169,6 +169,7 @@ pub fn App() -> Element {
 
     let theme_val = *current_theme.read();
     let en = current_lang.read().is_en();
+    let txt = strings(en).shell;
     let win_min = window.clone();
     let win_max = window.clone();
     let win_close = window.clone();
@@ -316,17 +317,13 @@ pub fn App() -> Element {
             if *show_update_modal.read() {
                 if let Some(upd) = update_info.read().clone() {
                     {
-                        let modal_title = if en { format!("Update available: v{}", upd.version) } else { format!("Actualización disponible: v{}", upd.version) };
-                        let modal_sub = if en { format!("Current version: v{} → New version: v{}", pkg_ver, upd.version) } else { format!("Versión actual: v{} → Nueva versión: v{}", pkg_ver, upd.version) };
+                        let modal_title = (strings(en).shell.update_available_v)(&upd.version);
+                        let modal_sub = (strings(en).shell.current_version_v_new_version)(&pkg_ver, &upd.version);
                         let update_btn_lbl = if *is_downloading_update.read() {
-                            if en { format!("Downloading {}%…", *update_progress.read()) } else { format!("Descargando {}%…", *update_progress.read()) }
-                        } else if en {
-                            "Download and Install".to_string()
-                        } else {
-                            "Descargar e instalar".to_string()
-                        };
+                            (strings(en).shell.downloading)(&*update_progress.read())
+                        } else { txt.download_and_install.to_string() };
                         let close_modal_lbl = strings(en).later;
-                        let notes_header = if en { "Release Notes:" } else { "Notas de la versión:" };
+                        let notes_header = txt.release_notes;
 
                         rsx! {
                             Modal {
