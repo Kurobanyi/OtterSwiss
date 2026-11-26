@@ -74,6 +74,9 @@ fn english(es: &str) -> Option<&'static str> {
         "Placa Base Estándar" => "Standard motherboard",
         "Zona térmica ACPI (WMI)" => "ACPI thermal zone (WMI)",
         "Zona térmica ACPI (PerfCounter)" => "ACPI thermal zone (PerfCounter)",
+        "Ajuste de usuario omitido: OtterSwiss corre con otra cuenta que la del escritorio y lo aplicaría al perfil equivocado. Ábrelo con tu propia cuenta de administrador." => {
+            "User setting skipped: OtterSwiss is running as a different account than the desktop and would apply it to the wrong profile. Open it with your own administrator account."
+        }
         // Tienda: categorías de apps.
         "Gaming y Launchers" => "Gaming & Launchers",
         "Comunicación y Multimedia" => "Communication & Media",
@@ -88,6 +91,13 @@ fn english(es: &str) -> Option<&'static str> {
         "Omitido por perfil de hardware" => "Skipped for this hardware profile",
         "Activar esquema energético óptimo" => "Enable the best power scheme",
         "Aplicar optimizaciones del sistema" => "Apply system optimizations",
+        "Instalar drivers de Windows Update" => "Install Windows Update drivers",
+        "Instalar un driver del Catálogo de Microsoft" => {
+            "Install a Microsoft Update Catalog driver"
+        }
+        "Instalar una actualización de driver del fabricante" => "Install a vendor driver update",
+        "Exportar el respaldo del Driver Store" => "Export the Driver Store backup",
+        "Quitar un driver instalado por OtterSwiss" => "Remove a driver installed by OtterSwiss",
         "Revertir optimizaciones del sistema" => "Revert system optimizations",
         "Configurando Plan de Energía" => "Setting up the power plan",
         "Optimización completada" => "Optimization complete",

@@ -16,6 +16,7 @@ use super::PNPUTIL_TIMEOUT;
 use super::hwid::{short_hw_id_of, ven_dev_of};
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::hardware::pci::vendor_name_hex;
+use crate::core::platform::elevation;
 use crate::core::platform::handles::DevInfoList;
 use crate::core::platform::memory::AlignedBuf;
 use crate::core::platform::process::{run_captured, system32_dir};
@@ -194,6 +195,7 @@ pub fn list_present_devices() -> CoreResult<Vec<InstalledDriverDevice>> {
 }
 
 pub fn export_driver_store_backup() -> CoreResult<PathBuf> {
+    elevation::require_elevated("Exportar el respaldo del Driver Store")?;
     let base_dir = ensure_admin_only_data_dir()?;
     let backup_root = base_dir.join("DriverBackup");
     create_admin_only_dir(&backup_root)?;

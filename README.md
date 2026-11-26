@@ -109,8 +109,8 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-El ejecutable pide permisos de administrador (manifiesto `requireAdministrator`), así que `cargo run` desde una terminal sin
-elevar falla con el error 740: abre la terminal como administrador. El CRT de MSVC va enlazado estático (`.cargo/config.toml`),
+El ejecutable arranca con los permisos del usuario (manifiesto `asInvoker`); lo que cambia el sistema pide administrador y la
+ventana ofrece reabrirse elevada. Para probar esas acciones con `cargo run`, abre la terminal como administrador. El CRT de MSVC va enlazado estático (`.cargo/config.toml`),
 por eso el `.exe` no necesita el Visual C++ Redistributable.
 
 Las acciones que cambian el sistema se prueban aparte, **solo en una máquina virtual desechable** y como administrador:

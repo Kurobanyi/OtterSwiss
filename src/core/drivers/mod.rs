@@ -22,6 +22,7 @@ use winreg::RegKey;
 use winreg::enums::{HKEY_LOCAL_MACHINE, KEY_READ};
 
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::elevation;
 use crate::core::security::download::validate_https_host;
 use crate::core::security::http;
 
@@ -110,6 +111,7 @@ pub struct FullDriverScanResult {
 
 /// Instala los drivers de Windows Update elegidos y registra los paquetes que agregó (SYS-26).
 pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInstallReport> {
+    elevation::require_elevated("Instalar drivers de Windows Update")?;
     with_driver_history("Windows Update", || {
         install_driver_updates_inner(selected_ids)
     })
@@ -117,11 +119,13 @@ pub fn install_driver_updates(selected_ids: &[String]) -> CoreResult<DriverInsta
 
 /// Instala un driver del Catálogo de Microsoft y registra los paquetes que agregó (SYS-26).
 pub fn install_catalog_driver(update_id: &str, title: &str) -> CoreResult<DriverInstallReport> {
+    elevation::require_elevated("Instalar un driver del Catálogo de Microsoft")?;
     with_driver_history(title, || install_catalog_driver_inner(update_id))
 }
 
 /// Instala una actualización de fabricante y registra los paquetes que agregó (SYS-26).
 pub fn install_vendor_update(upd: &VendorDriverUpdate) -> CoreResult<DriverInstallReport> {
+    elevation::require_elevated("Instalar una actualización de driver del fabricante")?;
     with_driver_history(&upd.title, || install_vendor_update_inner(upd))
 }
 

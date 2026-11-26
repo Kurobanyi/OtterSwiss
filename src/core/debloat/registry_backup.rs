@@ -128,6 +128,7 @@ pub(super) fn backup_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> 
 
 pub(super) fn apply_reg_entries(entries: &[DebloatRegEntry]) -> CoreResult<()> {
     for entry in entries {
+        RegLocation::native(entry.hive).ensure_writable()?;
         let root = RegLocation::native(entry.hive).root();
         let flags = RegLocation::native(entry.hive).flags(KEY_WRITE);
         let (key, _) = root

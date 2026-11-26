@@ -1,7 +1,8 @@
 # Contexto y directrices del proyecto
 
-Aplicación de escritorio para Windows en Rust con **Dioxus 0.7** (renderer desktop, WebView2). Corre siempre como
-administrador (manifiesto `requireAdministrator` en `build.rs`).
+Aplicación de escritorio para Windows en Rust con **Dioxus 0.7** (renderer desktop, WebView2). Arranca con los permisos
+del usuario (manifiesto `asInvoker` en `build.rs`); lo que cambia el sistema exige administrador (`require_elevated`) y la
+ventana ofrece reabrirse elevada.
 
 ## Arquitectura
 

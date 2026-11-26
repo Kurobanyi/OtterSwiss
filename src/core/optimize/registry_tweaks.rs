@@ -79,6 +79,7 @@ pub fn apply_registry_tweak(spec: &RegistryTweakSpec) -> CoreResult<()> {
         )));
     }
 
+    RegLocation::native(spec.hive).ensure_writable()?;
     let root = RegLocation::native(spec.hive).root();
     let (key, _) = root
         .create_subkey_with_flags(spec.subkey, KEY_READ | KEY_WRITE)
@@ -114,6 +115,7 @@ pub fn restore_registry_snapshot(snap: &RegistrySnapshot, force: bool) -> CoreRe
         )));
     }
 
+    RegLocation::native(snap.hive).ensure_writable()?;
     let root = RegLocation::native(snap.hive).root();
     let key = match root.open_subkey_with_flags(&snap.subkey, KEY_READ | KEY_WRITE) {
         Ok(k) => k,

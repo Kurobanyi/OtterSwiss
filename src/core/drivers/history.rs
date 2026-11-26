@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{DriverInstallReport, PNPUTIL_TIMEOUT};
 use crate::core::error::{CoreError, CoreResult};
+use crate::core::platform::elevation;
 use crate::core::platform::folders::windows_dir;
 use crate::core::platform::json_file::{read_backup, write_backup};
 use crate::core::platform::process::{run_captured, system32_dir};
@@ -40,6 +41,7 @@ pub fn driver_install_history() -> CoreResult<Vec<InstalledDriverRecord>> {
 /// SYS-26: quita del Driver Store un paquete que instaló OtterSwiss (`pnputil /delete-driver … /uninstall`). Los
 /// dispositivos que lo usaban vuelven al mejor driver que quede. Solo acepta paquetes del historial propio.
 pub fn revert_installed_driver(published_name: &str) -> CoreResult<DriverInstallReport> {
+    elevation::require_elevated("Quitar un driver instalado por OtterSwiss")?;
     let mut history = read_driver_history()?;
     let Some(pos) = history
         .entries

@@ -6,7 +6,6 @@ use crate::core::optimize::engine::{
     OptimizationStepStatus, PlannedOptimizationItem, RollbackReport,
 };
 use crate::core::optimize::power_plan::get_active_scheme_guid;
-use crate::core::platform::elevation;
 use crate::core::platform::guid::format_guid;
 use crate::core::platform::power::reboot_system_now;
 use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, StatusBanner, Tone};
@@ -189,28 +188,6 @@ fn OptimizeConfirm(
                     }
                 }
             }
-        }
-    }
-}
-
-/// Aviso de que faltan permisos de administrador, con el botón para relanzar elevado.
-#[component]
-fn AdminNotice() -> Element {
-    let en = use_context::<Signal<Lang>>().read().is_en();
-    let txt = strings(en).dashboard;
-    rsx! {
-        Card {
-            title: txt.admin_rights_required.to_string(),
-            subtitle: Some(txt.elevate_to_modify_services_registry.to_string()),
-            actions: rsx! {
-                button {
-                    class: "btn btn-primary",
-                    onclick: move |_| {
-                        let _ = elevation::relaunch_as_admin(&[crate::core::cli::ELEVATED]);
-                    },
-                    "{txt.relaunch_as_admin}"
-                }
-            },
         }
     }
 }
@@ -448,7 +425,6 @@ pub fn DashboardView() -> Element {
             }
         });
     });
-    let is_elevated = use_signal(|| elevation::is_elevated().unwrap_or(false));
     let mut confirm_optimize = use_signal(|| false);
     let sig = DashboardSignals {
         is_running: use_signal(|| false),
@@ -495,10 +471,6 @@ pub fn DashboardView() -> Element {
                         start_optimize(sig, en);
                     },
                 }
-            }
-
-            if !*is_elevated.read() {
-                AdminNotice {}
             }
 
             div { class: "cards-grid",

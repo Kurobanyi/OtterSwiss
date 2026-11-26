@@ -9,7 +9,7 @@ fn main() {
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>
@@ -20,8 +20,8 @@ fn main() {
   </compatibility>
 </assembly>"#,
         );
-        // Solo el ejecutable lleva el manifiesto `requireAdministrator`: con `compile()` también lo heredaban
-        // los binarios de `cargo test`, que entonces no arrancaban sin elevación (os error 740).
+        // SEC-17: `asInvoker`; la app pide elevación solo para lo que la necesita (`relaunch_as_admin`). Solo el ejecutable
+        // lleva el manifiesto: con `compile()` también lo heredaban los binarios de `cargo test`.
         // ERR-14: si esto falla, el .exe saldría sin manifiesto ni icono; mejor que el build falle.
         if let Err(e) = res.compile_for("otter_swiss") {
             panic!(

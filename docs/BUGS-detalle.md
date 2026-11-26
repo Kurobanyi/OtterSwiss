@@ -27,7 +27,7 @@ Leyenda:
   *confirmado* (re-leído por el agente principal).
 - **Estado**: Pendiente · Parcial · Pendiente de decisión · Aceptado · Diferido · Resuelto.
 
-Modelo de amenaza que se usa en `SEC-`: la app pide `requireAdministrator` (`build.rs:12`), así que todo corre como admin. Un
+Modelo de amenaza que se usa en `SEC-` (escrito cuando la app pedía `requireAdministrator`; desde `SEC-17` arranca como el usuario y solo la copia elevada, con UAC, corre como admin): todo corre como admin. Un
 usuario estándar puede crear carpetas y archivos en `C:\ProgramData` (ACE `BUILTIN\Usuarios:(CI)(WD,AD)` y `CREATOR OWNER:(F)`,
 observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión del propio admin controla HKCU, `%APPDATA%`,
 `%TEMP%` y `HKCU\Environment`. Lo que OtterSwiss lea de ahí y aplique como admin es superficie de escalada.
@@ -230,13 +230,14 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="sec-17"></a>
 ### SEC-17 · Todo el programa corre como administrador aunque la mitad de las funciones no lo necesitan
-- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: observado · **Estado**: Diferido
+- **Afecta**: Sistema, Usuario · **Severidad**: Media · **Origen**: design-challenger · **Evidencia**: observado · **Estado**: Resuelto
 - **Qué pasa**: `requireAdministrator` en el manifiesto; visor de hardware, sensores, archivador y lista de apps no llaman
   `require_elevated`. Cada «Extraer aquí» abre UAC y extrae como admin; los tweaks HKCU caen en el perfil del admin si eleva otra cuenta.
 - **Dónde**: `build.rs:12`; `src/core/context_menu.rs:24-56`; `src/core/registry.rs:266-270`.
 - **Propuesta**: manifest `asInvoker` y un proceso auxiliar elevado solo para las acciones de sistema. Reduce la superficie de `SEC-08`,
   `SEC-13`, `SEC-16`, `SEC-19` y `SEC-20`.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Decisión del autor (2026-11-24): separar un auxiliar elevado es un rediseño para una versión siguiente.
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`, decisión del autor: se resuelve): manifiesto `asInvoker`. La app arranca con los permisos del usuario; los ajustes que cambian el sistema ya llamaban a `require_elevated` (optimizar, Debloater, DNS, tienda, runtimes, menú contextual, revertir) y se sumó a los de drivers (instalar de Windows Update, Catálogo y fabricante, quitar, exportar el Driver Store). Mientras no haya elevación, un aviso («Modo estándar») en todas las pestañas dice qué pide administrador y ofrece «Reabrir como administrador» (UAC, y cierra la ventana sin elevar). Así, «Extraer aquí» del menú contextual y los visores (hardware, sensores, archivador, lista de apps) ya no corren como administrador ni abren UAC. Descartado: un proceso auxiliar elevado con canal propio (tubería con nombre y protocolo de peticiones): añade una superficie nueva de escalada, y reabrir con UAC cumple lo que `SEC-08`, `SEC-13`, `SEC-16`, `SEC-19` y `SEC-20` pedían sin ella (el código que escribe en el sistema solo corre en el proceso que el usuario elevó). Verificado: `cargo test` (98 + 6), `clippy` y `fmt` en verde; el `.exe` compilado trae `asInvoker` y no `requireAdministrator`, y arranca sin elevar. No verificado aún: el aviso en pantalla y la reapertura elevada (UAC no se puede aceptar desde la sesión de pruebas).
 
 
 <a id="sec-18"></a>
@@ -567,10 +568,11 @@ observado con `icacls`) y en `C:\Windows\Temp`; malware sin elevar en la sesión
 
 <a id="sys-24"></a>
 ### SYS-24 · Con elevación «sobre el hombro», los tweaks de HKCU se aplican al perfil del administrador
-- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: code-auditor, design-challenger · **Evidencia**: inferido · **Estado**: Diferido
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: code-auditor, design-challenger · **Evidencia**: inferido · **Estado**: Resuelto
 - **Dónde**: `src/core/registry.rs:266-270`; `src/core/debloater.rs:838-841`.
 - **Propuesta**: aplicar HKCU con el token del shell o avisar. Se resuelve con `SEC-17`.
 - **Cierre** (2026-11-24, rama `fix/auditoria`): Depende de `SEC-17` (diferido por decisión del autor).
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): se aplicó la mitad de «avisar» de la propuesta y se descartó «aplicar HKCU con el token del shell», que exige el auxiliar elevado descartado en `SEC-17`. `elevation::shell_user_differs` compara la cuenta del proceso con la del dueño de la ventana del escritorio (`GetShellWindow`) y `RegLocation::ensure_writable` rechaza toda escritura en HKCU (ajustes del perfil, restauración, Debloater, respaldos) si difieren, con un texto que pide abrir la app con la propia cuenta de administrador; sin poder saberlo, no bloquea. Test: en la sesión normal ambas cuentas coinciden (si diera lo contrario, se bloquearían todos los ajustes de usuario). No verificado: el caso «otra cuenta» (UAC con las credenciales de un administrador distinto) no se probó; va a la VM con dos cuentas si se prepara.
 
 # Expedientes · Manejo de errores y procesos (`ERR-`)
 

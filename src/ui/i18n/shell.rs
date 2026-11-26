@@ -19,6 +19,9 @@ pub struct ShellStrings {
     pub installing_dep: fn(&dyn std::fmt::Display) -> String,
     pub dep_installed: fn(&dyn std::fmt::Display) -> String,
     pub queue_apps: fn(&dyn std::fmt::Display) -> String,
+    pub standard_mode: &'static str,
+    pub standard_mode_hint: &'static str,
+    pub relaunch_as_admin: &'static str,
 }
 
 pub static ES: ShellStrings = ShellStrings {
@@ -47,6 +50,9 @@ pub static ES: ShellStrings = ShellStrings {
     installing_dep: |dep_id| format!("Instalando '{dep_id}'…"),
     dep_installed: |dep_id| format!("'{dep_id}' instalado."),
     queue_apps: |apps| format!("Cola: {apps}…"),
+    standard_mode: "Modo estándar",
+    standard_mode_hint: "Lo que cambia el sistema (optimizar, Debloater, DNS, drivers, tienda) y parte de la limpieza piden administrador; el resto funciona así.",
+    relaunch_as_admin: "Reabrir como administrador",
 };
 
 pub static EN: ShellStrings = ShellStrings {
@@ -75,6 +81,9 @@ pub static EN: ShellStrings = ShellStrings {
     installing_dep: |dep_id| format!("Installing '{dep_id}'…"),
     dep_installed: |dep_id| format!("'{dep_id}' installed."),
     queue_apps: |apps| format!("Queue: {apps}…"),
+    standard_mode: "Standard mode",
+    standard_mode_hint: "What changes the system (optimizer, Debloater, DNS, drivers, store) and part of the cleanup need an administrator; the rest works as is.",
+    relaunch_as_admin: "Reopen as administrator",
 };
 
 #[cfg(test)]
@@ -96,6 +105,9 @@ mod tests {
                 s.panic_title,
                 s.panic_intro,
                 s.panic_unknown,
+                s.standard_mode,
+                s.standard_mode_hint,
+                s.relaunch_as_admin,
             ] {
                 assert!(!f.trim().is_empty());
             }

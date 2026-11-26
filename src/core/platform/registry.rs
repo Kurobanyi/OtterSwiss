@@ -43,6 +43,9 @@ pub enum RegView {
     Wow64_32,
 }
 
+/// Mensaje de `RegLocation::ensure_writable`; `ui/i18n/core_text.rs` lo traduce.
+pub const HKCU_OTHER_ACCOUNT: &str = "Ajuste de usuario omitido: OtterSwiss corre con otra cuenta que la del escritorio y lo aplicaría al perfil equivocado. Ábrelo con tu propia cuenta de administrador.";
+
 /// CL-04: dónde vive una clave: colmena y vista. Reemplaza los pares de booleanos `is_hkcu` y `wow64_32`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegLocation {
@@ -56,6 +59,15 @@ impl RegLocation {
             hive,
             view: RegView::Native,
         }
+    }
+
+    /// SYS-24: HKCU solo se escribe si el proceso corre con la cuenta del escritorio; elevado «sobre el hombro» con otra
+    /// cuenta, el ajuste caería en el perfil del administrador.
+    pub fn ensure_writable(&self) -> CoreResult<()> {
+        if self.hive == RegHive::Hkcu && crate::core::platform::elevation::shell_user_differs() {
+            return Err(CoreError::Validation(HKCU_OTHER_ACCOUNT.to_string()));
+        }
+        Ok(())
     }
 
     pub fn root(&self) -> RegKey {
@@ -182,6 +194,7 @@ pub fn write_raw_value(
     vtype: u32,
     bytes: &[u8],
 ) -> CoreResult<()> {
+    location.ensure_writable()?;
     let (key, _) = location
         .root()
         .create_subkey_with_flags(subkey, location.flags(KEY_READ | KEY_WRITE))
@@ -208,6 +221,7 @@ pub fn delete_value_if_present(
     subkey: &str,
     value_name: &str,
 ) -> CoreResult<()> {
+    location.ensure_writable()?;
     let key = match location
         .root()
         .open_subkey_with_flags(subkey, location.flags(KEY_READ | KEY_WRITE))
@@ -237,6 +251,14 @@ pub fn delete_value_if_present(
 mod tests {
     use super::*;
     use winreg::enums::KEY_READ;
+
+    /// SYS-24: con la cuenta del escritorio (el caso normal) HKCU y HKLM se pueden escribir; el bloqueo solo salta con otra
+    /// cuenta, y si saltara aquí ningún ajuste de usuario se aplicaría.
+    #[test]
+    fn ambas_colmenas_son_escribibles_con_la_cuenta_del_escritorio() {
+        assert!(RegLocation::native(RegHive::Hkcu).ensure_writable().is_ok());
+        assert!(RegLocation::native(RegHive::Hklm).ensure_writable().is_ok());
+    }
 
     #[test]
     fn la_vista_solo_aplica_a_hklm() {

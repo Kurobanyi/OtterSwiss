@@ -20,12 +20,14 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use dioxus::desktop::use_window;
 use dioxus::prelude::*;
 
+use crate::core::cli;
 use crate::core::error::CoreError;
 use crate::core::hardware::specs::SystemSpecs;
+use crate::core::platform::elevation;
 use crate::core::updater::{
     UpdateReleaseInfo, check_for_updates, download_and_install_update, launch_installer_and_exit,
 };
-use crate::ui::components::{Modal, ProgressBar, StatusBanner, Tone};
+use crate::ui::components::{Card, Modal, ProgressBar, StatusBanner, Tone};
 use crate::ui::document::sync_document_attrs;
 use crate::ui::installer::{
     InstallJobRequest, InstallerDispatcher, ToolsSharedState, refresh_tools_inventory,
@@ -325,6 +327,32 @@ fn UpdateModal(
     }
 }
 
+/// SEC-17: la app arranca con los permisos del usuario. Mientras no sea administrador avisa qué necesita elevación y
+/// ofrece reabrirla elevada (UAC); al aceptar, esta ventana se cierra para no dejar dos.
+#[component]
+fn StandardModeBanner() -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).shell;
+    let window = use_window();
+    rsx! {
+        Card {
+            title: txt.standard_mode.to_string(),
+            subtitle: Some(txt.standard_mode_hint.to_string()),
+            actions: rsx! {
+                button {
+                    class: "btn btn-primary",
+                    onclick: move |_| {
+                        if elevation::relaunch_as_admin(&[cli::ELEVATED]).is_ok() {
+                            window.close();
+                        }
+                    },
+                    "{txt.relaunch_as_admin}"
+                }
+            },
+        }
+    }
+}
+
 /// CON-02: las pestañas con tareas largas se montan al visitarlas y quedan vivas, ocultas. Sensores y Hardware no
 /// tienen tareas: Sensores se desmonta para dejar de sondear.
 #[component]
@@ -335,8 +363,12 @@ fn TabViews(
     specs_error: Signal<Option<Msg>>,
 ) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
+    let is_elevated = use_hook(|| elevation::is_elevated().unwrap_or(false));
     rsx! {
         main { class: "main-content-full",
+            if !is_elevated {
+                StandardModeBanner {}
+            }
             for tab in KEEP_ALIVE_TABS {
                 if visited_tabs.read().contains(&tab) {
                     div {
