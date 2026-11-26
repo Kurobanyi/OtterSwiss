@@ -49,10 +49,7 @@ viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro
   estaba bloqueada. No se probaron el diálogo de confirmación de Drivers ni la lista con errores (no hay dispositivos con error).
 
 **Pendiente** (detalle en `docs/BUGS.md` y `docs/PRACTICAS.md`, sección «Siguiente» de cada uno):
-- Recorrer en la app, sin elevar, lo que cambió el 26/11 y no se vio: el aviso «Modo estándar», las vistas partidas por `CL-05`
-  (Uninstaller, Debloater, Dashboard, DNS, Tools, App) y `hardware`/`sensors`, en español e inglés y los dos temas. El 26/11 la
-  ventana no apareció en pantalla (la captura solo ve la sesión con el monitor virtual VDD activo): activarlo y reintentar. Y la
-  reapertura elevada con UAC, que acepta el usuario.
+- Recorrido de la interfaz sin elevar hecho el 26/11 (todas las pestañas, ES/EN, oscuro, claro y Tokyo Night, y al ancho mínimo de 960 px; salió `UI-23`). Falta la reapertura elevada con UAC (`SEC-17`), que acepta el usuario. Para repetirlo: lanzar el exe con `explorer.exe <ruta>`, con el monitor VDD activo; la ventana arranca minimizada (restaurarla con `ShowWindow`) y los clics van por el proceso `otter_swiss.exe` concedido en `request_access`.
 - VM de Hyper-V `OtterTest` (hecho el 26/11, 8 de 8 de `tests/vm_sistema.rs`; `ERR-26` y `ERR-27` salieron de ahí). No se probó: drivers
   de fabricante (la VM no tiene hardware), proxy de máquina (`netsh winhttp set proxy`) ni `SYS-24` con una cuenta estándar que pide
   credenciales de administrador. Para repetirlo: la ISO está en `D:\VM\iso\win11-ent-eval-25h2.iso`; la VM necesita App Installer
@@ -66,8 +63,7 @@ Pegar en una sesión nueva, en la carpeta del repo:
 
 > Seguimos con OtterSwiss en la rama `auditoria/buenas-practicas` (commits locales, sin push). Lee `AGENTS.md`, `.agents/relevo.md`
 > (sección «Estado actual»), `docs/BUGS.md` y `docs/PRACTICAS.md`, y `git status`. Verifica con `cargo fmt --check`,
-> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Lo que falta es solo verificación: el recorrido de la
-> interfaz sin elevar (aviso «Modo estándar» y vistas partidas). Las pruebas de VM ya están hechas. Commitea en local,
+> `cargo clippy --all-targets -- -D warnings` y `cargo test` en PowerShell. Lo que falta es solo la reapertura elevada con UAC. El recorrido y las pruebas de VM ya están hechos. Commitea en local,
 > «Categoría: Verbo …», cerrando cada ID en `docs/*-detalle.md` con su línea **Cierre**. No hagas push ni PR sin que te lo pida.
 > Español neutro, respuestas breves.
 

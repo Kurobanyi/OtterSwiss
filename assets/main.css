@@ -951,6 +951,8 @@ button.badge {
 @media (max-width: 1150px) {
     /* La mini ventana del archivador muestra ahí su estado: no se oculta. */
     .app-root-frameless:not(.mini-window) .top-version { display: none; }
+    /* UI-23: con el nombre y el logo la barra no entra a 960px y «Sensores» queda tapado (la barra no muestra su scroll). */
+    .app-root-frameless:not(.mini-window) .top-title { display: none; }
     .top-nav-item { padding: var(--space-1) 6px; }
 }
 

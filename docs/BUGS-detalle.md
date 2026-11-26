@@ -1287,3 +1287,10 @@ corrección, buenas prácticas), sin ejecutar las acciones de sistema. Lo que do
 - **Qué pasa**: Windows 11 Enterprise 25H2 recién instalado trae App Installer 1.21 (winget 1.6), cuyo `winget.exe` no lleva firma incrustada. `machine_winget` lo rechaza con «WinVerifyTrust rechazó la firma (código 0x800B0100)», sin decir qué hacer. El rechazo es correcto (SEC-31: solo se ejecuta un winget verificado); el mensaje no.
 - **Dónde**: `src/core/store/winget.rs` (`machine_winget`).
 - **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): se mantiene el rechazo y el error de firma ahora explica la causa (App Installer desactualizado) y cómo arreglarlo. Verificado en la VM: con App Installer 1.29 (firma válida) la prueba `paso_8_tienda` instala 7-Zip (equipo) y Playnite (usuario), cancela VLC a mitad sin dejarlo registrado y quita 7-Zip: 0 fallos. El camino por usuario necesita la sesión de escritorio (la prueba corre como tarea interactiva): por PowerShell Direct no hay Explorador y falla con «No se encontró el Explorador de escritorio», que es el comportamiento esperado de `SEC-17`.
+
+<a id="ui-23"></a>
+### UI-23 · Al ancho mínimo de la ventana la barra de pestañas tapa «Sensores»
+- **Afecta**: Usuario · **Severidad**: Baja · **Origen**: recorrido de la interfaz sin elevar (26/11) · **Evidencia**: confirmado (captura a 959 px de ancho, 96 ppp) · **Estado**: Resuelto
+- **Qué pasa**: con la ventana en su mínimo (960 px) las nueve pestañas no caben ni en español («Sensores» fuera) ni en inglés («Sensors» cortado). `TE-15` dejó `overflow-x: auto` pero sin barra visible, así que la última pestaña solo se alcanza con la rueda del mouse y nada avisa de que existe.
+- **Dónde**: `assets/main.css` (media query de `max-width: 1150px`).
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): a ≤1150 px también se oculta el nombre «OtterSwiss» junto a la versión (queda el logo). Verificado a 959 px: las nueve pestañas caben en español e inglés, en los temas Oscuro, Claro y Tokyo Night.
