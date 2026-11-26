@@ -9,6 +9,7 @@ pub mod hardware;
 pub mod mini_archive;
 pub mod msg;
 pub mod sensors;
+pub mod settings;
 pub mod shell;
 pub mod strings;
 pub mod tools;

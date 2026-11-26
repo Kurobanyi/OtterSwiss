@@ -14,6 +14,7 @@ use super::drivers::{self, DriversStrings};
 use super::hardware::{self, HardwareStrings};
 use super::mini_archive::{self, MiniArchiveStrings};
 use super::sensors::{self, SensorsStrings};
+use super::settings::{self, SettingsStrings};
 use super::shell::{self, ShellStrings};
 use super::tools::{self, ToolsStrings};
 use super::uninstaller::{self, UninstallerStrings};
@@ -66,6 +67,7 @@ pub struct Strings {
     pub dns: &'static DnsStrings,
     pub hardware: &'static HardwareStrings,
     pub sensors: &'static SensorsStrings,
+    pub settings: &'static SettingsStrings,
     pub tools: &'static ToolsStrings,
     pub uninstaller: &'static UninstallerStrings,
     /// UI-11: título de un error de core según su tipo; el detalle técnico va detrás.
@@ -115,6 +117,7 @@ pub static ES: Strings = Strings {
     dns: &dns::ES,
     hardware: &hardware::ES,
     sensors: &sensors::ES,
+    settings: &settings::ES,
     tools: &tools::ES,
     uninstaller: &uninstaller::ES,
     error_title: |kind| match kind {
@@ -180,6 +183,7 @@ pub static EN: Strings = Strings {
     dns: &dns::EN,
     hardware: &hardware::EN,
     sensors: &sensors::EN,
+    settings: &settings::EN,
     tools: &tools::EN,
     uninstaller: &uninstaller::EN,
     error_title: |kind| match kind {

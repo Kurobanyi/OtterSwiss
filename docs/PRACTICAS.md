@@ -16,7 +16,7 @@ sobre `main` (`adf794d`). Los defectos que encontró (no mejoras) están en `doc
 
 ## Resumen
 
-Avance al 26/11/2026: **114 hechas y 1 descartada** de 115. La última, `TE-30`, es el rediseño al estilo Windows 11 (26/11). Las 27 últimas (`OR-06` en adelante) son del código de
+Avance al 26/11/2026: **115 hechas y 1 descartada** de 116. Las últimas, `TE-30` y `TE-31`, son el rediseño de la interfaz (26/11). Las 27 últimas (`OR-06` en adelante) son del código de
 v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen de las tablas de abajo; su cierre está en el detalle.
 
 | Tipo | Total | P1 | P2 | P3 |
@@ -24,10 +24,10 @@ v4.2.0, auditado tras fusionarlo (sección final del detalle). Las hechas salen 
 | Orden de archivos (`OR-`) | 7 | 2 | 3 | 2 |
 | Arquitectura (`AR-`) | 29 | 9 | 18 | 2 |
 | Código limpio (`CL-`) | 25 | 8 | 12 | 5 |
-| Temas, tokens y CSS (`TE-`) | 30 | 4 | 17 | 9 |
+| Temas, tokens y CSS (`TE-`) | 31 | 4 | 18 | 9 |
 | Idiomas (`IN-`) | 10 | 1 | 8 | 1 |
 | Herramientas (`HE-`) | 14 | 3 | 6 | 5 |
-| **Total** | **115** | **27** | **64** | **24** |
+| **Total** | **116** | **27** | **65** | **24** |
 
 Punto de partida: `clippy` por defecto da 0 avisos, `fmt --check` está limpio, no hay `unwrap`, `expect` ni `panic!` fuera de los
 tests, el grafo de módulos de core no tiene ciclos, las vistas no llaman a Win32 ni al registro, la UI no tiene `unsafe` y las 16

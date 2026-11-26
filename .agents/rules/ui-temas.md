@@ -56,10 +56,13 @@ description: "Reglas de arquitectura de UI, tokens CSS, componentes y gestión d
 - Español con mayúscula solo inicial, «…» en vez de «...», plurales con `plural()`.
 
 ## 8. Lenguaje visual (Windows 11 / Fluent, decidido el 26/11/2026)
-- **Estructura de la ventana**: barra de título (marca, idioma, tema, botones de ventana) → panel de navegación lateral
-  (`.nav-pane`, solo iconos a 1100 px o menos) → capa de contenido (`.main-content-full`, fondo `--layer`, esquina superior
-  izquierda redondeada). El shell (`src/ui/app.rs`) ya pinta el título y la descripción de cada página (`.page-header`) y el
-  aviso de modo estándar: una vista **no** repite su nombre en una tarjeta de cabecera.
+- **Estructura de la ventana** (`TE-31`): barra de título con la nutria (arrastra la ventana), las secciones, idioma, tema,
+  engranaje de Configuración y botones de ventana. Por defecto las secciones van **arriba** (pedido del dueño); en
+  Configuración se pasan a una barra lateral contraíble (`LayoutPrefs`, `data-nav` y `data-collapsed` en la raíz). El shell pinta
+  el encabezado de cada página (icono, título y descripción) y el aviso de modo estándar: una vista no repite su nombre.
+- **Estilo abierto** (`TE-31`): nada de una caja por elemento. Estructura con espacio, tipografía y líneas finas; la primera
+  tarjeta de la página (la acción principal) es el único punto de color. Las reglas globales están en «9 · Estilo abierto» de
+  `main.css`; una vista nueva no vuelve a poner recuadros a sus filas.
 - **Jerarquía de una página**: encabezado del shell → acciones principales de la página → grupos con `.section-title`
   (texto 14 seminegrita) y debajo tarjetas o filas. Como Configuración de Windows: filas `.item-row` (icono, título, descripción
   y control a la derecha) en lugar de tarjetas para todo.

@@ -43,6 +43,8 @@
     --radius-sm: 4px;
     --radius: 4px;
     --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
     --radius-pill: 999px;
 
     --duration-fast: 0.12s;
@@ -52,9 +54,9 @@
     --z-titlebar: 100;
     --z-modal: 1000;
 
-    --titlebar-h: 44px;
-    --nav-w: 240px;
-    --nav-w-compact: 56px;
+    --titlebar-h: 48px;
+    --nav-w: 232px;
+    --nav-w-compact: 60px;
     --nav-item-h: 36px;
     --content-max: 1080px;
     --control-min-h: 32px;
@@ -337,6 +339,7 @@
     --subtle-fill-hover: color-mix(in srgb, var(--text) 7%, transparent);
     --subtle-fill-active: color-mix(in srgb, var(--text) 4%, transparent);
     --shadow-flyout: 0 8px 32px rgb(0 0 0 / 0.28), 0 2px 8px rgb(0 0 0 / 0.16);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 16px rgb(0 0 0 / 0.04);
 }
 
 /* 3 · Reset y base --------------------------------------------------------------------------------------------- */
@@ -449,8 +452,9 @@ button {
 }
 
 .top-brand .brand-icon {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
+    cursor: grab;
 }
 
 .top-title {
@@ -495,21 +499,63 @@ button {
     height: 100%;
 }
 
-/* Cuerpo: panel de navegación + capa de contenido. */
+/* Cuerpo: navegación lateral opcional + capa de contenido. */
 .app-body {
     flex: 1;
     display: flex;
     min-height: 0;
 }
 
+/* TE-31: navegación arriba (predeterminada). Pestañas con icono dentro de la barra de título, junto a la nutria. */
+.top-nav {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+    margin-left: var(--space-3);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.top-nav .nav-item {
+    height: 32px;
+    padding: 0 var(--space-3);
+    gap: var(--space-2);
+    border-radius: var(--radius-pill);
+    color: var(--text-muted);
+    font-size: var(--font-size-sm);
+}
+
+.top-nav .nav-item:hover {
+    color: var(--text);
+}
+
+.top-nav .nav-item[aria-current="page"] {
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    font-weight: var(--fw-semibold);
+}
+
+.top-nav .nav-icon {
+    font-size: 14px;
+}
+
+/* TE-31: barra lateral (opcional). Se contrae a solo iconos con su botón o por debajo de 1100 px. */
 .nav-pane {
     width: var(--nav-w);
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    padding: var(--space-1) var(--space-1) var(--space-4);
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2) var(--space-4);
     overflow-y: auto;
+    transition: width var(--duration) var(--ease);
+}
+
+.side-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
 .nav-item {
@@ -520,14 +566,14 @@ button {
     height: var(--nav-item-h);
     padding: 0 var(--space-3);
     border: none;
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
     background: transparent;
     color: var(--text);
     font-size: var(--font-size-md);
     text-align: left;
     cursor: pointer;
     white-space: nowrap;
-    transition: background-color var(--duration-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
 }
 
 .nav-item:hover {
@@ -538,21 +584,30 @@ button {
     background: var(--subtle-fill-active);
 }
 
-.nav-item[aria-current="page"] {
-    background: var(--subtle-fill-hover);
+.side-nav .nav-item[aria-current="page"] {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
 }
 
-/* Indicador de la sección activa: la píldora de acento a la izquierda del NavigationView. */
-.nav-item[aria-current="page"]::before {
+/* Indicador de la sección activa en la barra lateral: píldora de acento a la izquierda. */
+.side-nav .nav-item[aria-current="page"]::before {
     content: "";
     position: absolute;
     left: 0;
     top: 50%;
     width: 3px;
-    height: 16px;
+    height: 18px;
     border-radius: var(--radius-pill);
     background: var(--accent);
     transform: translateY(-50%);
+}
+
+.nav-toggle {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+    color: var(--text-muted);
 }
 
 .nav-icon {
@@ -567,33 +622,98 @@ button {
     text-overflow: ellipsis;
 }
 
+[data-collapsed="true"] .nav-pane {
+    width: var(--nav-w-compact);
+}
+
+[data-collapsed="true"] .side-nav .nav-item {
+    justify-content: center;
+    padding: 0;
+}
+
+[data-collapsed="true"] .side-nav .nav-label {
+    display: none;
+}
+
+.icon-btn {
+    width: var(--control-sm-h);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.icon-btn[aria-current="page"] {
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* Capa de contenido. Con la navegación arriba ocupa todo el ancho y su borde superior marca el límite con la barra. */
 .main-content-full {
+    position: relative;
     flex: 1;
     min-width: 0;
     overflow-y: auto;
     padding: var(--space-5) var(--space-6) var(--space-6);
     background: var(--layer);
     border-top: 1px solid var(--stroke);
-    border-left: 1px solid var(--stroke);
-    border-top-left-radius: var(--radius-lg);
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-5);
+}
+
+[data-nav="side"] .main-content-full {
+    border-left: 1px solid var(--stroke);
+    border-top-left-radius: var(--radius-xl);
+}
+
+/* Firma visual de la app: un resplandor del color de acento detrás del encabezado de cada página. */
+.main-content-full::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 260px;
+    background:
+        radial-gradient(60% 100% at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+        radial-gradient(40% 80% at 85% 0%, color-mix(in srgb, var(--accent-hover) 9%, transparent), transparent 70%);
+    pointer-events: none;
 }
 
 /* El encabezado, el aviso de permisos y cada vista comparten el mismo ancho máximo. */
 .main-content-full > * {
+    position: relative;
     width: 100%;
     max-width: var(--content-max);
     margin-left: auto;
     margin-right: auto;
 }
 
+.main-content-full > [hidden] {
+    display: none;
+}
+
+/* Encabezado de página: icono grande de la sección, título y descripción. */
 .page-header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: var(--space-4);
+    align-items: center;
+    padding-top: var(--space-2);
+}
+
+.page-icon {
+    grid-row: span 2;
+    width: 52px;
+    height: 52px;
+    border-radius: var(--radius-xl);
     display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    padding-bottom: var(--space-1);
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: var(--on-accent);
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-hover)));
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .page-title {
@@ -601,6 +721,7 @@ button {
     font-size: var(--font-size-xl);
     font-weight: var(--fw-semibold);
     line-height: 36px;
+    letter-spacing: -0.01em;
 }
 
 .page-desc {
@@ -610,7 +731,7 @@ button {
 .content-body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-5);
 }
 
 .cards-grid {
@@ -619,11 +740,34 @@ button {
     gap: var(--space-4);
 }
 
-/* Título de una sección dentro de una página (Fluent «BodyStrong» sobre un grupo de tarjetas). */
+/* Título de una sección dentro de una página. */
 .section-title {
-    font-size: var(--font-size-md);
+    font-size: 15px;
     font-weight: var(--fw-semibold);
-    margin-top: var(--space-2);
+    margin-top: var(--space-1);
+}
+
+/* TE-31: listas sin cajas sueltas. Las filas seguidas de un grupo se funden en un solo panel con separadores, como una
+   lista de Configuración: una superficie, una esquina redondeada, y una línea fina entre fila y fila. */
+.stack-1:has(> .item-row),
+.stack-2:has(> .item-row) {
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+.stack-1:has(> .item-row) > .item-row,
+.stack-2:has(> .item-row) > .item-row {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.stack-1:has(> .item-row) > .item-row + .item-row,
+.stack-2:has(> .item-row) > .item-row + .item-row {
+    border-top: 1px solid var(--stroke);
 }
 
 /* 5 · Componentes ---------------------------------------------------------------------------------------------- */
@@ -679,15 +823,16 @@ button {
     color: var(--on-win-close);
 }
 
-/* Tarjeta: superficie sobre la capa de contenido, trazo sutil, radio 8. */
+/* Tarjeta: superficie sobre la capa de contenido con un brillo sutil arriba, trazo fino y radio 12 (TE-31). */
 .card {
-    background: var(--surface);
+    background: linear-gradient(180deg, color-mix(in srgb, var(--text) 3%, var(--surface)), var(--surface) 60%);
     border: 1px solid var(--stroke);
-    border-radius: var(--radius-lg);
-    padding: var(--space-4);
+    border-radius: var(--radius-xl);
+    padding: var(--space-4) var(--space-5);
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    box-shadow: var(--shadow-card);
 }
 
 .card.card-warning {
@@ -754,6 +899,12 @@ button {
     min-height: var(--control-sm-h);
     padding: 3px var(--space-3) 4px;
     font-size: var(--font-size-md);
+}
+
+.btn-lg {
+    min-height: 40px;
+    padding: 8px var(--space-5);
+    font-weight: var(--fw-semibold);
 }
 
 .btn-primary {
@@ -849,7 +1000,7 @@ button.badge {
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     border: 1px solid var(--stroke);
     background: var(--surface);
 }
@@ -982,7 +1133,7 @@ button.badge {
 .item-row {
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--stroke);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     background: var(--surface);
 }
 
@@ -1185,13 +1336,21 @@ button.badge {
     outline-offset: 2px;
 }
 
-/* TE-15, UI-23: ventana estrecha (hasta 1100 px): el panel de navegación queda solo con iconos (el nombre va en el
-   `title`) y la capa de contenido gana aire. */
+/* TE-15, UI-23: ventana estrecha (hasta 1100 px): la barra lateral queda solo con iconos, las pestañas de arriba solo con
+   texto, y la capa de contenido gana aire. */
 @media (max-width: 1100px) {
     .nav-pane { width: var(--nav-w-compact); }
-    .nav-item { justify-content: center; padding: 0; }
-    .nav-label { display: none; }
+    .side-nav .nav-item { justify-content: center; padding: 0; }
+    .side-nav .nav-label { display: none; }
+    .top-nav .nav-icon { display: none; }
+    .top-nav .nav-item { padding: 0 var(--space-2); }
     .main-content-full { padding: var(--space-5) var(--space-5) var(--space-6); }
+}
+
+/* TE-31: con las pestañas arriba, el nombre y la versión ceden su lugar a las secciones en ventanas medianas. */
+@media (max-width: 1280px) {
+    [data-nav="top"] .top-title,
+    [data-nav="top"] .top-version { display: none; }
 }
 
 /* TE-09: sin animaciones si el sistema pide reducir el movimiento. */
@@ -1300,9 +1459,15 @@ button.badge {
 
 .dash-icon {
     flex: none;
-    width: 20px;
-    text-align: center;
-    color: var(--text-muted);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .dash-label {
@@ -1322,12 +1487,138 @@ button.badge {
     margin-top: var(--space-2);
 }
 
+/* Portada de Inicio (TE-31): la nutria, el procesador en grande, datos rápidos y la acción de optimizar. */
+.home-hero {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-4) var(--space-5);
+    padding: var(--space-5) var(--space-5) var(--space-4);
+    border-radius: var(--radius-2xl);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--stroke));
+    background:
+        radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 55%),
+        linear-gradient(160deg, color-mix(in srgb, var(--accent) 7%, var(--surface)), var(--surface) 70%);
+    overflow: hidden;
+}
+
+.home-hero-main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.home-kicker {
+    color: var(--accent-text);
+    font-weight: var(--fw-semibold);
+}
+
+.home-cpu {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: var(--fw-semibold);
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.home-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+}
+
+.home-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--text) 7%, transparent);
+    font-size: var(--font-size-xs);
+    font-weight: var(--fw-semibold);
+    max-width: 100%;
+}
+
+.home-chip .fluent-icon {
+    color: var(--accent-text);
+}
+
+.home-otter {
+    grid-row: span 1;
+    align-self: center;
+    width: 132px;
+    height: 132px;
+    margin: calc(-1 * var(--space-2)) 0;
+    filter: drop-shadow(0 10px 24px color-mix(in srgb, var(--accent) 35%, transparent));
+}
+
+.home-action {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-5);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--stroke);
+}
+
+/* Ficha técnica: una sola superficie en dos columnas, celdas separadas por líneas finas (no una caja por dato). */
+.spec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1px;
+    background: var(--stroke);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+
+.spec-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--surface);
+    min-width: 0;
+}
+
+.spec-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.spec-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+}
+
+.spec-value {
+    font-weight: var(--fw-semibold);
+    overflow-wrap: anywhere;
+}
+
+.spec-note {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+}
+
 /* Limpiador (Cleaner) */
 .cln-icon {
     flex: none;
-    width: 20px;
-    text-align: center;
-    color: var(--text-muted);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .cln-badge {
@@ -1546,9 +1837,15 @@ button.badge {
 
 .tl-icon {
     flex: none;
-    width: 20px;
-    text-align: center;
-    color: var(--text-muted);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: var(--accent-text);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .tl-status {
@@ -1649,4 +1946,390 @@ button.badge {
     flex-wrap: wrap;
     gap: var(--space-1) var(--space-3);
     min-height: 16px;
+}
+
+/* Configuración (TE-31) */
+.set-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.set-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.set-layouts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-3);
+}
+
+.set-layout-card,
+.set-theme-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease), background-color var(--duration-fast) var(--ease);
+}
+
+.set-layout-card:hover,
+.set-theme-card:hover {
+    background: var(--control-fill-hover);
+}
+
+.set-layout-card[aria-pressed="true"],
+.set-theme-card[aria-pressed="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.set-layout-text {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Miniatura de la disposición: barra arriba o a la izquierda y bloques de contenido. */
+.set-layout-preview {
+    display: grid;
+    grid-template-columns: 0 1fr;
+    grid-template-rows: 10px 1fr;
+    gap: 4px;
+    height: 96px;
+    padding: 6px;
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    border: 1px solid var(--stroke);
+}
+
+.set-layout-preview[data-nav="side"] {
+    grid-template-columns: 26px 1fr;
+}
+
+.slp-bar {
+    grid-column: 1 / -1;
+    border-radius: 3px;
+    background: var(--control-fill-hover);
+}
+
+.set-layout-preview[data-nav="top"] .slp-bar {
+    background: linear-gradient(90deg, var(--control-fill-hover) 18%, color-mix(in srgb, var(--accent) 45%, transparent) 18% 32%,
+        var(--control-fill-hover) 32%);
+}
+
+.slp-side {
+    border-radius: 3px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 45%, transparent) 0 18%, var(--control-fill-hover) 18%);
+}
+
+.set-layout-preview[data-nav="top"] .slp-side {
+    display: none;
+}
+
+.slp-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 3px;
+    background: var(--layer);
+}
+
+.slp-line {
+    height: 5px;
+    width: 55%;
+    border-radius: 3px;
+    background: var(--control-fill-hover);
+}
+
+.slp-line-strong {
+    width: 35%;
+    background: var(--text-muted);
+}
+
+.slp-block {
+    flex: 1;
+    border-radius: 3px;
+    background: var(--surface);
+    border: 1px solid var(--stroke);
+}
+
+.set-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius-xl);
+    background: var(--surface);
+    cursor: pointer;
+}
+
+/* Interruptor de Windows 11 hecho con una casilla (role="switch"). */
+.toggle-switch {
+    appearance: none;
+    flex: none;
+    position: relative;
+    width: 40px;
+    height: 20px;
+    margin: 0;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--control-border);
+    background: var(--control-fill);
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease);
+}
+
+.toggle-switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--duration) var(--ease);
+}
+
+.toggle-switch:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.toggle-switch:checked::after {
+    background: var(--on-accent);
+    transform: translateX(19px);
+}
+
+.set-themes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--space-3);
+}
+
+/* Muestra de un tema: lleva su propio data-theme, así que estas variables son las de ese tema. */
+.set-theme-swatch {
+    height: 64px;
+    padding: 8px;
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    border: 1px solid var(--stroke);
+}
+
+.sts-surface {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 7px;
+    border-radius: 6px;
+    background: var(--surface);
+}
+
+.sts-line {
+    height: 5px;
+    width: 70%;
+    border-radius: 3px;
+    background: var(--text);
+    opacity: 0.8;
+}
+
+.sts-line-short {
+    width: 45%;
+    background: var(--text-muted);
+}
+
+.sts-accent {
+    margin-top: auto;
+    height: 8px;
+    width: 40%;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+}
+
+.set-theme-name {
+    font-size: var(--font-size-sm);
+}
+
+/* 9 · Estilo abierto (TE-31) ---------------------------------------------------------------------------------------- */
+/* Pedido del autor: menos cajas. Estilo suizo (el nombre de la app lo pide): la estructura la dan el espacio, la
+   tipografía y líneas finas, no un recuadro por elemento. La única superficie destacada es la portada de Inicio;
+   diálogos, muestras de Configuración y menús conservan su superficie porque flotan o se eligen. Va al final para
+   ganar a los estilos de cada vista sin tocarlos uno por uno. */
+
+.content-body {
+    gap: var(--space-6);
+}
+
+.section-title {
+    font-family: var(--font-display);
+    font-size: 17px;
+    margin-top: 0;
+    margin-bottom: calc(-1 * var(--space-2));
+}
+
+/* Tarjetas de las vistas: sin caja. Una tarjeta suelta en la página queda como un bloque abierto con una línea abajo. */
+.card:not(.modal-card) {
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+}
+
+.content-body > .card:not(.modal-card) {
+    padding-bottom: var(--space-5);
+    border-bottom: 1px solid var(--stroke);
+}
+
+/* Listas: filas abiertas separadas por una línea fina, con un toque de fondo al pasar el mouse. */
+.stack-1:has(> .item-row),
+.stack-2:has(> .item-row) {
+    background: none;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    border-top: 1px solid var(--stroke);
+}
+
+.item-row,
+.stack-1:has(> .item-row) > .item-row,
+.stack-2:has(> .item-row) > .item-row {
+    background: none;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--stroke);
+    padding: var(--space-3) var(--space-2);
+}
+
+.stack-1:has(> .item-row) > .item-row + .item-row,
+.stack-2:has(> .item-row) > .item-row + .item-row {
+    border-top: none;
+}
+
+.item-row:hover,
+.select-row:hover {
+    background: var(--subtle-fill-hover);
+}
+
+.select-row {
+    background: none;
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--stroke);
+}
+
+/* Ficha técnica: celdas abiertas en dos columnas con una línea debajo de cada una. */
+.spec-grid {
+    background: none;
+    border: none;
+    border-radius: 0;
+    column-gap: var(--space-6);
+    row-gap: 0;
+    overflow: visible;
+}
+
+.spec-cell {
+    background: none;
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--stroke);
+}
+
+/* Paneles de listas largas (Drivers, tienda, desinstalador): sin recuadro; la barra de búsqueda queda arriba. */
+.drv-panel,
+.tl-panel {
+    background: none;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+}
+
+.drv-toolbar,
+.tl-toolbar {
+    padding: 0 0 var(--space-3);
+}
+
+.drv-row,
+.tl-row {
+    padding-inline: var(--space-2);
+}
+
+.drv-row-error {
+    background: color-mix(in srgb, var(--danger) 7%, transparent);
+}
+
+/* Avisos: una franja tenue sin borde, más liviana que una tarjeta. */
+.info-bar {
+    border: none;
+    border-radius: var(--radius-lg);
+    padding: var(--space-2) var(--space-4);
+}
+
+.status-banner {
+    border: none;
+    border-left: 3px solid currentColor;
+    border-radius: var(--radius-sm);
+}
+
+/* Estados vacío, cargando y error: centrados sobre la página, sin caja. */
+.state-container {
+    background: none;
+    border: none;
+}
+
+.state-error {
+    background: color-mix(in srgb, var(--danger) 6%, transparent);
+    border-radius: var(--radius-xl);
+}
+
+/* Sensores: cada lectura separada por una línea vertical, como columnas de una tabla suiza. */
+.snr-grid {
+    gap: var(--space-5);
+}
+
+.snr-grid > .card {
+    padding: var(--space-1) 0 var(--space-1) var(--space-4);
+    border-left: 2px solid var(--stroke);
+}
+
+/* Pestañas de arriba en ventanas medianas: solo iconos, y la sección activa con su nombre. Así siempre caben las diez
+   (UI-23) sin cortar «Sensores». */
+@media (max-width: 1499px) {
+    [data-nav="top"] .top-nav .nav-item:not([aria-current="page"]) .nav-label { display: none; }
+    [data-nav="top"] .top-nav .nav-item:not([aria-current="page"]) { padding: 0; width: 36px; justify-content: center; }
+    [data-nav="top"] .top-nav .nav-icon { display: inline-block; }
+}
+
+/* La acción principal de cada página (su primera tarjeta) lleva el mismo tratamiento que la portada de Inicio: es el
+   único punto de color de la página, así cada sección tiene un foco claro sin volver a las cajas. */
+.content-body > :nth-child(1 of .card:not(.modal-card, .snr-card)) {
+    padding: var(--space-5);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--stroke));
+    border-radius: var(--radius-2xl);
+    background:
+        radial-gradient(120% 160% at 100% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 55%),
+        linear-gradient(160deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface) 70%);
+}
+
+.content-body > :nth-child(1 of .card:not(.modal-card, .snr-card)) .card-title {
+    font-family: var(--font-display);
+    font-size: var(--font-size-lg);
+}
+
+/* Una fila elegible (servidor DNS, por ejemplo) se distingue cuando está elegida. */
+.item-row[aria-pressed="true"],
+.stack-1:has(> .item-row) > .item-row[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: var(--radius-lg);
 }

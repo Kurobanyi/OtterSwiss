@@ -1,11 +1,13 @@
-//! Ventana principal: barra de título (marca, idioma, tema, botones de ventana), panel de navegación lateral al estilo
-//! de Windows 11, encabezado de cada página, pestañas y actualizador.
+//! Ventana principal: barra de título (nutria que arrastra la ventana, idioma, tema, configuración y botones de ventana),
+//! navegación arriba (predeterminada) o lateral contraíble según `LayoutPrefs` (TE-31), encabezado de cada página,
+//! pestañas y actualizador.
 
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use crate::ui::i18n::{Lang, Msg, strings};
+use crate::ui::layout::{LayoutPrefs, NavStyle};
 use crate::ui::theme::Theme;
 use crate::ui::views::archiver::ArchiverView;
 use crate::ui::views::cleaner::CleanerView;
@@ -15,6 +17,7 @@ use crate::ui::views::dns::DnsView;
 use crate::ui::views::drivers::DriversView;
 use crate::ui::views::hardware::HardwareView;
 use crate::ui::views::sensors::SensorsView;
+use crate::ui::views::settings::SettingsView;
 use crate::ui::views::tools::ToolsView;
 use crate::ui::views::uninstaller::UninstallerView;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -58,10 +61,12 @@ pub enum ActiveTab {
     Uninstaller,
     Hardware,
     Sensors,
+    /// Configuración de la apariencia: no está en la lista de secciones, se abre con el engranaje.
+    Settings,
 }
 
 impl ActiveTab {
-    /// Orden de la barra superior.
+    /// Orden de las secciones en la navegación (Configuración va aparte).
     const ALL: [ActiveTab; 10] = [
         Self::Dashboard,
         Self::Cleaner,
@@ -88,12 +93,15 @@ impl ActiveTab {
             Self::Uninstaller => "\u{E74D}",
             Self::Hardware => "\u{E7F8}",
             Self::Sensors => "\u{E9CA}",
+            Self::Settings => "\u{E713}",
         }
     }
 
     fn description(self, en: bool) -> &'static str {
-        let idx = Self::ALL.iter().position(|t| *t == self).unwrap_or(0);
-        strings(en).shell.page_descriptions[idx]
+        match Self::ALL.iter().position(|t| *t == self) {
+            Some(idx) => strings(en).shell.page_descriptions[idx],
+            None => strings(en).settings.description,
+        }
     }
 
     fn label(self, en: bool) -> &'static str {
@@ -114,6 +122,7 @@ impl ActiveTab {
             (Self::Hardware, _) => "Hardware",
             (Self::Sensors, true) => "Sensors",
             (Self::Sensors, false) => "Sensores",
+            (Self::Settings, _) => strings(en).settings.title,
         }
     }
 }
@@ -127,9 +136,12 @@ fn version_badge(pkg_ver: &str) -> String {
 /// ventana, como en una app nativa.
 #[component]
 fn TitleBar(
+    active_tab: Signal<ActiveTab>,
+    tools_state: Signal<ToolsSharedState>,
     update_info: Signal<Option<UpdateReleaseInfo>>,
     show_update_modal: Signal<bool>,
 ) -> Element {
+    let layout = use_context::<Signal<LayoutPrefs>>();
     let mut current_theme = use_context::<Signal<Theme>>();
     let mut current_lang = use_context::<Signal<Lang>>();
     let window = use_window();
@@ -174,6 +186,9 @@ fn TitleBar(
                     "v{upd.version}"
                 }
             }
+            if layout.read().nav == NavStyle::Top {
+                SectionNav { active_tab, tools_state, top: true }
+            }
             div {
                 class: "titlebar-drag",
                 onmousedown: move |_| { win_drag_strip.drag(); },
@@ -206,6 +221,14 @@ fn TitleBar(
                     }
                 }
                 button {
+                    class: "theme-toggle-btn icon-btn",
+                    title: strings(en).settings.open_settings,
+                    "aria-label": strings(en).settings.open_settings,
+                    "aria-current": if *active_tab.read() == ActiveTab::Settings { "page" } else { "false" },
+                    onclick: move |_| active_tab.set(ActiveTab::Settings),
+                    span { class: "fluent-icon", "aria-hidden": "true", "\u{E713}" }
+                }
+                button {
                     class: "win-btn",
                     title: strings(en).minimize,
                     "aria-label": strings(en).minimize,
@@ -231,13 +254,18 @@ fn TitleBar(
     }
 }
 
-/// Panel de navegación lateral (NavigationView de Windows 11). En ventanas estrechas queda solo con iconos y el
-/// nombre de cada sección pasa al `title`.
+/// Lista de secciones. Arriba (`top`) va dentro de la barra de título; en la barra lateral, debajo del botón de contraer.
 #[component]
-fn NavPane(active_tab: Signal<ActiveTab>, tools_state: Signal<ToolsSharedState>) -> Element {
+fn SectionNav(
+    active_tab: Signal<ActiveTab>,
+    tools_state: Signal<ToolsSharedState>,
+    top: bool,
+) -> Element {
     let en = use_context::<Signal<Lang>>().read().is_en();
     rsx! {
-        nav { class: "nav-pane", "aria-label": strings(en).shell.navigation,
+        nav {
+            class: if top { "top-nav" } else { "side-nav" },
+            "aria-label": strings(en).shell.navigation,
             for tab in ActiveTab::ALL {
                 button {
                     key: "{tab.label(false)}",
@@ -254,6 +282,38 @@ fn NavPane(active_tab: Signal<ActiveTab>, tools_state: Signal<ToolsSharedState>)
                     span { class: "nav-label", "{tab.label(en)}" }
                 }
             }
+        }
+    }
+}
+
+/// Barra lateral (TE-31): solo si se elige en Configuración. El botón de arriba la contrae a solo iconos y la
+/// preferencia queda guardada.
+#[component]
+fn NavPane(active_tab: Signal<ActiveTab>, tools_state: Signal<ToolsSharedState>) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let mut layout = use_context::<Signal<LayoutPrefs>>();
+    let collapsed = layout.read().sidebar_collapsed;
+    let txt = strings(en).settings;
+    let toggle_label = if collapsed {
+        txt.expand_sidebar
+    } else {
+        txt.collapse_sidebar
+    };
+    rsx! {
+        aside { class: "nav-pane",
+            button {
+                class: "nav-item nav-toggle",
+                title: toggle_label,
+                "aria-label": toggle_label,
+                "aria-expanded": if collapsed { "false" } else { "true" },
+                onclick: move |_| {
+                    let next = LayoutPrefs { sidebar_collapsed: !collapsed, ..*layout.peek() };
+                    layout.set(next);
+                    next.save_persisted();
+                },
+                span { class: "nav-icon fluent-icon", "aria-hidden": "true", "\u{E700}" }
+            }
+            SectionNav { active_tab, tools_state, top: false }
         }
     }
 }
@@ -412,6 +472,7 @@ fn TabViews(
     rsx! {
         main { class: "main-content-full",
             header { class: "page-header",
+                span { class: "page-icon fluent-icon", "aria-hidden": "true", "{active_tab.read().icon()}" }
                 h1 { class: "page-title", "{active_tab.read().label(en)}" }
                 p { class: "page-desc", "{active_tab.read().description(en)}" }
             }
@@ -432,7 +493,7 @@ fn TabViews(
                             ActiveTab::Archiver => rsx! { ArchiverView {} },
                             ActiveTab::Tools => rsx! { ToolsView {} },
                             ActiveTab::Uninstaller => rsx! { UninstallerView {} },
-                            ActiveTab::Hardware | ActiveTab::Sensors => rsx! {},
+                            ActiveTab::Hardware | ActiveTab::Sensors | ActiveTab::Settings => rsx! {},
                         }
                     }
                 }
@@ -443,6 +504,9 @@ fn TabViews(
             if *active_tab.read() == ActiveTab::Sensors {
                 SensorsView {}
             }
+            if *active_tab.read() == ActiveTab::Settings {
+                SettingsView {}
+            }
         }
     }
 }
@@ -451,6 +515,7 @@ fn TabViews(
 pub fn App() -> Element {
     let current_theme = use_signal(Theme::load_persisted);
     let current_lang = use_signal(Lang::load_persisted);
+    let layout = use_signal(LayoutPrefs::load_persisted);
     let active_tab = use_signal(|| ActiveTab::Dashboard);
     // CON-02: una pestaña visitada sigue montada (oculta) para no perder una tarea en curso.
     let mut visited_tabs = use_signal(|| HashSet::from([ActiveTab::Dashboard]));
@@ -505,6 +570,7 @@ pub fn App() -> Element {
 
     provide_context(current_theme);
     provide_context(current_lang);
+    provide_context(layout);
     provide_context(tools_state);
     provide_context(dispatcher);
 
@@ -512,12 +578,16 @@ pub fn App() -> Element {
         div {
             class: "app-root-frameless",
             "data-theme": "{current_theme.read().css_name()}",
-            TitleBar { update_info, show_update_modal }
+            "data-nav": "{layout.read().nav.css_name()}",
+            "data-collapsed": if layout.read().sidebar_collapsed { "true" } else { "false" },
+            TitleBar { active_tab, tools_state, update_info, show_update_modal }
             if *show_update_modal.read() {
                 UpdateModal { update_info, show_update_modal }
             }
             div { class: "app-body",
-                NavPane { active_tab, tools_state }
+                if layout.read().nav == NavStyle::Side {
+                    NavPane { active_tab, tools_state }
+                }
                 TabViews { active_tab, visited_tabs, system_specs, specs_error }
             }
         }

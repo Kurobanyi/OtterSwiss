@@ -9,6 +9,7 @@ pub mod document;
 pub(crate) mod format;
 pub mod i18n;
 pub(crate) mod installer;
+pub(crate) mod layout;
 pub(crate) mod prefs;
 pub(crate) mod task;
 pub mod theme;

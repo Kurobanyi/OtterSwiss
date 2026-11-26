@@ -14,6 +14,7 @@ use crate::ui::components::{Card, ConfirmDialog, LoadingState, ProgressBar, Stat
 use crate::ui::i18n::core_text::tr;
 use crate::ui::i18n::{Lang, Msg, strings};
 use crate::ui::task::run_with_progress;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 /// CL-05: las señales que comparten la vista y sus tarjetas. Son `Copy`.
 #[derive(Clone, Copy, PartialEq)]
@@ -194,78 +195,16 @@ fn OptimizeConfirm(
     }
 }
 
-/// Una fila de dato del equipo: icono, nombre a la izquierda y valor a la derecha.
-#[component]
-fn SpecRow(glyph: &'static str, label: String, value: String) -> Element {
-    rsx! {
-        div { class: "item-row dash-row",
-            span { class: "fluent-icon dash-icon", "aria-hidden": "true", "{glyph}" }
-            span { class: "dash-label", "{label}" }
-            span { class: "dash-value", "{value}" }
-        }
-    }
+/// Memoria en GB con un decimal (la detección la da en MB).
+fn ram_gb(mb: u64) -> String {
+    format!("{:.1} GB", mb as f64 / 1024.0)
 }
 
-/// CPU, placa, RAM, GPU y discos detectados, con el nivel de hardware.
-#[component]
-fn OverviewGroup(hw: HardwareProfile) -> Element {
-    let en = use_context::<Signal<Lang>>().read().is_en();
+/// Nombre del plan de energía si es uno conocido.
+fn power_plan_name(guid: &str, en: bool) -> &'static str {
     let txt = strings(en).dashboard;
-    let (tier_class, tier_text) = match hw.tier {
-        HardwareTier::HighEnd => ("badge badge-success", txt.tier_high),
-        HardwareTier::MidRange => ("badge badge-info", txt.tier_mid),
-        HardwareTier::LowEnd => ("badge badge-warning", txt.tier_low),
-    };
-    rsx! {
-        div { class: "section-title", "{txt.your_pc}" }
-        div { class: "stack-1",
-            SpecRow {
-                glyph: "\u{E950}",
-                label: txt.cpu.to_string(),
-                value: format!("{} ({}T)", hw.cpu_name, hw.logical_cores),
-            }
-            SpecRow {
-                glyph: "\u{E7F8}",
-                label: txt.board.to_string(),
-                value: tr(&hw.motherboard, en).to_string(),
-            }
-            SpecRow {
-                glyph: "\u{E964}",
-                label: txt.ram.to_string(),
-                value: format!("{} MB", hw.total_ram_mb),
-            }
-            for (i , gpu) in hw.gpu_names.iter().enumerate() {
-                SpecRow {
-                    key: "gpu{i}",
-                    glyph: "\u{E7F4}",
-                    label: txt.graphics.to_string(),
-                    value: gpu.clone(),
-                }
-            }
-            for (i , drive) in hw.storage_drives.iter().enumerate() {
-                SpecRow {
-                    key: "drive{i}",
-                    glyph: "\u{EDA2}",
-                    label: txt.disk.to_string(),
-                    value: drive.clone(),
-                }
-            }
-            div { class: "item-row dash-row",
-                span { class: "fluent-icon dash-icon", "aria-hidden": "true", "\u{E9D9}" }
-                span { class: "dash-label", "{txt.hardware_tier}" }
-                span { class: "dash-value", span { class: "{tier_class}", "{tier_text}" } }
-            }
-        }
-    }
-}
-
-/// Plan de energía activo: su nombre si es uno conocido y el GUID como dato secundario.
-#[component]
-fn PowerPlanRow(active_scheme: Signal<String>) -> Element {
-    let txt = strings(use_context::<Signal<Lang>>().read().is_en()).dashboard;
-    let guid = active_scheme.read().clone();
     let lower = guid.to_lowercase();
-    let name = if lower.contains(GUID_BALANCED) {
+    if lower.contains(GUID_BALANCED) {
         txt.power_plan_balanced
     } else if lower.contains(GUID_HIGH_PERFORMANCE) {
         txt.power_plan_high
@@ -273,55 +212,149 @@ fn PowerPlanRow(active_scheme: Signal<String>) -> Element {
         txt.power_plan_ultimate
     } else {
         txt.power_plan_other
-    };
-    rsx! {
-        div { class: "item-row dash-row",
-            span { class: "fluent-icon dash-icon", "aria-hidden": "true", "\u{E83F}" }
-            div { class: "grow stack-1",
-                span { class: "dash-label", "{txt.active_power_plan}" }
-                span { class: "text-xs text-muted", "{txt.auto_selects_optimal_plan_for}" }
-            }
-            div { class: "dash-value stack-1",
-                span { class: "fw-semibold", "{name}" }
-                code { class: "text-xs mono", "{guid}" }
-            }
-        }
     }
 }
 
-/// Acción principal de la página: optimizar, con la explicación del respaldo y el botón de revertir.
+/// TE-31: portada de Inicio. La nutria de la marca, el procesador como dato principal, tres datos rápidos y la acción de
+/// optimizar con su explicación.
 #[component]
-fn OptimizerCard(
+fn HomeHero(
+    hw: HardwareProfile,
     is_running: Signal<bool>,
     nothing_to_apply: bool,
     on_optimize: EventHandler<()>,
     on_rollback: EventHandler<()>,
 ) -> Element {
-    let txt = strings(use_context::<Signal<Lang>>().read().is_en()).dashboard;
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).dashboard;
+    let (tier_class, tier_text) = match hw.tier {
+        HardwareTier::HighEnd => ("badge badge-success", txt.tier_high),
+        HardwareTier::MidRange => ("badge badge-info", txt.tier_mid),
+        HardwareTier::LowEnd => ("badge badge-warning", txt.tier_low),
+    };
+    let gpu = hw.gpu_names.first().cloned().unwrap_or_default();
+    // Logo de 192 px (unos 30 KB), no el PNG de 512 px.
+    let otter = use_hook(|| {
+        format!(
+            "data:image/png;base64,{}",
+            STANDARD.encode(include_bytes!("../../../assets/brand/logo-192.png"))
+        )
+    });
     rsx! {
-        div { class: "card",
-            div { class: "row-between gap-4 wrap",
-                div { class: "grow-wide stack-1",
-                    div { class: "card-title", "{txt.optimizer_title}" }
+        section { class: "home-hero",
+            div { class: "home-hero-main",
+                span { class: "home-kicker", "{txt.your_pc}" }
+                h2 { class: "home-cpu", "{hw.cpu_name}" }
+                div { class: "home-chips",
+                    span { class: "home-chip",
+                        span { class: "fluent-icon", "aria-hidden": "true", "\u{E964}" }
+                        "{ram_gb(hw.total_ram_mb)}"
+                    }
+                    if !gpu.is_empty() {
+                        span { class: "home-chip",
+                            span { class: "fluent-icon", "aria-hidden": "true", "\u{E7F4}" }
+                            "{gpu}"
+                        }
+                    }
+                    span { class: "home-chip",
+                        span { class: "fluent-icon", "aria-hidden": "true", "\u{E950}" }
+                        "{(txt.threads)(&hw.logical_cores)}"
+                    }
+                    span { class: "{tier_class}", "{tier_text}" }
+                }
+            }
+            img { class: "home-otter", src: "{otter}", alt: "" }
+            div { class: "home-action",
+                div { class: "stack-1 grow-wide",
+                    span { class: "fw-semibold", "{txt.optimizer_title}" }
                     // UI-01: sin «transaccional»; el respaldo permite revertir, pero no garantiza todo o nada.
-                    div { class: "text-muted", "{txt.optimizer_desc}" }
+                    span { class: "text-muted text-sm", "{txt.optimizer_desc}" }
                 }
                 div { class: "row",
-                    button {
-                        class: "btn btn-primary",
-                        disabled: *is_running.read() || nothing_to_apply,
-                        onclick: move |_| on_optimize.call(()),
-                        if *is_running.read() {
-                            "{txt.processing}"
-                        } else { "{txt.optimize_system}" }
-                    }
                     button {
                         class: "btn",
                         disabled: *is_running.read(),
                         onclick: move |_| on_rollback.call(()),
                         "{txt.revert_rollback}"
                     }
+                    button {
+                        class: "btn btn-primary btn-lg",
+                        disabled: *is_running.read() || nothing_to_apply,
+                        onclick: move |_| on_optimize.call(()),
+                        span { class: "fluent-icon", "aria-hidden": "true", "\u{E945}" }
+                        if *is_running.read() {
+                            "{txt.processing}"
+                        } else { "{txt.optimize_system}" }
+                    }
                 }
+            }
+        }
+    }
+}
+
+/// Una celda de la ficha técnica: icono en círculo, nombre y valor.
+#[component]
+fn SpecCell(glyph: &'static str, label: String, value: String, note: Option<String>) -> Element {
+    rsx! {
+        div { class: "spec-cell",
+            span { class: "fluent-icon dash-icon", "aria-hidden": "true", "{glyph}" }
+            div { class: "spec-text",
+                span { class: "spec-label", "{label}" }
+                span { class: "spec-value", "{value}" }
+                if let Some(note) = note {
+                    span { class: "spec-note", "{note}" }
+                }
+            }
+        }
+    }
+}
+
+/// Ficha técnica del equipo en dos columnas: placa, memoria, gráficos, discos y plan de energía.
+#[component]
+fn SpecSheet(hw: HardwareProfile, active_scheme: Signal<String>) -> Element {
+    let en = use_context::<Signal<Lang>>().read().is_en();
+    let txt = strings(en).dashboard;
+    let guid = active_scheme.read().clone();
+    rsx! {
+        div { class: "section-title", "{txt.specs}" }
+        div { class: "spec-grid",
+            SpecCell {
+                glyph: "\u{E950}",
+                label: txt.cpu.to_string(),
+                value: hw.cpu_name.clone(),
+                note: Some((txt.threads)(&hw.logical_cores)),
+            }
+            SpecCell {
+                glyph: "\u{E7F8}",
+                label: txt.board.to_string(),
+                value: tr(&hw.motherboard, en).to_string(),
+            }
+            SpecCell {
+                glyph: "\u{E964}",
+                label: txt.ram.to_string(),
+                value: ram_gb(hw.total_ram_mb),
+            }
+            for (i , gpu) in hw.gpu_names.iter().enumerate() {
+                SpecCell {
+                    key: "gpu{i}",
+                    glyph: "\u{E7F4}",
+                    label: txt.graphics.to_string(),
+                    value: gpu.clone(),
+                }
+            }
+            for (i , drive) in hw.storage_drives.iter().enumerate() {
+                SpecCell {
+                    key: "drive{i}",
+                    glyph: "\u{EDA2}",
+                    label: txt.disk.to_string(),
+                    value: drive.clone(),
+                }
+            }
+            SpecCell {
+                glyph: "\u{E83F}",
+                label: txt.active_power_plan.to_string(),
+                value: power_plan_name(&guid, en).to_string(),
+                note: Some(txt.auto_selects_optimal_plan_for.to_string()),
             }
         }
     }
@@ -436,7 +469,7 @@ fn EngineReportCard(report: EngineExecutionReport) -> Element {
                     badge_text: match step.status {
                         OptimizationStepStatus::Applied => txt.step_applied,
                         OptimizationStepStatus::Skipped => txt.step_skipped,
-                        OptimizationStepStatus::Failed => "Error",
+                        OptimizationStepStatus::Failed => txt.step_failed,
                     }
                         .to_string(),
                 }
@@ -553,7 +586,8 @@ pub fn DashboardView() -> Element {
                 }
             }
 
-            OptimizerCard {
+            HomeHero {
+                hw: hw.clone(),
                 is_running: sig.is_running,
                 nothing_to_apply: eligible_items.is_empty(),
                 on_optimize: move |_| confirm_optimize.set(true),
@@ -572,8 +606,7 @@ pub fn DashboardView() -> Element {
                 RollbackResultCard { rb }
             }
 
-            OverviewGroup { hw: hw.clone() }
-            PowerPlanRow { active_scheme: sig.active_scheme }
+            SpecSheet { hw: hw.clone(), active_scheme: sig.active_scheme }
 
             if let Some(report) = sig.last_report.read().clone() {
                 EngineReportCard { report }

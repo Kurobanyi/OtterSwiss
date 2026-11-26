@@ -7,5 +7,6 @@ pub mod drivers;
 pub mod hardware;
 pub mod mini_archive;
 pub mod sensors;
+pub mod settings;
 pub mod tools;
 pub mod uninstaller;

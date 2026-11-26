@@ -1262,3 +1262,22 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
   traducir (ahora `Msg` traduce el detalle con `core_text`), mayúsculas de las categorías del Debloater y textos fijos
   («FIRMWARE / BIOS», «OK/Error»). `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (99) en verde.
   Sin probar: los otros 9 temas de color uno por uno y el diálogo de restos del Desinstalador con datos reales.
+
+<a id="te-31"></a>
+### TE-31 · Navegación configurable y estilo abierto con identidad propia
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: pedido del autor tras ver `TE-30` (26/11/2026) · **Estado**: Hecho
+- **Decisión del autor**: el diseño de `TE-30` se veía «plano y con muchas cajas». El dueño del proyecto pidió conservar arriba
+  las opciones de la barra superior y la nutria que arrastra la ventana, aceptar más temas y cambiar el resto con libertad.
+  Por eso la navegación va **arriba por defecto** y la barra lateral (contraíble a solo iconos) queda como opción en la nueva
+  sección Configuración.
+- **Qué se hizo**: `src/ui/layout.rs` (`LayoutPrefs`, `layout.json`), sección Configuración (engranaje en la barra de título) con
+  navegación arriba o lateral, interruptor para contraer la barra lateral, muestras de los 11 temas pintadas con sus propios
+  colores e idioma. Pestañas de arriba con icono: hasta 1499 px solo iconos y la activa con su nombre, así siempre caben las
+  diez (antes «Sensores» quedaba cortado). Estilo abierto (sección «9 · Estilo abierto» de `main.css`): sin cajas por elemento,
+  listas con líneas finas, ficha técnica en columnas, tarjetas sin recuadro; la acción principal de cada página (y la portada de
+  Inicio, con la nutria, el procesador en grande y datos rápidos) es el único punto de color. Encabezado de página con el icono
+  de la sección y un resplandor del acento del tema.
+- **Descartado**: una tarjeta por fila (lo que no gustó de `TE-30`) y fuentes web.
+- **Cierre** (2026-11-26, rama `auditoria/buenas-practicas`): visto en la app con navegación arriba y lateral, temas Tokyo Night y
+  Claro, en las diez secciones y Configuración. `cargo fmt --check`, `clippy --all-targets -- -D warnings` y `cargo test` (101)
+  en verde. Sin probar uno por uno los otros temas de color.
