@@ -1,5 +1,7 @@
 //! Hardware IDs y versiones de drivers: funciones puras, sin Windows ni red.
 
+use crate::core::platform::version::NumericVersion;
+
 /// ERR-23: valor de `key` en un Hardware ID en mayúsculas (`PCI\VEN_1002&DEV_744C&SUBSYS_…`): lo que sigue a la clave
 /// hasta `&` o `\`. Así `ACPI\VEN_INT&DEV_33A0` da `INT` y no `INT&`.
 fn hwid_field<'a>(up: &'a str, key: &str) -> Option<&'a str> {
@@ -10,6 +12,8 @@ fn hwid_field<'a>(up: &'a str, key: &str) -> Option<&'a str> {
     (!value.is_empty()).then_some(value)
 }
 
+/// ID corto para buscar en el Catálogo de Microsoft: `PCI\VEN_x&DEV_y` o `USB\VID_x&PID_y` (el prefijo del bus solo
+/// se conserva para PCI y USB) y, si no hay ninguno de esos pares, los dos primeros campos. `None` si `raw` está vacío.
 pub(super) fn short_hw_id_of(raw: &str) -> Option<String> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -40,32 +44,9 @@ pub(super) fn ven_dev_of(raw: &str) -> Option<(String, String, Option<String>)> 
     Some((ven.to_string(), dev.to_string(), subsys))
 }
 
-fn parse_version_tuple(v: &str) -> Vec<u32> {
-    v.split(|c: char| !c.is_ascii_digit())
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse::<u32>().ok())
-        .collect()
-}
-
+/// ERR-23: si alguna de las dos no es numérica no se sabe cuál es más nueva; no se ofrece la actualización.
 pub(super) fn is_version_newer(candidate: &str, current: &str) -> bool {
-    let a = parse_version_tuple(candidate);
-    let b = parse_version_tuple(current);
-    // ERR-23: si alguna de las dos no es numérica no se sabe cuál es más nueva; no se ofrece la actualización.
-    if a.is_empty() || b.is_empty() {
-        return false;
-    }
-    let len = a.len().max(b.len());
-    for i in 0..len {
-        let va = *a.get(i).unwrap_or(&0);
-        let vb = *b.get(i).unwrap_or(&0);
-        if va > vb {
-            return true;
-        }
-        if va < vb {
-            return false;
-        }
-    }
-    false
+    NumericVersion::is_newer(candidate, current).unwrap_or(false)
 }
 
 #[cfg(test)]

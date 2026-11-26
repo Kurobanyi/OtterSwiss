@@ -48,11 +48,7 @@ dependencias directas se usan.
 | [`AR-06`](PRACTICAS-detalle.md#ar-06) | `CoreError` por módulo y no por causa; 161 `source: None` | L | Parcial |
 | [`AR-17`](PRACTICAS-detalle.md#ar-17) | Textos de presentación generados en core | M | Parcial |
 | [`AR-18`](PRACTICAS-detalle.md#ar-18) | Tres versiones del crate `windows` y dependencias duplicadas | M | Parcial |
-| [`CL-11`](PRACTICAS-detalle.md#cl-11) | Faltan `ProgressBar`, `CheckRow` y `CardHeader`; `rsx!` repetido | M | Parcial |
 | [`IN-02`](PRACTICAS-detalle.md#in-02) | No hay catálogo de textos: 253 `if en {…} else {…}` | L | Parcial |
-| [`AR-25`](PRACTICAS-detalle.md#ar-25) | Tres comparadores de versiones con semánticas distintas | S | Parcial |
-| [`AR-27`](PRACTICAS-detalle.md#ar-27) | Booleanos y centinelas donde corresponde un enum | M | Parcial |
-| [`CL-23`](PRACTICAS-detalle.md#cl-23) | Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID | S | Parcial |
 
 ## P3
 

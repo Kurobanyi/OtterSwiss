@@ -133,10 +133,12 @@ fn wua_error(what: &str, e: windows::core::Error) -> CoreError {
     }
 }
 
+/// Texto de una propiedad COM; vacío si la lectura falló (la vista muestra lo que haya).
 fn bstr_text(r: windows::core::Result<BSTR>) -> String {
     r.map(|b| b.to_string()).unwrap_or_default()
 }
 
+/// Booleano de una propiedad COM; `default` si la lectura falló.
 fn variant_flag(r: windows::core::Result<VARIANT_BOOL>, default: bool) -> bool {
     r.map(|b| b.0 != 0).unwrap_or(default)
 }
@@ -165,6 +167,7 @@ fn wua_pending_drivers() -> CoreResult<(IUpdateSession, IUpdateCollection)> {
     }
 }
 
+/// `UpdateID` (GUID) de una actualización de WUA; es la clave con la que la vista elige qué instalar.
 fn wua_update_id(update: &IUpdate) -> Option<String> {
     // SAFETY: lecturas COM sobre una actualización válida, en el hilo STA que la obtuvo.
     unsafe { update.Identity().and_then(|id| id.UpdateID()) }
@@ -213,6 +216,7 @@ fn wua_candidate(update: &IUpdate, idx: i32) -> DriverUpdateCandidate {
     }
 }
 
+/// Colección vacía de WUA para armar la lista de descarga o de instalación. COM debe estar iniciado en este hilo.
 fn wua_new_collection() -> CoreResult<IUpdateCollection> {
     // SAFETY: crea un objeto COM en proceso; COM ya está iniciado en este hilo.
     unsafe { CoCreateInstance(&UpdateCollection, None, CLSCTX_INPROC_SERVER) }

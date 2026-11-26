@@ -34,8 +34,8 @@ pub struct InstalledDriverDevice {
     pub driver_date: Option<String>,
     pub inf_path: Option<String>,
     pub dev_inst: u32,
-    pub has_problem: bool,
-    pub problem_code: u32,
+    /// Código `CM_PROB_*` del Administrador de dispositivos; `None` si el dispositivo no tiene problema (AR-27).
+    pub problem: Option<u32>,
     pub needs_reboot: bool,
 }
 
@@ -52,6 +52,10 @@ impl InstalledDriverDevice {
             .as_deref()
             .map(|p| p.to_ascii_lowercase().starts_with("oem"))
             .unwrap_or(false)
+    }
+
+    pub fn has_problem(&self) -> bool {
+        self.problem.is_some()
     }
 
     /// ID corto para buscar en el Catálogo: `PCI\VEN_x&DEV_y`, `USB\VID_x&PID_y` o los dos primeros campos.
@@ -153,16 +157,12 @@ impl DriverManager {
             let cr =
                 unsafe { CM_Get_DevNode_Status(&mut status, &mut problem, dev_data.DevInst, 0) };
 
-            let (has_problem, problem_code, needs_reboot) = if cr == CR_SUCCESS {
-                let prob_flag = (status.0 & DN_HAS_PROBLEM.0) != 0;
+            let (problem, needs_reboot) = if cr == CR_SUCCESS {
+                let has_problem = (status.0 & DN_HAS_PROBLEM.0) != 0;
                 let reboot_flag = (status.0 & DN_NEED_RESTART.0) != 0;
-                (
-                    prob_flag,
-                    if prob_flag { problem.0 } else { 0 },
-                    reboot_flag,
-                )
+                (has_problem.then_some(problem.0), reboot_flag)
             } else {
-                (false, 0, false)
+                (None, false)
             };
 
             devices.push(InstalledDriverDevice {
@@ -176,15 +176,14 @@ impl DriverManager {
                 driver_date,
                 inf_path,
                 dev_inst: dev_data.DevInst,
-                has_problem,
-                problem_code,
+                problem,
                 needs_reboot,
             });
         }
 
         devices.sort_by(|a, b| {
-            b.has_problem
-                .cmp(&a.has_problem)
+            b.has_problem()
+                .cmp(&a.has_problem())
                 .then_with(|| b.is_third_party_oem().cmp(&a.is_third_party_oem()))
                 .then_with(|| {
                     a.display_title()
@@ -231,6 +230,8 @@ impl DriverManager {
     }
 }
 
+/// Lee una propiedad de texto de un dispositivo (SetupAPI). Pide primero el tamaño y luego el valor en un `AlignedBuf` de
+/// ese tamaño; el texto es UTF-16 y termina en el primer NUL. `None` si la propiedad no existe o está vacía.
 fn get_device_property(
     h_dev_info: HDEVINFO,
     dev_data: &mut SP_DEVINFO_DATA,
@@ -332,8 +333,7 @@ mod tests {
             driver_date: None,
             inf_path: None,
             dev_inst: 0,
-            has_problem: false,
-            problem_code: 0,
+            problem: None,
             needs_reboot: false,
         };
         assert_eq!(dev.friendly_gpu_version().as_deref(), Some("566.36"));

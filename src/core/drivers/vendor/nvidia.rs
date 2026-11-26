@@ -122,7 +122,7 @@ impl DriverManager {
             .friendly_gpu_version()
             .unwrap_or_else(|| "Desconocida".into());
 
-        if nv_gpu.has_problem || is_version_newer(&latest_ver, &current_ver) {
+        if nv_gpu.has_problem() || is_version_newer(&latest_ver, &current_ver) {
             results.push(VendorDriverUpdate {
                 id: format!("nvidia_{}", latest_ver),
                 vendor: "NVIDIA".into(),

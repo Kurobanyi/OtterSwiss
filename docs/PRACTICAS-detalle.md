@@ -379,6 +379,7 @@ Leyenda:
 - **Propuesta**: `StepRecorder` (`skip`, `fail`, `applied`) y una función por tipo de tweak que devuelva `ControlFlow`; un
   `scan_*` por fuente de restos; las vistas en subcomponentes (resultados, modal de restos, lista de apps).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): apply_profile_inner (StepRecorder) y scan_leftovers (LeftoverScan, salida idéntica en todas las apps de esta PC) partidos. Las vistas largas siguen igual. Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre parcial** (2026-11-25, rama `auditoria/buenas-practicas`): la mayor de las vistas, `DriversView`, pasó de 825 a 303 líneas (`CL-21`); quedan `UninstallerView`, `DashboardView`, `DebloaterView`, `DnsView`, `App` y `ToolsView`, que no se tocaron en esta sesión.
 
 <a id="cl-06"></a>
 ### CL-06 · Helpers Win32 escritos varias veces
@@ -430,7 +431,7 @@ Leyenda:
 
 <a id="cl-11"></a>
 ### CL-11 · Faltan componentes y el mismo `rsx!` se repite
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: barra de progreso siete veces (con pistas `--surface` o `--bg` y transiciones de 0,15, 0,2 o 0,25 s, sin
   `role="progressbar"`); fila con checkbox seis veces; cabecera de tarjeta dos veces en `components`; Hardware arma `div.card` a mano;
   el Dashboard copia el markup de `Card` porque no admite acciones.
@@ -439,6 +440,7 @@ Leyenda:
   `hardware_tab.rs:129-213`.
 - **Propuesta**: `ProgressBar { percent }` accesible, `CheckRow`, `CardHeader`, y `Card` con `actions` y `tone` (ver `TE-12`).
 - **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): ProgressBar con role=progressbar en las seis barras. CheckRow y CardHeader no: las filas difieren demasiado; se resolvió con clases (select-row, list-row). Verificado: `cargo test` (54) y `clippy --all-targets -- -D warnings` en verde en Windows.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `CardHeader` (`ui/components/card_header.rs`) es la cabecera de `Card` y `Modal`, que la tenían copiada, y `Card` admite `actions` (el aviso «Se necesitan derechos de administrador» del Dashboard dejó de copiar el markup). `CheckRow` llegó con `CL-25` y la barra con `role=progressbar` ya estaba. Las tarjetas de especificaciones de Hardware no son `Card` (sin título de sección) y usan `.card-bar`/`.tile` (`TE-02`). Verificado: `cargo test` (92 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde; sin recorrer en la app (pantalla bloqueada).
 
 <a id="cl-12"></a>
 ### CL-12 · Formato de tamaños y duraciones en tres versiones
@@ -1027,12 +1029,13 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-25"></a>
 ### AR-25 · Tres comparadores de versiones con semánticas distintas
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `drivers::is_version_newer` (da «más nueva» si la actual no es numérica), `app_store::parse_numeric_version` (quita
   ceros finales) y `updater::parse_version` (semver). `1.2.0` y `1.2` son iguales en uno y distintas en otro; solo uno tiene tests.
 - **Dónde**: `src/core/drivers.rs:686-714`; `src/core/store/app_store.rs:1478-1496`; `src/core/updater.rs:106-131`.
 - **Propuesta**: `core::version::NumericVersion: Ord` con tests e `is_newer -> Option<bool>`.
 - **Cierre parcial** (2026-11-25): la tienda ya no compara versiones (`parse_numeric_version` y `find_newer_curated_version` se fueron con las versiones fijas; el Desinstalador ofrece «Buscar actualización» y winget decide). Quedan dos comparadores: `drivers::hwid::is_version_newer` y `updater::parse_version`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `core::platform::version::NumericVersion` (`Ord`, los ceros finales no cuentan, `is_newer -> Option<bool>` con `None` si no es numérica) con tres tests; `drivers::hwid::is_version_newer` pasa por él. El comparador de la tienda ya había desaparecido; el de `updater` sigue aparte porque su semántica es otra (semver con prelanzamiento: `1.2.0-beta` < `1.2.0`). Verificado: `cargo test` (92 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-26"></a>
 ### AR-26 · Core arma textos y la UI los vuelve a leer como datos
@@ -1047,7 +1050,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="ar-27"></a>
 ### AR-27 · Booleanos y centinelas donde corresponde un enum
-- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: M · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: `CuratedPackage` suma `is_winget` + `winget_id: Option`; las 15 UWP rellenan `url: ""`, `allowed_hosts: &[]`,
   `version: "Store"` y repiten 11 campos (unas 360 líneas). Se puede escribir un paquete directo sin verificación (`ERR-16`). `version`
   usa las cadenas mágicas «Evergreen» y «Store»; los códigos winget no tienen nombre. En drivers, `has_problem` + `problem_code`.
@@ -1055,6 +1058,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Propuesta**: `enum InstallSource { Direct { …, verify: Verify }, Store { id } }` con `enum Verify { Sha256, Signer }` para que «sin
   verificación» no compile; `enum CatalogVersion`; constantes para los códigos; `const fn store_app(...)`.
 - **Cierre parcial** (2026-11-25): `InstallSource` reemplaza `is_winget` + `winget_id: Option`, `url: ""`, `version: "Evergreen"`/`"Store"` y los 11 campos de relleno de las UWP: un paquete sin verificación ya no se puede escribir. Los códigos de winget tienen nombre (`store/winget.rs`). Falta `has_problem` + `problem_code` en drivers.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): `InstalledDriverDevice` pasa de `has_problem: bool` + `problem_code: u32` a `problem: Option<u32>` con el método `has_problem()`; el código 28 que dispara la búsqueda en el Catálogo tiene nombre (`CM_PROB_FAILED_INSTALL`). Con lo de la tienda (`InstallSource`, códigos de winget), no queda otro booleano con centinela. Verificado: `cargo test` (92 + 4), `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="ar-28"></a>
 ### AR-28 · API pública de drivers más ancha de lo que usa la UI, y campos muertos
@@ -1114,7 +1118,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 
 <a id="cl-23"></a>
 ### CL-23 · Sin comentarios de documentación; la fusión de v4.2.0 borraba comentarios con ID
-- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Parcial
+- **Prioridad**: P2 · **Esfuerzo**: S · **Evidencia**: observado · **Estado**: Hecha
 - **Qué pasa**: 0 comentarios en 2742 líneas de drivers. El commit original quitaba además los comentarios con ID (SEC-12, SEC-05,
   ERR-09, UI-15…) de los archivos que tocaba.
 - **Dónde**: `src/core/drivers.rs`, `src/ui/views/drivers.rs`; `src/core/store/app_store.rs`, `src/core/optimize/registry_tweaks.rs`.
@@ -1123,6 +1127,7 @@ Los defectos están en `docs/BUGS.md` (`SEC-30`…`TST-02`).
 - **Cierre parcial** (2026-11-25, fusión `4767abf`): la fusión conservó los comentarios de la rama en los archivos ya existentes
   (`registry_tweaks.rs`, archivador, debloater, `security/`); en `app_store.rs` se restauraron los de UI-15 e IN-01. Faltan los de
   drivers y los doc comments de `stage_copy_for_user`, `display_name_matches`, `parse_numeric_version` y `find_newer_curated_version`.
+- **Cierre** (2026-11-25, rama `auditoria/buenas-practicas`): documentadas con su invariante `get_device_property`, `short_hw_id_of`, `display_name_matches`, `bstr_text`, `variant_flag`, `wua_update_id` y `wua_new_collection`; `ComApartmentGuard`, `collect_intel_matches`, `stage_copy_for_user`, `parse_numeric_version` y `find_newer_curated_version` ya no existen (`ERR-25`, `SEC-35`, `AR-29`). Verificado: `clippy --all-targets -- -D warnings` y `fmt --check` en verde.
 
 <a id="cl-24"></a>
 ### CL-24 · `read_wmi_f32` copia `read_wmi_i32`; umbrales mágicos y filtro de sensor por nombre

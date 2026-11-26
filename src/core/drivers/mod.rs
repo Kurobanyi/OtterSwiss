@@ -30,6 +30,9 @@ const DATA_TIMEOUTS: http::Timeouts = http::Timeouts {
 };
 const PNPUTIL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
+/// `CM_PROB_FAILED_INSTALL`: Windows no tiene el driver del dispositivo; es el caso en que se busca en el Catálogo (AR-27).
+const CM_PROB_FAILED_INSTALL: u32 = 28;
+
 #[derive(Debug, Clone)]
 pub struct DriverUpdateCandidate {
     pub id: String,
@@ -158,7 +161,7 @@ impl DriverManager {
         let mut queried_hw_ids = HashSet::new();
         for dev in devices
             .iter()
-            .filter(|d| d.has_problem && d.problem_code == 28)
+            .filter(|d| d.problem == Some(CM_PROB_FAILED_INSTALL))
         {
             if cancelled() {
                 return FullDriverScanResult::default();

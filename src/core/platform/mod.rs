@@ -14,4 +14,5 @@ pub mod registry;
 pub(crate) mod safe_fs;
 pub(crate) mod services;
 pub(crate) mod user_settings;
+pub(crate) mod version;
 pub mod wide;

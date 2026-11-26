@@ -1011,6 +1011,9 @@ fn installed_store_packages() -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// ¿El nombre de una entrada de «Programas y características» corresponde al paquete del catálogo? Igual al prefijo, o el
+/// prefijo seguido de espacio o guion y una versión o un paréntesis; un prefijo que ya termina en versión (`Python 3.12`)
+/// acepta más versión (`.8`). Así `Python 3.1` no coincide con `Python 3.12`.
 fn display_name_matches(display_name: &str, prefix: &str) -> bool {
     let dn = display_name.trim().to_ascii_lowercase();
     let pref = prefix.trim().to_ascii_lowercase();

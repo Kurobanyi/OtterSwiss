@@ -329,7 +329,7 @@ pub fn DriversView() -> Element {
         });
     };
 
-    let problem_count = devices.read().iter().filter(|d| d.has_problem).count();
+    let problem_count = devices.read().iter().filter(|d| d.has_problem()).count();
     let problems_badge_txt = if problem_count > 0 {
         (t.device_errors)(problem_count)
     } else {
@@ -767,7 +767,7 @@ fn DeviceListCard(
 
     let all = devices.read();
     let total_devs = all.len();
-    let problem_count = all.iter().filter(|d| d.has_problem).count();
+    let problem_count = all.iter().filter(|d| d.has_problem()).count();
     let oem_count = all.iter().filter(|d| d.is_third_party_oem()).count();
 
     let q = search_query.read().trim().to_ascii_lowercase();
@@ -776,7 +776,7 @@ fn DeviceListCard(
         .iter()
         .filter(|d| match cur_filter {
             DeviceFilter::All => true,
-            DeviceFilter::ErrorsOnly => d.has_problem,
+            DeviceFilter::ErrorsOnly => d.has_problem(),
             DeviceFilter::ThirdPartyOem => d.is_third_party_oem(),
         })
         .filter(|d| q.is_empty() || device_matches(d, &q))
@@ -863,8 +863,8 @@ fn DeviceRow(
     let class_str = dev.class_name.as_deref().unwrap_or("").to_string();
     let nv_ver = dev.friendly_gpu_version();
 
-    let (status_badge_cls, status_badge_txt) = if dev.has_problem {
-        ("badge badge-danger", (t.cm_problem)(dev.problem_code))
+    let (status_badge_cls, status_badge_txt) = if let Some(code) = dev.problem {
+        ("badge badge-danger", (t.cm_problem)(code))
     } else if dev.needs_reboot {
         ("badge badge-warning", t.pending_reboot)
     } else {
@@ -908,7 +908,7 @@ fn DeviceRow(
                 }
             }
             div { class: "row",
-                if dev.has_problem && !hw_for_btn.is_empty() {
+                if dev.has_problem() && !hw_for_btn.is_empty() {
                     button {
                         class: "btn btn-secondary",
                         disabled: *is_working.read(),
