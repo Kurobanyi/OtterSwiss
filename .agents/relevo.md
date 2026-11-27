@@ -7,8 +7,8 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 ## ★ Estado actual — 2026-11-26
 
 **Rama:** todo está en `main` (v5.0.0, 26/11/2026), subido a `origin/main`. Las ramas `auditoria/buenas-practicas` y
-`fix/auditoria` se fusionaron y se borraron. No hay tag `v5.0.0` todavía: subirlo dispara `release.yml` y publica la release que
-ofrece el actualizador a los usuarios; se hace cuando el autor lo pida.
+`fix/auditoria` se fusionaron y se borraron. La release `v5.0.0` está publicada (26/11/2026,
+https://github.com/Kurobanyi/OtterSwiss/releases/tag/v5.0.0, instalador `OtterSwiss-Setup-v5.0.0.exe`).
 
 **Hecho en esta rama:**
 - Buenas prácticas: core por capas (`platform` → `security` → funciones), UI ordenada, catálogo de textos, edición 2024, CI y lints,
