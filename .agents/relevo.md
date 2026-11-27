@@ -6,9 +6,9 @@ Leer `AGENTS.md`, `docs/BUGS.md` y `git status`. Autoridades: `docs/BUGS.md` (í
 
 ## ★ Estado actual — 2026-11-26
 
-**Rama:** `auditoria/buenas-practicas`, unos 137 commits locales **sin push ni PR** (el usuario todavía no quiere subirla). Ya trae
-`origin/main` con la v4.2.0 del compañero (`0a0f5ec`, fusionada en `4767abf`) y `windows` 0.61 (`10a585b`). `main` local está
-viejo (`11cb659`); `origin/main` es `0a0f5ec`. `tmp/windows-061` ya está dentro y se puede borrar. Árbol limpio.
+**Rama:** todo está en `main` (v5.0.0, 26/11/2026), subido a `origin/main`. Las ramas `auditoria/buenas-practicas` y
+`fix/auditoria` se fusionaron y se borraron. No hay tag `v5.0.0` todavía: subirlo dispara `release.yml` y publica la release que
+ofrece el actualizador a los usuarios; se hace cuando el autor lo pida.
 
 **Hecho en esta rama:**
 - Buenas prácticas: core por capas (`platform` → `security` → funciones), UI ordenada, catálogo de textos, edición 2024, CI y lints,

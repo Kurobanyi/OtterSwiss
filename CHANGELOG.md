@@ -1,6 +1,26 @@
 # Changelog — OtterSwiss
 
-## [Sin publicar]
+## [5.0.0] — 2026-11-26
+
+### Novedades
+- **Interfaz nueva:** encabezado por sección, estilo abierto sin una caja por elemento, portada de Inicio con la nutria y el
+  equipo, iconos de Windows y logos reales de las apps de la tienda (Simple Icons, CC0).
+- **Configuración:** navegación arriba (predeterminada) o barra lateral contraíble, tema con vista previa de cada uno e idioma.
+- **Arranca sin administrador:** avisa del modo estándar y ofrece «Reabrir como administrador»; cada acción que lo necesita lo
+  pide.
+- **Tienda por winget** (corre con la cuenta del usuario), detección de apps de la Store y avisos claros si winget está viejo.
+- **Drivers:** Catálogo de Microsoft verificado, respeto de la política del equipo, confirmación con respaldo, historial para
+  quitar lo instalado y búsqueda cancelable. Sale la fuente Intel.
+- Confirmación antes de revertir el perfil, el registro del Debloater y de quitar el menú contextual; Archivos muestra el destino
+  con «Abrir carpeta».
+
+### Seguridad
+- Descargas por el proxy de la máquina (nunca el del usuario), firmas encadenadas a las raíces del equipo y paquetes de fabricante
+  verificados; con otra cuenta de administrador no se tocan los ajustes del usuario.
+
+### Calidad
+- 107 pruebas automáticas y pruebas de sistema en VM (optimizar, Debloater, DNS, limpiador, archivador, desinstalador, tienda,
+  proxy y otra cuenta). 131 hallazgos de auditoría resueltos.
 
 ### Buenas prácticas (rama `auditoria/buenas-practicas`, detalle en `docs/PRACTICAS.md`)
 - Defectos: el build falla si no puede incrustar el manifiesto de administrador; `--apply-profile` fuera de los flags de
