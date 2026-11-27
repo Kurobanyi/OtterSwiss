@@ -1,6 +1,6 @@
 //! CPU: nombre y familia por CPUID, núcleos e hilos, y cachés por `GetLogicalProcessorInformationEx`.
 
-use std::arch::x86_64::{__cpuid, __cpuid_count};
+use std::arch::x86_64::{__cpuid, __cpuid_count, CpuidResult};
 
 use windows::Win32::System::SystemInformation::{
     GetLogicalProcessorInformationEx, RelationCache, RelationProcessorCore,
@@ -11,8 +11,29 @@ use super::CpuSpecs;
 use crate::core::error::{CoreError, CoreResult};
 use crate::core::platform::memory::AlignedBuf;
 
+/// CPUID de una hoja. En Rust 1.93 (la versión mínima del proyecto) la intrínseca todavía es `unsafe`; en las versiones
+/// nuevas ya no, y el bloque sobra: por eso el `allow`.
+#[allow(
+    unused_unsafe,
+    reason = "en Rust 1.93 la intrínseca es unsafe; en las versiones nuevas el bloque sobra"
+)]
+fn cpuid(leaf: u32) -> CpuidResult {
+    // SAFETY: CPUID existe en todo procesador x86_64 y solo lee registros; no toca memoria.
+    unsafe { __cpuid(leaf) }
+}
+
+/// CPUID de una hoja y subhoja (ver `cpuid`).
+#[allow(
+    unused_unsafe,
+    reason = "en Rust 1.93 la intrínseca es unsafe; en las versiones nuevas el bloque sobra"
+)]
+fn cpuid_count(leaf: u32, sub_leaf: u32) -> CpuidResult {
+    // SAFETY: igual que en `cpuid`: instrucción siempre disponible en x86_64 y sin acceso a memoria.
+    unsafe { __cpuid_count(leaf, sub_leaf) }
+}
+
 pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
-    let leaf0 = __cpuid(0);
+    let leaf0 = cpuid(0);
     let max_basic_leaf = leaf0.eax;
 
     let mut vendor_bytes = Vec::with_capacity(12);
@@ -22,7 +43,7 @@ pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
     let vendor = String::from_utf8_lossy(&vendor_bytes).trim().to_string();
 
     let (family, model, stepping, mut features) = if max_basic_leaf >= 1 {
-        let leaf1 = __cpuid(1);
+        let leaf1 = cpuid(1);
         let step = leaf1.eax & 0xF;
         let base_model = (leaf1.eax >> 4) & 0xF;
         let base_family = (leaf1.eax >> 8) & 0xF;
@@ -67,7 +88,7 @@ pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
         }
 
         if max_basic_leaf >= 7 {
-            let leaf7 = __cpuid_count(7, 0);
+            let leaf7 = cpuid_count(7, 0);
             if (leaf7.ebx & (1 << 5)) != 0 {
                 isa.push("AVX2".into());
             }
@@ -84,11 +105,11 @@ pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
         (0, 0, 0, Vec::new())
     };
 
-    let max_ext = __cpuid(0x8000_0000).eax;
+    let max_ext = cpuid(0x8000_0000).eax;
     let brand = if max_ext >= 0x8000_0004 {
         let mut bytes = Vec::with_capacity(48);
         for leaf in 0x8000_0002..=0x8000_0004 {
-            let res = __cpuid(leaf);
+            let res = cpuid(leaf);
             bytes.extend_from_slice(&res.eax.to_le_bytes());
             bytes.extend_from_slice(&res.ebx.to_le_bytes());
             bytes.extend_from_slice(&res.ecx.to_le_bytes());
@@ -103,7 +124,7 @@ pub(super) fn read_cpu_specs() -> CoreResult<CpuSpecs> {
     };
 
     if max_ext >= 0x8000_0001 {
-        let ext1 = __cpuid(0x8000_0001);
+        let ext1 = cpuid(0x8000_0001);
         if (ext1.edx & (1 << 29)) != 0 {
             features.push("x86-64".into());
         }
